@@ -141,6 +141,7 @@ button:disabled { opacity:.5; cursor:default; }
 /* Un día solo: ancho cómodo y centrado, no estirado a toda la pantalla — una
    columna de 1400 px no se lee, se barre con la vista. */
 .malla.unadia { grid-template-columns:minmax(0, 34rem); justify-content:center; }
+.malla.undia > .dia { max-width:34rem; }
 
 /* El mes: una fila por semana, con su número a la izquierda. */
 .malla.mes { display:block; }
@@ -164,6 +165,39 @@ button:disabled { opacity:.5; cursor:default; }
      ilegible: se cae a dos, peor como calendario pero legible como dato. */
   .mescab { display:none; }
   .messem { grid-template-columns:repeat(2, 1fr); }
+}
+
+/* ---------- el día como línea de tiempo ---------- */
+.malla.undia { display:block; }
+.linea { background:var(--blanco); border:1px solid var(--borde); border-radius:var(--radio);
+         padding:.6rem .7rem .8rem; margin-bottom:.9rem; overflow-x:auto; }
+.lcab { display:flex; align-items:flex-end; height:1.3rem; }
+.lrot { width:8rem; flex:0 0 8rem; font-size:.85rem; font-weight:600; padding-right:.5rem; }
+.lhoras, .lpista { position:relative; flex:1; min-width:22rem; }
+.lhoras { height:1.2rem; border-bottom:1px solid var(--borde); }
+.marca { position:absolute; top:0; transform:translateX(-50%); font-size:.72rem;
+         color:var(--gris); }
+.marca::after { content:""; position:absolute; left:50%; top:1.1rem; width:1px; height:.3rem;
+                background:var(--borde); }
+.lfila { display:flex; align-items:center; min-height:2.1rem; }
+.lpista { height:1.7rem; border-bottom:1px dashed #efece5; }
+
+/* Lo que se PIDIÓ va de fondo; lo asignado, encima. Así el trozo del pedido que
+   queda descubierto se ve como un espacio claro — que es justo lo que uno viene
+   a buscar en un día. */
+.lpide { position:absolute; top:.1rem; height:1.5rem; background:var(--verde-claro);
+         border:1px dashed #b8d2ce; border-radius:5px; }
+.lbarra { position:absolute; top:.25rem; height:1.2rem; background:var(--verde); color:#fff;
+          border-radius:5px; font-size:.75rem; line-height:1.2rem; padding:0 .4rem;
+          white-space:nowrap; overflow:hidden; cursor:pointer; }
+.lbarra:hover { filter:brightness(1.1); }
+.lbarra i { opacity:.8; font-style:normal; }
+.lbarra.sinnadie { background:repeating-linear-gradient(45deg,#cfc9bb,#cfc9bb 6px,#c4bdac 6px,#c4bdac 12px);
+                   color:var(--tinta); }
+
+@media (max-width:640px) {
+  .lrot { width:5rem; flex:0 0 5rem; font-size:.78rem; }
+  .lbarra { font-size:.68rem; }
 }
 
 /* ---------- la malla girada: gente o cargos en las filas ---------- */

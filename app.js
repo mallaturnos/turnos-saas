@@ -450,11 +450,90 @@ function pintarSemana() {
   $('#cEstado').textContent = resumenPublicar();
 }
 
-// Un solo día, ancho. Para el detalle fino de una jornada cargada.
+/* EL DÍA ES UNA LÍNEA DE TIEMPO, no una lista.
+
+   Pedro lo dijo del producto nuevo —«no se ve como carta Gantt»— y es la misma
+   corrección que ya había hecho en la malla, donde quedó escrito así: «un día
+   no es una lista. Lo único que de verdad importa mirar en un día es DÓNDE
+   QUEDAN HUECOS, y con tarjetas había que calcularlo».
+
+   Con las horas corriendo de izquierda a derecha, el hueco entre un turno que
+   termina a las 16:30 y otro que entra a las 17:00 SE VE. No hay que leer dos
+   números y restarlos.
+
+   Criterio que dejó esa vez y vale igual acá: cuando alguien no entiende una
+   pantalla y existe un formato mejor, la confusión ES el defecto. No se explica
+   mejor: se cambia. */
 function pintarDia() {
   var m = $('#malla');
-  m.className = 'malla unadia';
-  m.innerHTML = celdaDia(S.dia, hoyTexto(), false);
+  var delDia = S.asignaciones.filter(function (a) { return a.fecha === S.dia; });
+  var necsDia = S.necesidades.filter(function (n) { return n.fecha === S.dia; });
+
+  // La franja horaria sale de lo que hay ese día, no de un horario inventado:
+  // un local que abre a las 20:00 no quiere ver diez columnas vacías de mañana.
+  var hs = [], a2h = function (t) {
+    var p = hhmm(t).split(':').map(Number); return p[0] + p[1] / 60;
+  };
+  delDia.concat(necsDia).forEach(function (x) {
+    var i = a2h(x.hora_inicio), f = a2h(x.hora_fin);
+    if (f <= i) f += 24;                     // cruza la medianoche
+    hs.push(i, f);
+  });
+  var ini = hs.length ? Math.floor(Math.min.apply(null, hs)) : 8;
+  var fin = hs.length ? Math.ceil(Math.max.apply(null, hs)) : 22;
+  if (fin - ini < 4) fin = ini + 4;          // una franja muy corta no se lee
+  var ancho = fin - ini;
+  var pct = function (h) { return ((h - ini) / ancho) * 100; };
+
+  // Las filas siguen lo que esté elegido arriba: gente, cargos o lo planificado.
+  var filas;
+  if (S.agrupar === 'persona') {
+    filas = S.trabajadores.map(function (p) { return { nombre: p.nombre,
+      suyas: delDia.filter(function (x) { return x.trabajador_id === p.id; }) }; });
+  } else {
+    filas = S.cargos.map(function (q) { return { nombre: q.nombre,
+      suyas: delDia.filter(function (x) { return x.cargo_id === q.id; }),
+      pide: necsDia.filter(function (n) { return n.cargo_id === q.id; }) }; });
+  }
+  filas = filas.filter(function (f) { return f.suyas.length || (f.pide && f.pide.length); });
+
+  var horas = '';
+  for (var h = ini; h <= fin; h++) {
+    horas += '<span class="marca" style="left:' + pct(h) + '%">'
+           + String(h % 24).padStart(2, '0') + '</span>';
+  }
+
+  var html = '<div class="linea"><div class="lcab"><span class="lrot"></span>'
+           + '<div class="lhoras">' + horas + '</div></div>';
+
+  if (!filas.length) {
+    html += '<p class="vacio">Nada planificado este día. Usa «+ qué hace falta» abajo.</p>';
+  }
+
+  filas.forEach(function (f) {
+    html += '<div class="lfila"><span class="lrot">' + esc(f.nombre) + '</span><div class="lpista">';
+    // Lo que se pidió, de fondo: así el hueco que falta por cubrir se ve.
+    (f.pide || []).forEach(function (n) {
+      var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
+      html += '<span class="lpide" style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
+            + ' title="Hacen falta ' + n.personas_requeridas + '"></span>';
+    });
+    f.suyas.forEach(function (x) {
+      var i = a2h(x.hora_inicio), ff = a2h(x.hora_fin); if (ff <= i) ff += 24;
+      var quien = x.trabajador_id ? nombreTrab(x.trabajador_id) : 'pendiente';
+      html += '<span class="lbarra' + (x.trabajador_id ? '' : ' sinnadie')
+            + '" data-asigid="' + x.id + '"'
+            + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
+            + ' title="' + esc(quien) + ' · ' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
+            + '<b>' + esc(quien) + '</b> <i>' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '</i>'
+            + '</span>';
+    });
+    html += '</div></div>';
+  });
+
+  html += '</div>' + celdaDia(S.dia, hoyTexto(), false);
+  m.className = 'malla undia';
+  m.innerHTML = html;
   $('#cEstado').textContent = resumenPublicar();
 }
 
