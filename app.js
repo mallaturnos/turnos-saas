@@ -479,9 +479,24 @@ function pintarDia() {
     if (f <= i) f += 24;                     // cruza la medianoche
     hs.push(i, f);
   });
-  var ini = hs.length ? Math.floor(Math.min.apply(null, hs)) : 8;
-  var fin = hs.length ? Math.ceil(Math.max.apply(null, hs)) : 22;
-  if (fin - ini < 4) fin = ini + 4;          // una franja muy corta no se lee
+  /* La franja lleva AIRE a los lados, y no es estética.
+
+     Pegada a los turnos, una jornada de 09 a 17 se dibujaba de 09 a 17: las
+     barras tocaban los dos bordes y parecía que el día estaba lleno. El hueco
+     que de verdad importa —lo que queda DESPUÉS de las 17:00, donde quizás hay
+     que poner a alguien— no se veía porque estaba fuera del dibujo.
+
+     Dos horas de margen a cada lado y un ancho mínimo de diez: suficiente para
+     ver que sobra día, sin inventar una jornada de 24 horas que nadie trabaja.
+     Si el local abre de noche, la franja se va con él; no hay horario fijo. */
+  var ini = hs.length ? Math.floor(Math.min.apply(null, hs)) - 2 : 8;
+  var fin = hs.length ? Math.ceil(Math.max.apply(null, hs)) + 2 : 20;
+  if (ini < 0) ini = 0;
+  if (fin - ini < 10) {                      // una franja corta no deja ver el hueco
+    var falta = 10 - (fin - ini);
+    ini = Math.max(0, ini - Math.floor(falta / 2));
+    fin = ini + 10;
+  }
   var ancho = fin - ini;
   var pct = function (h) { return ((h - ini) / ancho) * 100; };
 
