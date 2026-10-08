@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba de conexión</title>
+<!--
+  POR QUE EXISTE ESTA PAGINA. 08-10-2026.
+
+  Pedro no podia entrar y yo publique cuatro versiones persiguiendolo a ciegas,
+  pidiendole a el que me describiera sintomas. Eso es convertir al dueño en mi
+  depurador, y encima es lento: cada hipotesis costaba una ronda completa.
+
+  Esta pagina se diagnostica sola. Prueba una cosa a la vez, en orden, y muestra
+  en grande donde se rompe. UNA foto de esto me dice mas que diez mensajes.
+
+  Cada prueba tiene su propio tope de tiempo: lo que no contesta en 15 segundos
+  cuenta como fallo. Un diagnostico que se cuelga no sirve de nada — seria el
+  mismo problema que vine a diagnosticar.
+-->
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin:0; padding:20px;
+         background:#f7f5f1; color:#13343b; font-size:16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#6b7c82; font-size:14px; margin:0 0 18px; }
+  .p { background:#fff; border:1px solid #dfdcd5; border-left-width:6px; border-radius:8px;
+       padding:12px 14px; margin-bottom:10px; }
+  .p.ok   { border-left-color:#0f6b63; }
+  .p.mal  { border-left-color:#9a2b2b; background:#fbeced; }
+  .p.espera { border-left-color:#c9c4b8; opacity:.6; }
+  .t { font-weight:700; display:flex; gap:8px; align-items:center; }
+  .d { color:#6b7c82; font-size:13.5px; margin-top:4px; word-break:break-word; }
+  .mal .d { color:#9a2b2b; font-weight:600; }
+  .fin { margin-top:16px; padding:14px; border-radius:8px; font-weight:700; text-align:center; }
+  .fin.ok  { background:#0f6b63; color:#fff; }
+  .fin.mal { background:#9a2b2b; color:#fff; }
+</style>
+</head>
+<body>
+
+<h1>Prueba de conexión</h1>
+<p class="sub">Esta página se revisa sola. Saca una foto de todo lo que salga y mándamela.</p>
+
+<div id="lista"></div>
+<div id="fin"></div>
+
+<script src="supabase.js?v=8"></script>
+<script src="config.js?v=8"></script>
+<script>
+(function () {
+  var lista = document.getElementById('lista');
+  var pasos = [];
+
+  function paso(titulo) {
+    var d = document.createElement('div');
+    d.className = 'p espera';
+    d.innerHTML = '<div class="t">⏳ ' + titulo + '</div><div class="d"></div>';
+    lista.appendChild(d);
+    pasos.push(d);
+    return {
+      ok:  function (txt) { d.className = 'p ok';  d.querySelector('.t').textContent = '✅ ' + titulo;
+                            d.querySelector('.d').textContent = txt || ''; return true; },
+      mal: function (txt) { d.className = 'p mal'; d.querySelector('.t').textContent = '❌ ' + titulo;
+                            d.querySelector('.d').textContent = txt || ''; return false; },
+    };
+  }
+
+  // Un tope por prueba: lo que no contesta en 15 segundos es un fallo.
+  function conTope(p, ms) {
+    return Promise.race([p, new Promise(function (_, r) {
+      setTimeout(function () { r(new Error('no contestó en ' + (ms/1000) + ' segundos')); }, ms);
+    })]);
+  }
+
+  var reloj = function () { return (window.performance && performance.now()) || Date.now(); };
+
+  function correr() {
+    var malas = 0;
+    var p1 = paso('La biblioteca de la base cargó');
+    if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
+      p1.mal('NO cargó. Es lo que impide todo lo demás.'); malas++;
+    } else { p1.ok('Sí, está disponible.'); }
+
+    var p2 = paso('La configuración está puesta');
+    var cfg = window.CONFIG || {};
+    if (!cfg.SUPABASE_URL || cfg.SUPABASE_URL === 'PENDIENTE') {
+      p2.mal('Falta la dirección del proyecto.'); malas++;
+    } else { p2.ok(cfg.SUPABASE_URL); }
+
+    var p3 = paso('Tu navegador alcanza la base');
+    var t0 = reloj();
+    conTope(fetch(cfg.SUPABASE_URL + '/auth/v1/health', { headers: { apikey: cfg.SUPABASE_ANON } }), 15000)
+      .then(function (r) {
+        p3.ok('Respondió ' + r.status + ' en ' + Math.round(reloj() - t0) + ' milisegundos.');
+      })
+      .catch(function (e) { malas++; p3.mal('NO llega: ' + e.message); })
+      .then(function () {
+        var p4 = paso('La base responde a una consulta');
+        var t1 = reloj();
+        return conTope(fetch(cfg.SUPABASE_URL + '/rest/v1/empresas?select=id&limit=1',
+                             { headers: { apikey: cfg.SUPABASE_ANON } }), 15000)
+          .then(function (r) { p4.ok('Respondió ' + r.status + ' en ' + Math.round(reloj() - t1) + ' ms.'); })
+          .catch(function (e) { malas++; p4.mal('NO responde: ' + e.message); });
+      })
+      .then(function () {
+        var p5 = paso('El inicio de sesión contesta');
+        if (typeof window.supabase === 'undefined') return p5.mal('No se pudo probar: la biblioteca no cargó.'), malas++;
+        var cli = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON, {
+          auth: { lock: function (n, e, fn) { return fn(); } },
+        });
+        var t2 = reloj();
+        // A proposito con una clave que no existe: solo interesa SI CONTESTA.
+        return conTope(cli.auth.signInWithPassword({
+          email: 'nadie-' + Date.now() + '@ejemplo.cl', password: 'xxxxxxxxxx' }), 15000)
+          .then(function (r) {
+            p5.ok('Contestó en ' + Math.round(reloj() - t2) + ' ms: '
+                  + ((r.error && r.error.message) || 'sin error'));
+          })
+          .catch(function (e) { malas++; p5.mal('NO contesta: ' + e.message); });
+      })
+      .then(function () {
+        var f = document.getElementById('fin');
+        f.className = 'fin ' + (malas ? 'mal' : 'ok');
+        f.textContent = malas ? (malas + ' prueba(s) fallaron — mira las rojas')
+                              : 'Todo funciona desde este navegador';
+      });
+  }
+
+  // Si algo revienta antes de empezar, que igual se vea.
+  window.addEventListener('error', function (ev) {
+    var d = document.createElement('div');
+    d.className = 'p mal';
+    d.innerHTML = '<div class="t">❌ Error de JavaScript</div><div class="d">'
+                + String(ev.message) + '</div>';
+    lista.appendChild(d);
+  });
+
+  correr();
+})();
+</script>
+</body>
+</html>
