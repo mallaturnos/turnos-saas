@@ -172,15 +172,20 @@ table.girada { border-collapse:separate; border-spacing:0; width:100%; min-width
                background:var(--blanco); border:1px solid var(--borde); border-radius:var(--radio); }
 table.girada th, table.girada td { border-bottom:1px solid var(--borde); padding:.35rem .4rem;
                                    vertical-align:top; }
-table.girada thead th { background:#f0ede7; position:sticky; top:3.1rem; z-index:2;
-                        text-align:left; font-size:.8rem; }
+/* La cabecera NO se queda pegada arriba.
+   Lo intenté con `position:sticky; top:3.1rem` —calculando a ojo el alto de la
+   barra— y se montó encima de la primera fila, tapando el turno de Ana. Un
+   adorno que esconde datos no es un adorno: es un defecto. La tabla es corta y
+   se ve entera; si algún día crece, se resuelve midiendo la barra de verdad y
+   no adivinando su altura. */
+table.girada thead th { background:#f0ede7; text-align:left; font-size:.8rem; }
 table.girada thead th b { display:block; text-transform:capitalize; }
 table.girada thead th span { color:var(--gris); font-weight:400; font-size:.75rem; }
 /* El nombre se queda a la vista al desplazar en horizontal: una fila sin nombre
    es una fila que no se puede leer. */
 th.rot { position:sticky; left:0; z-index:3; background:var(--blanco); min-width:8rem;
          text-align:left; font-size:.88rem; }
-thead th.rot { z-index:4; background:#f0ede7; }
+thead th.rot { z-index:3; background:#f0ede7; }
 table.girada td.hoy, table.girada th.hoy { background:var(--verde-claro); }
 table.girada tr.suelto th.rot { color:var(--gris); font-style:italic; }
 table.girada .gente { padding:0; }
