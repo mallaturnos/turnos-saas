@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v24</span></p>
+      <span style="float:right;opacity:.55" id="ver">v25</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -67,12 +67,11 @@
       <label class="inline" for="cSucursal">Local</label>
       <select id="cSucursal"></select>
       <span class="sep"></span>
-      <label class="inline" for="cAgrupar">Ver</label>
-      <select id="cAgrupar">
-        <option value="dia">por día</option>
-        <option value="persona">por persona</option>
-        <option value="cargo">por cargo</option>
-      </select>
+      <div class="vistas" id="cAgrupar">
+        <button class="tab" data-g="dia" aria-selected="true">Por día</button>
+        <button class="tab" data-g="persona">Personas</button>
+        <button class="tab" data-g="cargo">Cargos</button>
+      </div>
       <span class="sep"></span>
       <div class="vistas" id="cVista">
         <button class="tab" data-v="dia">Día</button>
@@ -210,6 +209,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=15"></script>
-<script src="app.js?v=23"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

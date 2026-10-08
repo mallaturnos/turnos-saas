@@ -359,7 +359,9 @@ function pintarSelectores() {
   $$('#cVista button').forEach(function (b) {
     b.setAttribute('aria-selected', String(b.dataset.v === S.vista));
   });
-  if ($('#cAgrupar')) $('#cAgrupar').value = S.agrupar;
+  $$('#cAgrupar button').forEach(function (b) {
+    b.setAttribute('aria-selected', String(b.dataset.g === S.agrupar));
+  });
 }
 
 function recargarSemana() {
@@ -587,8 +589,15 @@ $('#btnDespues').addEventListener('click',  function () { mover(1); });
 $('#btnHoy').addEventListener('click',      function () {
   S.dia = hoyTexto(); S.lunes = lunesDe(S.dia); pintarSelectores(); recargarSemana();
 });
-$('#cAgrupar').addEventListener('change', function () {
-  S.agrupar = this.value;
+/* Botones y no un desplegable, como Skello.
+
+   Un desplegable esconde las opciones: hay que abrirlo para saber que existen,
+   y hay que recordar en cuál se está. Con los botones a la vista se ve de un
+   golpe dónde estás y qué más hay. Pedro eligió esta forma (msg 5193) después
+   de comprobar contra sus capturas que Skello usa un cambio, no una lista. */
+$('#cAgrupar').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button'); if (!b) return;
+  S.agrupar = b.dataset.g;
   // Agrupar por gente no tiene sentido en el Mes: se vuelve a Semana y se dice.
   if (S.agrupar !== 'dia' && S.vista === 'mes') {
     S.vista = 'semana';
