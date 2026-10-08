@@ -20,13 +20,49 @@
     if (sb) return sb;
     if (!window.CONFIG || window.CONFIG.SUPABASE_URL === 'PENDIENTE')
       throw new Error('Falta configurar el proyecto de Supabase en config.js.');
-    sb = window.supabase.createClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON);
+    sb = window.supabase.createClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON, {
+      auth: {
+        /* SIN CANDADO ENTRE PESTAÑAS.
+
+           La biblioteca coordina el inicio de sesion entre pestañas con un
+           candado compartido del navegador. Si una pestaña queda colgada con el
+           candado tomado —o si el navegador no implementa bien esa API— TODAS
+           las demas esperan para siempre: la pantalla se queda en «Entrando…»
+           sin error, sin red, sin nada que mirar. Le paso a Pedro el 08-10 y no
+           se reproducia en mi navegador.
+
+           Lo que se pierde al quitarlo: si alguien tiene DOS pestañas abiertas y
+           renueva la sesion en las dos a la vez, pueden pisarse. Es un caso raro
+           y su peor consecuencia es tener que entrar de nuevo.
+           Lo que se gana: que entrar funcione siempre. No es un intercambio
+           dificil. */
+        lock: function (nombre, espera, fn) { return fn(); },
+      },
+    });
     return sb;
   }
 
   /* Un solo sitio donde se desenvuelve la respuesta de Supabase.
      El error se lanza con su texto: un `catch` que se traga el mensaje deja la
      pantalla en blanco sin decir por que, y eso ya costo medio dia en la malla. */
+  /* Ninguna llamada puede quedarse colgada para siempre.
+
+     Un error se ve y se arregla; un colgado silencioso se ve igual que algo
+     lento, y la persona se queda mirando una pantalla que no va a cambiar
+     nunca. Veinte segundos es mas de lo que cualquier consulta honesta demora.
+     Esto NO arregla la causa: la convierte en algo que se puede leer. */
+  function conTope(p, queHacia) {
+    return Promise.race([
+      p,
+      new Promise(function (_, rechazar) {
+        setTimeout(function () {
+          rechazar(new Error('La base no contestó en 20 segundos (' + queHacia + '). '
+            + 'Puede ser tu conexión o el proyecto despertando; vuelve a intentar.'));
+        }, 20000);
+      }),
+    ]);
+  }
+
   function pedir(p) {
     return p.then(function (r) {
       if (r.error) throw new Error(r.error.message || 'Error hablando con la base');
@@ -37,8 +73,8 @@
   // ---------- entrar y salir ----------
   var auth = {
     sesion:   function () { return cliente().auth.getSession().then(function (r) { return r.data.session; }); },
-    entrar:   function (email, clave) { return pedir(cliente().auth.signInWithPassword({ email: email, password: clave })); },
-    registrar:function (email, clave) { return pedir(cliente().auth.signUp({ email: email, password: clave })); },
+    entrar:   function (email, clave) { return conTope(pedir(cliente().auth.signInWithPassword({ email: email, password: clave })), 'entrar'); },
+    registrar:function (email, clave) { return conTope(pedir(cliente().auth.signUp({ email: email, password: clave })), 'crear la cuenta'); },
     salir:    function () { return cliente().auth.signOut(); },
     alCambiar:function (fn) { cliente().auth.onAuthStateChange(fn); },
   };
