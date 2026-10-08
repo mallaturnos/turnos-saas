@@ -704,11 +704,31 @@ function pintarMios() {
   }).catch(function (e) { caja.innerHTML = '<p class="vacio">' + esc(e.message) + '</p>'; });
 }
 
-// ====================================================================
-if (!window.CONFIG || window.CONFIG.SUPABASE_URL === 'PENDIENTE') {
-  mostrar('entrar');
-  aviso('#eMsg', 'Falta configurar el proyecto de Supabase.', 'bad');
-} else {
-  arrancar();
-}
+/* Un asa para las pruebas, y se declara como lo que es.
+
+   Sin esto, la prueba de humo tendria que llegar a todo por la pantalla, y hay
+   cosas —abrir un dialogo concreto, mirar que quedo en memoria— que por ahi no
+   se alcanzan. La alternativa era sacar todo a variables globales, que es peor:
+   cualquiera las pisa sin querer.
+
+   Expone SOLO lectura de estado y los tres abridores de dialogo. No hay nada
+   aqui que la aplicacion no haga ya por si sola apretando botones. */
+window.__app = {
+  S: S,
+  abrirNecesidad: abrirNecesidad,
+  abrirAsignacion: abrirAsignacion,
+  abrirFicha: abrirFicha,
+  recargarSemana: recargarSemana,
+};
+
+/* Se arranca y ya. Si falta la configuracion, quien lo sabe es la capa de datos
+   —es su asunto, no el de la pantalla— y lanza un error que `arrancar` muestra
+   en el login como cualquier otro.
+
+   Antes esto preguntaba por `window.CONFIG` aqui mismo, y el resultado fue que
+   la DEMO —que no tiene configuracion porque no habla con Supabase— arrancaba
+   mostrando «falta configurar» y no se podia probar nada. Una comprobacion
+   puesta en la capa equivocada no solo estorba: tapa justo lo que se queria
+   verificar. */
+arrancar();
 })();
