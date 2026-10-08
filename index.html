@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v7</span></p>
+      <span style="float:right;opacity:.55" id="ver">v8</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -196,9 +196,14 @@
   </form>
 </dialog>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- La biblioteca se sirve DESDE AQUI, no desde un CDN de terceros.
+     Si el navegador o la red de alguien no alcanza ese CDN —pasa con filtros de
+     DNS, redes de empresa y algunos operadores móviles—, la biblioteca no carga
+     y la aplicación falla antes de empezar. Servirla con el sitio elimina esa
+     dependencia entera: si se ve la página, la biblioteca llegó. -->
+<script src="supabase.js?v=7"></script>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=6"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

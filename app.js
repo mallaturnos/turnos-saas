@@ -102,6 +102,17 @@ function mostrar(cual) {
 
 $('#formEntrar').addEventListener('submit', function (ev) {
   ev.preventDefault();
+  /* TODO dentro de un try.
+
+     `DATOS.auth.entrar` empieza con codigo que corre AL TIRO —construir el
+     cliente—, no dentro de una promesa. Si eso lanzaba (por ejemplo, porque la
+     biblioteca no habia cargado), la excepcion se escapaba del manejador entero
+     y NINGUN `.catch` la veia: la pantalla se quedaba en «Entrando…» sin decir
+     nada. Un error que no se puede ver es peor que uno feo. */
+  try { entrarDeVerdad(); } catch (e) { entrando = false; aviso('#eMsg', e.message, 'bad'); }
+});
+
+function entrarDeVerdad() {
   var email = $('#eMail').value.trim(), clave = $('#eClave').value;
   aviso('#eMsg', 'Entrando…');
   entrando = true;
@@ -121,7 +132,7 @@ $('#formEntrar').addEventListener('submit', function (ev) {
     // Ademas es lo obvio: ya la tenemos en la mano.
     .then(function (d) { return arrancar(d && d.session); })
     .catch(function (e) { entrando = false; aviso('#eMsg', traducir(e.message), 'bad'); });
-});
+}
 
 $('#btnRegistrar').addEventListener('click', function () {
   var email = $('#eMail').value.trim(), clave = $('#eClave').value;
