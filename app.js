@@ -114,7 +114,7 @@ $('#formEntrar').addEventListener('submit', function (ev) {
 
 function entrarDeVerdad() {
   var email = $('#eMail').value.trim(), clave = $('#eClave').value;
-  aviso('#eMsg', 'Entrando…');
+  aviso('#eMsg', 'Conectando…');
   entrando = true;
   // Si en 15 segundos no pasó nada, decirlo. Un colgado callado se ve idéntico
   // a algo que está tardando, y la persona se queda mirando sin saber cuál es.
@@ -174,15 +174,28 @@ $$('#btnSalir, #btnSalir1').forEach(function (b) {
 // ====================================================================
 // ARRANQUE
 // ====================================================================
+/* El mensaje dice EN QUE PASO va.
+
+   Toda la tarde del 08-10 se fue en no saber donde se detenia: «Entrando…» es
+   lo mismo si falla la red, si falla la consulta o si falla el dibujo. Con el
+   paso a la vista, una foto lo dice.
+
+   Vale para la persona tambien: «buscando tu cuenta» es informacion, «Entrando»
+   repetido treinta segundos es angustia. */
+function paso(txt) { if (!$('#p-entrar').hidden) aviso('#eMsg', txt); }
+
 function arrancar(sesionYaTengo) {
-  var paso = sesionYaTengo ? Promise.resolve(sesionYaTengo) : DATOS.auth.sesion();
-  return paso.then(function (ses) {
+  paso('Verificando la sesión…');
+  var paso0 = sesionYaTengo ? Promise.resolve(sesionYaTengo) : DATOS.auth.sesion();
+  return paso0.then(function (ses) {
+    paso('Buscando tu cuenta…');
     // Si llega tarde y ya hay alguien entrando, no toca la pantalla.
     if (!ses) { if (!entrando) mostrar('entrar'); return; }
     S.sesion = ses;
     return DATOS.yo().then(function (u) {
       if (!u) { mostrar('primera'); return; }
       S.yo = u;
+      paso('Cargando tus datos…');
       return cargarTodo().then(function () { mostrar('app'); });
     });
   }).catch(function (e) {
