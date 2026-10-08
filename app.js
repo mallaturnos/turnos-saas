@@ -36,6 +36,30 @@ var esc = function (t) {
   location.replace(location.pathname + '?limpio=' + Date.now());
 })();
 
+/* CUALQUIER caida se ve en pantalla.
+
+   El 08-10 la pantalla se quedo en «Conectando…» sin mensaje, y el codigo —leido
+   linea por linea— tenia que avisar: habia try/catch, habia tope de 20 segundos.
+   La unica explicacion que quedaba era que algo reventara FUERA de todo eso y se
+   llevara el aviso por delante.
+
+   Un error de JavaScript que nadie ve es la peor clase de error: la pantalla se
+   queda como estaba y parece que esta pensando. Esto lo saca a la luz. */
+(function () {
+  function mostrarCaida(texto) {
+    var e = document.getElementById('eMsg');
+    if (e) { e.textContent = '⚠ ' + texto; e.className = 'msg bad'; }
+  }
+  window.addEventListener('error', function (ev) {
+    mostrarCaida((ev.message || 'error') + ' · ' + (ev.filename || '').split('/').pop()
+                 + ':' + (ev.lineno || '?'));
+  });
+  window.addEventListener('unhandledrejection', function (ev) {
+    var r = ev.reason;
+    mostrarCaida('promesa sin atrapar · ' + ((r && (r.message || r)) || 'sin detalle'));
+  });
+})();
+
 var S = {
   sesion:null, yo:null, empresa:null,
   sucursales:[], cargos:[], trabajadores:[], horarios:[],
@@ -140,9 +164,9 @@ function entrarDeVerdad() {
   // a algo que está tardando, y la persona se queda mirando sin saber cuál es.
   clearTimeout(window.__tope);
   window.__tope = setTimeout(function () {
-    if (/Entrando/.test($('#eMsg').textContent))
-      aviso('#eMsg', 'Está tardando demasiado. Recarga con Ctrl+Shift+R y vuelve a intentar; '
-                   + 'si sigue igual, avísame.', 'bad');
+    if (/Conectando|Entrando|Verificando|Buscando|Cargando|Dibujando/.test($('#eMsg').textContent))
+      aviso('#eMsg', 'Está tardando demasiado en «' + $('#eMsg').textContent.replace('…','')
+                   + '». Mándame esta pantalla.', 'bad');
   }, 15000);
   DATOS.auth.entrar(email, clave)
     // Se le pasa la sesion que ACABA de llegar en vez de volver a pedirla.
