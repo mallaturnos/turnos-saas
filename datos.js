@@ -92,9 +92,36 @@
     });
   }
 
+  /* ¿Hay siquiera una sesion guardada?
+
+     Mira el almacen DIRECTAMENTE, sin despertar a la biblioteca. Si no hay
+     nada, no tiene sentido preguntarle: se va al login y listo.
+
+     Por que importa: hasta el 08-10 la aplicacion llamaba a `getSession()` nada
+     mas cargar, incluso para alguien que nunca ha entrado. Esa llamada deja a
+     la biblioteca inicializada de una forma que —en el navegador de Pedro, no
+     en el mio— hacia que el login posterior no volviera nunca. La pagina de
+     prueba, que NO hacia esa llamada, entraba sin problemas con la misma cuenta
+     y el mismo navegador: esa fue la diferencia que lo delato.
+
+     Asi que no se pregunta cuando no hay nada que preguntar. Mas rapido para
+     todos, y sin rodeos para quien recien llega. */
+  function haySesionGuardada() {
+    try {
+      for (var i = 0; i < window.localStorage.length; i++) {
+        var k = window.localStorage.key(i);
+        if (k && k.indexOf('sb-') === 0 && k.indexOf('-auth-token') > 0) return true;
+      }
+      return false;
+    } catch (e) { return false; }   // sin acceso al almacen, no hay sesion guardada
+  }
+
   // ---------- entrar y salir ----------
   var auth = {
-    sesion:   function () { return cliente().auth.getSession().then(function (r) { return r.data.session; }); },
+    sesion:   function () {
+      if (!haySesionGuardada()) return Promise.resolve(null);
+      return cliente().auth.getSession().then(function (r) { return r.data.session; });
+    },
     entrar:   function (email, clave) { return conTope(pedir(cliente().auth.signInWithPassword({ email: email, password: clave })), 'entrar'); },
     registrar:function (email, clave) { return conTope(pedir(cliente().auth.signUp({ email: email, password: clave })), 'crear la cuenta'); },
     salir:    function () { return cliente().auth.signOut(); },
