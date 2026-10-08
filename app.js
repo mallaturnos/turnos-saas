@@ -117,6 +117,8 @@ var nombreTrab = function (id) {
 };
 
 function aviso(sel, texto, clase) {
+  // Un mensaje de error para el reloj: si no, lo borraria al segundo siguiente.
+  if (clase === 'bad' && sel === '#eMsg') pararReloj();
   var e = $(sel); if (!e) return;
   e.textContent = texto || ''; e.className = 'msg ' + (clase || '');
 }
@@ -139,6 +141,7 @@ var entrando = false;
 function mostrar(cual) {
   // El tope solo se cancela cuando de verdad salimos del login.
   if (cual !== 'entrar') { clearTimeout(window.__tope); entrando = false; }
+  pararReloj();
   $('#p-entrar').hidden  = cual !== 'entrar';
   $('#p-primera').hidden = cual !== 'primera';
   $('#app').hidden       = cual !== 'app';
@@ -237,10 +240,30 @@ $$('#btnSalir, #btnSalir1').forEach(function (b) {
    Cada arranque toma un numero. El que ya no es el ultimo se calla: no escribe
    en la pantalla ni la cambia de sitio. */
 var generacion = 0;
+
+/* El paso muestra los segundos que lleva.
+
+   No es decoracion: si el numero avanza, los temporizadores del navegador
+   corren y el problema es la peticion. Si el numero se queda congelado, la
+   pagina entera esta detenida y el problema es otro completamente distinto.
+   Una foto responde cual de los dos, sin preguntarle nada a nadie.
+
+   Y para quien usa la app, ver «(3 s)» es muy distinto de ver un texto fijo:
+   lo primero es algo trabajando, lo segundo parece roto. */
+var reloj = null, desde = 0, textoPaso = '';
 function paso(txt, mia) {
   if (mia !== undefined && mia !== generacion) return;
-  if (!$('#p-entrar').hidden) aviso('#eMsg', txt);
+  if ($('#p-entrar').hidden) return;
+  textoPaso = txt; desde = Date.now();
+  clearInterval(reloj);
+  var pintar = function () {
+    var s = Math.round((Date.now() - desde) / 1000);
+    aviso('#eMsg', textoPaso + (s >= 2 ? '  (' + s + ' s)' : ''));
+  };
+  pintar();
+  reloj = setInterval(pintar, 1000);
 }
+function pararReloj() { clearInterval(reloj); reloj = null; }
 
 function arrancar(sesionYaTengo) {
   var mia = ++generacion;
