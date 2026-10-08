@@ -479,24 +479,24 @@ function pintarDia() {
     if (f <= i) f += 24;                     // cruza la medianoche
     hs.push(i, f);
   });
-  /* La franja lleva AIRE a los lados, y no es estética.
+  /* EL DÍA COMPLETO, de 00:00 a 24:00, y cada turno en su hora.
 
-     Pegada a los turnos, una jornada de 09 a 17 se dibujaba de 09 a 17: las
-     barras tocaban los dos bordes y parecía que el día estaba lleno. El hueco
-     que de verdad importa —lo que queda DESPUÉS de las 17:00, donde quizás hay
-     que poner a alguien— no se veía porque estaba fuera del dibujo.
+     Pedro lo pidió así: «se debería tener visión del día completo y los turnos
+     en los horarios que van». Tiene razón y es mejor que lo que yo había hecho.
 
-     Dos horas de margen a cada lado y un ancho mínimo de diez: suficiente para
-     ver que sobra día, sin inventar una jornada de 24 horas que nadie trabaja.
-     Si el local abre de noche, la franja se va con él; no hay horario fijo. */
-  var ini = hs.length ? Math.floor(Math.min.apply(null, hs)) - 2 : 8;
-  var fin = hs.length ? Math.ceil(Math.max.apply(null, hs)) + 2 : 20;
-  if (ini < 0) ini = 0;
-  if (fin - ini < 10) {                      // una franja corta no deja ver el hueco
-    var falta = 10 - (fin - ini);
-    ini = Math.max(0, ini - Math.floor(falta / 2));
-    fin = ini + 10;
-  }
+     Yo ajustaba la franja a los turnos que ya existían, con algo de margen. El
+     problema: la escala cambiaba cada día. Un martes con un turno de 09 a 17 y
+     un miércoles con uno de 14 a 18 se dibujaban casi igual de anchos, así que
+     comparar dos días engañaba, y no se veía que la noche entera está libre.
+
+     Con el día entero siempre a la vista, una barra de ocho horas OCUPA un
+     tercio del ancho y se nota: lo que falta por cubrir se ve sin pensar.
+
+     Si un turno cruza la medianoche, la franja se estira hasta donde termine —
+     ese turno existe y tiene que verse entero, no cortado en el borde. */
+  var ini = 0;
+  var fin = 24;
+  hs.forEach(function (h) { if (h > fin) fin = Math.ceil(h); });
   var ancho = fin - ini;
   var pct = function (h) { return ((h - ini) / ancho) * 100; };
 
@@ -512,10 +512,12 @@ function pintarDia() {
   }
   filas = filas.filter(function (f) { return f.suyas.length || (f.pide && f.pide.length); });
 
+  // Con el día entero, una marca por hora se amontona: se rotulan las pares y
+  // las impares quedan como rayita, que es lo que hace cualquier regla.
   var horas = '';
   for (var h = ini; h <= fin; h++) {
-    horas += '<span class="marca" style="left:' + pct(h) + '%">'
-           + String(h % 24).padStart(2, '0') + '</span>';
+    horas += '<span class="marca' + (h % 2 ? ' muda' : '') + '" style="left:' + pct(h) + '%">'
+           + (h % 2 ? '' : String(h % 24).padStart(2, '0')) + '</span>';
   }
 
   var html = '<div class="linea"><div class="lcab"><span class="lrot"></span>'
