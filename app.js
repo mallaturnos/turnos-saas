@@ -123,7 +123,7 @@ $('#formPrimera').addEventListener('submit', function (ev) {
   var nombre = $('#pNombre').value.trim();
   if (!nombre) return;
   aviso('#pMsg', 'Creando…');
-  DATOS.primeraVez(nombre, S.sesion.user.email, S.sesion.user.id)
+  DATOS.primeraVez(nombre)
     .then(arrancar)
     .catch(function (e) { aviso('#pMsg', e.message, 'bad'); });
 });

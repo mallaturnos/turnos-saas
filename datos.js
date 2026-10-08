@@ -51,18 +51,19 @@
   }
 
   /* La primera vez: crear la empresa y quedar como dueño.
-     Van en este orden a proposito y NO es una transaccion: si falla el segundo
-     paso queda una empresa huerfana, que es feo pero inofensivo. Al reves —el
-     usuario apuntando a una empresa que no existe— dejaria la cuenta inservible
-     y sin forma de arreglarla desde la app. */
-  function primeraVez(nombreEmpresa, email, uid) {
-    var c = cliente();
-    return pedir(c.from('empresas').insert({ nombre: nombreEmpresa }).select().single())
-      .then(function (emp) {
-        return pedir(c.from('usuarios').insert({
-          id: uid, empresa_id: emp.id, email: email, rol: 'dueno'
-        }).select().single());
-      });
+
+     VA POR UNA FUNCION EN LA BASE, no por dos inserciones desde aqui, y no es
+     un capricho: una cuenta recien registrada no tiene fila en `usuarios`, asi
+     que `mi_empresa()` devuelve NULL y las politicas de seguridad DENIEGAN las
+     dos inserciones. Para escribir hay que tener empresa y para tener empresa
+     hay que escribir — huevo y gallina.
+     La funcion `crear_empresa` rompe el circulo haciendo las dos cosas de golpe
+     y solo para quien la llama. Ver `arreglo-primera-vez.sql`.
+
+     De paso deja de ser posible la empresa huerfana: dentro de la funcion las
+     dos inserciones son UNA transaccion. */
+  function primeraVez(nombreEmpresa) {
+    return pedir(cliente().rpc('crear_empresa', { p_nombre: nombreEmpresa }));
   }
 
   // ---------- catalogos ----------
