@@ -81,6 +81,7 @@ function aviso(sel, texto, clase) {
 // ENTRAR
 // ====================================================================
 function mostrar(cual) {
+  clearTimeout(window.__tope);
   $('#p-entrar').hidden  = cual !== 'entrar';
   $('#p-primera').hidden = cual !== 'primera';
   $('#app').hidden       = cual !== 'app';
@@ -90,8 +91,21 @@ $('#formEntrar').addEventListener('submit', function (ev) {
   ev.preventDefault();
   var email = $('#eMail').value.trim(), clave = $('#eClave').value;
   aviso('#eMsg', 'Entrando…');
+  // Si en 15 segundos no pasó nada, decirlo. Un colgado callado se ve idéntico
+  // a algo que está tardando, y la persona se queda mirando sin saber cuál es.
+  clearTimeout(window.__tope);
+  window.__tope = setTimeout(function () {
+    if (/Entrando/.test($('#eMsg').textContent))
+      aviso('#eMsg', 'Está tardando demasiado. Recarga con Ctrl+Shift+R y vuelve a intentar; '
+                   + 'si sigue igual, avísame.', 'bad');
+  }, 15000);
   DATOS.auth.entrar(email, clave)
-    .then(arrancar)
+    // Se le pasa la sesion que ACABA de llegar en vez de volver a pedirla.
+    // Pedirla aqui dejaba la pantalla colgada en «Entrando…» para siempre: la
+    // biblioteca toma un candado para hacer el login y preguntarle por la sesion
+    // antes de que lo suelte es esperar a quien esta esperando que termines.
+    // Ademas es lo obvio: ya la tenemos en la mano.
+    .then(function (d) { return arrancar(d && d.session); })
     .catch(function (e) { aviso('#eMsg', traducir(e.message), 'bad'); });
 });
 
@@ -103,7 +117,7 @@ $('#btnRegistrar').addEventListener('click', function () {
   DATOS.auth.registrar(email, clave).then(function (r) {
     // Si el proyecto pide confirmar por correo, NO hay sesión todavía. Decirlo
     // claro: si no, la pantalla se queda igual y parece que no pasó nada.
-    if (r && r.session) return arrancar();
+    if (r && r.session) return arrancar(r.session);
     aviso('#eMsg', 'Cuenta creada. Revisa tu correo para confirmarla y después entra.', 'ok');
   }).catch(function (e) { aviso('#eMsg', traducir(e.message), 'bad'); });
 });
@@ -135,8 +149,9 @@ $$('#btnSalir, #btnSalir1').forEach(function (b) {
 // ====================================================================
 // ARRANQUE
 // ====================================================================
-function arrancar() {
-  return DATOS.auth.sesion().then(function (ses) {
+function arrancar(sesionYaTengo) {
+  var paso = sesionYaTengo ? Promise.resolve(sesionYaTengo) : DATOS.auth.sesion();
+  return paso.then(function (ses) {
     if (!ses) { mostrar('entrar'); return; }
     S.sesion = ses;
     return DATOS.yo().then(function (u) {
