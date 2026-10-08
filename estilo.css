@@ -173,7 +173,7 @@ button:disabled { opacity:.5; cursor:default; }
          padding:.6rem .7rem .8rem; margin-bottom:.9rem; overflow-x:auto; }
 .lcab { display:flex; align-items:flex-end; height:1.3rem; }
 .lrot { width:8rem; flex:0 0 8rem; font-size:.85rem; font-weight:600; padding-right:.5rem; }
-.lhoras, .lpista { position:relative; flex:1; min-width:40rem; }
+.lhoras, .lpista { position:relative; flex:1; min-width:26rem; }
 .lhoras { height:1.2rem; border-bottom:1px solid var(--borde); }
 .marca { position:absolute; top:0; transform:translateX(-50%); font-size:.72rem;
          color:var(--gris); }
