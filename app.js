@@ -510,25 +510,38 @@ function pintarDia() {
     html += '<p class="vacio">Nada planificado este día. Usa «+ qué hace falta» abajo.</p>';
   }
 
+  /* UNA LÍNEA POR TURNO, no todos apilados en la misma.
+
+     La primera versión los ponía a todos en una sola línea y se tapaban: Beto
+     de 09 a 17 y Ana de 09 a 13 se veían como UNA barra continua de 09 a 17 con
+     el nombre de Ana. Dos turnos distintos leídos como uno — justo lo contrario
+     de lo que una línea de tiempo tiene que mostrar. Lo vi al mirar la captura;
+     el conteo de barras decía 3 y parecía correcto. */
   filas.forEach(function (f) {
-    html += '<div class="lfila"><span class="lrot">' + esc(f.nombre) + '</span><div class="lpista">';
-    // Lo que se pidió, de fondo: así el hueco que falta por cubrir se ve.
-    (f.pide || []).forEach(function (n) {
-      var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
-      html += '<span class="lpide" style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
-            + ' title="Hacen falta ' + n.personas_requeridas + '"></span>';
-    });
-    f.suyas.forEach(function (x) {
+    // Primero lo PEDIDO, de fondo: el trozo sin cubrir queda a la vista.
+    if (f.pide && f.pide.length) {
+      html += '<div class="lfila"><span class="lrot">' + esc(f.nombre) + '</span><div class="lpista">';
+      f.pide.forEach(function (n) {
+        var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
+        html += '<span class="lpide" style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
+              + ' title="Hacen falta ' + n.personas_requeridas + '">'
+              + '<span class="lpidetxt">hacen falta ' + n.personas_requeridas + '</span></span>';
+      });
+      html += '</div></div>';
+    }
+    f.suyas.forEach(function (x, k) {
       var i = a2h(x.hora_inicio), ff = a2h(x.hora_fin); if (ff <= i) ff += 24;
       var quien = x.trabajador_id ? nombreTrab(x.trabajador_id) : 'pendiente';
-      html += '<span class="lbarra' + (x.trabajador_id ? '' : ' sinnadie')
+      // El nombre del grupo solo en la primera línea, si no hay fila de pedido.
+      var rot = (!f.pide || !f.pide.length) && k === 0 ? esc(f.nombre) : '';
+      html += '<div class="lfila"><span class="lrot chico">' + rot + '</span><div class="lpista">'
+            + '<span class="lbarra' + (x.trabajador_id ? '' : ' sinnadie')
             + '" data-asigid="' + x.id + '"'
             + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
             + ' title="' + esc(quien) + ' · ' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
             + '<b>' + esc(quien) + '</b> <i>' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '</i>'
-            + '</span>';
+            + '</span></div></div>';
     });
-    html += '</div></div>';
   });
 
   html += '</div>' + celdaDia(S.dia, hoyTexto(), false);
