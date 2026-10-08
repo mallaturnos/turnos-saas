@@ -16,6 +16,26 @@ var esc = function (t) {
 };
 
 // Estado de la sesión. Todo lo que se dibuja sale de aquí.
+/* Una salida de emergencia: abrir la pagina con ?limpiar=1 borra lo guardado.
+
+   Una sesion a medias —vencida, incompleta, escrita por una version anterior—
+   deja la aplicacion intentando arreglarla en cada carga, y la persona no tiene
+   forma de salir: la pantalla ni siquiera llega al boton de Salir.
+
+   Esto corre ANTES que todo lo demas, a proposito: tiene que funcionar incluso
+   si el resto esta roto. */
+(function () {
+  if (location.search.indexOf('limpiar=1') < 0) return;
+  try {
+    for (var i = window.localStorage.length - 1; i >= 0; i--) {
+      var k = window.localStorage.key(i);
+      if (k && k.indexOf('sb-') === 0) window.localStorage.removeItem(k);
+    }
+  } catch (e) {}
+  try { window.sessionStorage.clear(); } catch (e) {}
+  location.replace(location.pathname + '?limpio=' + Date.now());
+})();
+
 var S = {
   sesion:null, yo:null, empresa:null,
   sucursales:[], cargos:[], trabajadores:[], horarios:[],
