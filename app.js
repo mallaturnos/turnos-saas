@@ -80,8 +80,21 @@ function aviso(sel, texto, clase) {
 // ====================================================================
 // ENTRAR
 // ====================================================================
+/* `entrando` evita que el arranque de la pagina pise un login en curso.
+
+   Al cargar, `arrancar()` pregunta si hay sesion. Si esa pregunta demora y la
+   persona alcanza a apretar Entrar antes de que vuelva, la respuesta («no hay
+   sesion») llegaba despues y llamaba a `mostrar('entrar')`, que CANCELABA el
+   aviso de los 15 segundos recien armado. La pantalla quedaba en «Entrando…»
+   en gris para siempre, sin error y sin tope.
+
+   En mi navegador la pregunta volvia antes de que yo enviara el formulario, asi
+   que no se reproducia. En el de Pedro, si. */
+var entrando = false;
+
 function mostrar(cual) {
-  clearTimeout(window.__tope);
+  // El tope solo se cancela cuando de verdad salimos del login.
+  if (cual !== 'entrar') { clearTimeout(window.__tope); entrando = false; }
   $('#p-entrar').hidden  = cual !== 'entrar';
   $('#p-primera').hidden = cual !== 'primera';
   $('#app').hidden       = cual !== 'app';
@@ -91,6 +104,7 @@ $('#formEntrar').addEventListener('submit', function (ev) {
   ev.preventDefault();
   var email = $('#eMail').value.trim(), clave = $('#eClave').value;
   aviso('#eMsg', 'Entrando…');
+  entrando = true;
   // Si en 15 segundos no pasó nada, decirlo. Un colgado callado se ve idéntico
   // a algo que está tardando, y la persona se queda mirando sin saber cuál es.
   clearTimeout(window.__tope);
@@ -106,7 +120,7 @@ $('#formEntrar').addEventListener('submit', function (ev) {
     // antes de que lo suelte es esperar a quien esta esperando que termines.
     // Ademas es lo obvio: ya la tenemos en la mano.
     .then(function (d) { return arrancar(d && d.session); })
-    .catch(function (e) { aviso('#eMsg', traducir(e.message), 'bad'); });
+    .catch(function (e) { entrando = false; aviso('#eMsg', traducir(e.message), 'bad'); });
 });
 
 $('#btnRegistrar').addEventListener('click', function () {
@@ -152,7 +166,8 @@ $$('#btnSalir, #btnSalir1').forEach(function (b) {
 function arrancar(sesionYaTengo) {
   var paso = sesionYaTengo ? Promise.resolve(sesionYaTengo) : DATOS.auth.sesion();
   return paso.then(function (ses) {
-    if (!ses) { mostrar('entrar'); return; }
+    // Si llega tarde y ya hay alguien entrando, no toca la pantalla.
+    if (!ses) { if (!entrando) mostrar('entrar'); return; }
     S.sesion = ses;
     return DATOS.yo().then(function (u) {
       if (!u) { mostrar('primera'); return; }
