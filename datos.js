@@ -1,280 +1,271 @@
-/* La capa de datos. Todo lo que habla con Supabase pasa por aqui y por ningun
-   otro lado.
+/* La capa de datos. Todo lo que habla con la base pasa por aquí.
 
-   POR QUE UNA CAPA Y NO LLAMADAS SUELTAS: en la malla, estampar el id del puesto
-   en las asignaciones habria obligado a tocar DOCE sitios que creaban o editaban
-   filas. Envolver la capa una vez los cubrio todos. «La mitad de los sitios» es
-   como se cuelan los defectos, asi que aqui empezamos con la puerta unica.
+   SIN BIBLIOTECA DE TERCEROS, y la razón está medida, no supuesta.
 
-   EL AISLAMIENTO ENTRE EMPRESAS NO SE HACE AQUI. Lo hace RLS en la base. Este
-   archivo NO filtra por empresa_id al leer: si lo hiciera, bastaria una consulta
-   olvidada para que una empresa viera datos de otra, y el dia que se olvide una
-   nadie lo veria en pantalla. Al ESCRIBIR si se manda empresa_id, porque la fila
-   nueva tiene que nacer con dueño. */
+   El 08-10 Pedro no podía entrar. Su navegador pasó las siete comprobaciones de
+   `prueba.html` —la biblioteca cargaba, alcanzaba la base en 190 ms, el inicio
+   de sesión contestaba en 102 ms, leer la sesión guardada 1 ms— y aun así la
+   aplicación se quedaba esperando para siempre. Las mismas consultas, probadas
+   contra el servidor con una sesión real, respondían en 0,30 s y 0,09 s.
+
+   O sea: el servidor bien, la red bien, las llamadas HTTP directas bien. Lo
+   único que se comportaba distinto en su navegador era la biblioteca. Se fueron
+   catorce versiones persiguiéndola.
+
+   Así que se va. Supabase expone una API HTTP corriente —PostgREST para los
+   datos, GoTrue para las sesiones— y hablarle con `fetch` es su uso normal, no
+   un truco. Lo que se pierde: el refresco en segundo plano y la suscripción a
+   cambios en vivo, que esta aplicación no usa. Lo que se gana: que funcione en
+   el navegador del dueño, y 218 KB menos que descargar.
+
+   El aislamiento entre empresas NO se hace aquí. Lo hace RLS en la base. Este
+   archivo no filtra por empresa al leer: si lo hiciera, bastaría una consulta
+   olvidada para que una empresa viera datos de otra. */
 (function () {
   'use strict';
 
-  var sb = null;
-
-  /* Un almacen que no puede fallar.
-
-     La biblioteca guarda la sesion en el navegador. Si el navegador lo tiene
-     bloqueado —modo restringido, bloqueo de datos de sitio, algunas
-     configuraciones de privacidad—, esas llamadas lanzan, y lanzando desde
-     dentro de la biblioteca el resultado es una promesa que no vuelve nunca:
-     la pantalla se queda esperando sin error.
-
-     Con esto, si el navegador no deja guardar, la sesion vive en memoria. Se
-     pierde al cerrar la pestaña —hay que volver a entrar—, que es infinitamente
-     mejor que no poder entrar. */
-  var enMemoria = {};
-  var almacen = {
-    getItem:    function (k) { try { return window.localStorage.getItem(k); }
-                               catch (e) { return (k in enMemoria) ? enMemoria[k] : null; } },
-    setItem:    function (k, v) { try { window.localStorage.setItem(k, v); }
-                                  catch (e) { enMemoria[k] = v; } },
-    removeItem: function (k) { try { window.localStorage.removeItem(k); }
-                               catch (e) { delete enMemoria[k]; } },
-  };
-
-  function cliente() {
-    if (sb) return sb;
+  function cfg() {
     if (!window.CONFIG || window.CONFIG.SUPABASE_URL === 'PENDIENTE')
       throw new Error('Falta configurar el proyecto de Supabase en config.js.');
-    sb = window.supabase.createClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON, {
-      auth: {
-        /* SIN CANDADO ENTRE PESTAÑAS.
-
-           La biblioteca coordina el inicio de sesion entre pestañas con un
-           candado compartido del navegador. Si una pestaña queda colgada con el
-           candado tomado —o si el navegador no implementa bien esa API— TODAS
-           las demas esperan para siempre: la pantalla se queda en «Entrando…»
-           sin error, sin red, sin nada que mirar. Le paso a Pedro el 08-10 y no
-           se reproducia en mi navegador.
-
-           Lo que se pierde al quitarlo: si alguien tiene DOS pestañas abiertas y
-           renueva la sesion en las dos a la vez, pueden pisarse. Es un caso raro
-           y su peor consecuencia es tener que entrar de nuevo.
-           Lo que se gana: que entrar funcione siempre. No es un intercambio
-           dificil. */
-        lock: function (nombre, espera, fn) { return fn(); },
-        storage: almacen,
-      },
-    });
-    return sb;
+    return window.CONFIG;
   }
 
-  /* Un solo sitio donde se desenvuelve la respuesta de Supabase.
-     El error se lanza con su texto: un `catch` que se traga el mensaje deja la
-     pantalla en blanco sin decir por que, y eso ya costo medio dia en la malla. */
-  /* Ninguna llamada puede quedarse colgada para siempre.
+  /* Un almacén que no puede fallar. Si el navegador tiene bloqueado guardar
+     datos de sitio, la sesión vive en memoria: se pierde al cerrar la pestaña
+     —hay que volver a entrar—, que es mejor que no poder entrar. */
+  var enMemoria = {}, CLAVE = 'turnos.sesion';
+  function leerGuardado() {
+    try { return window.localStorage.getItem(CLAVE); }
+    catch (e) { return (CLAVE in enMemoria) ? enMemoria[CLAVE] : null; }
+  }
+  function escribirGuardado(v) {
+    try { if (v === null) window.localStorage.removeItem(CLAVE);
+          else window.localStorage.setItem(CLAVE, v); }
+    catch (e) { if (v === null) delete enMemoria[CLAVE]; else enMemoria[CLAVE] = v; }
+  }
 
-     Un error se ve y se arregla; un colgado silencioso se ve igual que algo
-     lento, y la persona se queda mirando una pantalla que no va a cambiar
-     nunca. Veinte segundos es mas de lo que cualquier consulta honesta demora.
-     Esto NO arregla la causa: la convierte en algo que se puede leer. */
-  function conTope(p, queHacia, ms) {
+  var sesion = null;
+  (function () {
+    var txt = leerGuardado();
+    if (!txt) return;
+    try { sesion = JSON.parse(txt); } catch (e) { escribirGuardado(null); }
+  })();
+
+  function guardar(s) { sesion = s; escribirGuardado(s ? JSON.stringify(s) : null); }
+
+  /* Ninguna llamada puede colgarse en silencio, y cada una dice su nombre.
+     Un colgado callado se ve igual que algo lento; un error se lee y se arregla. */
+  function conTope(p, que, ms) {
     ms = ms || 20000;
-    return Promise.race([
-      p,
-      new Promise(function (_, rechazar) {
-        setTimeout(function () {
-          rechazar(new Error('No hubo respuesta en ' + Math.round(ms/1000)
-            + ' segundos al ' + queHacia + '.'));
-        }, ms);
-      }),
-    ]);
+    return Promise.race([p, new Promise(function (_, rechazar) {
+      setTimeout(function () {
+        rechazar(new Error('No hubo respuesta en ' + Math.round(ms / 1000)
+                           + ' segundos al ' + que + '.'));
+      }, ms);
+    })]);
   }
 
-  /* NINGUNA consulta puede colgarse en silencio, y cada una dice su nombre.
+  function cabeceras(conSesion) {
+    var h = { apikey: cfg().SUPABASE_ANON, 'Content-Type': 'application/json' };
+    h.Authorization = 'Bearer '
+      + ((conSesion && sesion && sesion.access_token) || cfg().SUPABASE_ANON);
+    return h;
+  }
 
-     El 08-10 la pantalla se quedo en «Cargando tus datos…» sin decir cual de
-     las cuatro consultas no volvia. Con el nombre dentro del error, la proxima
-     vez se sabe en el primer intento. */
-  function pedir(p, que) {
-    return conTope(p, que || 'consultar').then(function (r) {
-      if (r.error) throw new Error(r.error.message || 'Error hablando con la base');
-      return r.data;
+  // El cuerpo se lee UNA vez y de ahí sale el mensaje de error que venga.
+  function respuesta(r, que) {
+    return r.text().then(function (t) {
+      var d = null;
+      if (t) { try { d = JSON.parse(t); } catch (e) { d = null; } }
+      if (!r.ok) {
+        throw new Error((d && (d.message || d.msg || d.error_description || d.error))
+          || ('la base respondió ' + r.status + ' al ' + que));
+      }
+      return d;
     });
   }
 
-  /* ¿Hay siquiera una sesion guardada?
+  function rest(camino, o, que) {
+    o = o || {};
+    return conTope(fetch(cfg().SUPABASE_URL + '/rest/v1/' + camino, {
+      method: o.method || 'GET',
+      headers: Object.assign(cabeceras(true), o.headers || {}),
+      body: o.body ? JSON.stringify(o.body) : undefined,
+    }).then(function (r) { return respuesta(r, que); }), que);
+  }
 
-     Mira el almacen DIRECTAMENTE, sin despertar a la biblioteca. Si no hay
-     nada, no tiene sentido preguntarle: se va al login y listo.
-
-     Por que importa: hasta el 08-10 la aplicacion llamaba a `getSession()` nada
-     mas cargar, incluso para alguien que nunca ha entrado. Esa llamada deja a
-     la biblioteca inicializada de una forma que —en el navegador de Pedro, no
-     en el mio— hacia que el login posterior no volviera nunca. La pagina de
-     prueba, que NO hacia esa llamada, entraba sin problemas con la misma cuenta
-     y el mismo navegador: esa fue la diferencia que lo delato.
-
-     Asi que no se pregunta cuando no hay nada que preguntar. Mas rapido para
-     todos, y sin rodeos para quien recien llega. */
-  function haySesionGuardada() {
-    try {
-      for (var i = 0; i < window.localStorage.length; i++) {
-        var k = window.localStorage.key(i);
-        if (k && k.indexOf('sb-') === 0 && k.indexOf('-auth-token') > 0) return true;
-      }
-      return false;
-    } catch (e) { return false; }   // sin acceso al almacen, no hay sesion guardada
+  function auth(camino, cuerpo, que) {
+    return conTope(fetch(cfg().SUPABASE_URL + '/auth/v1/' + camino, {
+      method: 'POST', headers: cabeceras(false), body: JSON.stringify(cuerpo),
+    }).then(function (r) { return respuesta(r, que); }), que);
   }
 
   // ---------- entrar y salir ----------
-  var auth = {
-    /* Consultar la sesion guardada NO puede bloquear la aplicacion.
+  // `expires_in` viene en segundos: se guarda el INSTANTE de vencimiento para
+  // no depender después de cuánto tiempo pasó.
+  function conVencimiento(d) {
+    d.expira_en = Date.now() + ((d.expires_in || 3600) - 60) * 1000;
+    return d;
+  }
 
-       El arreglo anterior evitaba esta llamada solo cuando no habia nada
-       guardado — o sea, la primera vez. En cuanto alguien entra UNA vez, queda
-       sesion guardada y en la siguiente visita volvia el mismo cuelgue.
-
-       Ahora: ocho segundos de paciencia y se sigue adelante como si no hubiera
-       sesion. Y se BOTA el cliente, para que el login posterior empiece con uno
-       limpio en vez de heredar el que se quedo a medias: eso era lo que dejaba
-       la pantalla en «Conectando…» para siempre.
-
-       Lo peor que puede pasar con esto es que alguien tenga que volver a
-       escribir su clave. Lo que se evita es que no pueda entrar nunca. */
-    sesion:   function () {
-      if (!haySesionGuardada()) return Promise.resolve(null);
-      return conTope(cliente().auth.getSession(), 'verificar la sesión', 8000)
-        .then(function (r) { return r.data.session; })
-        .catch(function () { sb = null; return null; });
+  var cuenta = {
+    entrar: function (email, clave) {
+      return auth('token?grant_type=password', { email: email, password: clave }, 'entrar')
+        .then(function (d) { guardar(conVencimiento(d)); return d; });
     },
-    entrar:   function (email, clave) { return conTope(pedir(cliente().auth.signInWithPassword({ email: email, password: clave })), 'entrar'); },
-    registrar:function (email, clave) { return conTope(pedir(cliente().auth.signUp({ email: email, password: clave })), 'crear la cuenta'); },
-    salir:    function () { return cliente().auth.signOut(); },
-    alCambiar:function (fn) { cliente().auth.onAuthStateChange(fn); },
+    registrar: function (email, clave) {
+      return auth('signup', { email: email, password: clave }, 'crear la cuenta')
+        .then(function (d) {
+          // Si el proyecto exige confirmar por correo, aún no viene sesión.
+          if (d && d.access_token) guardar(conVencimiento(d));
+          return { session: (d && d.access_token) ? d : null };
+        });
+    },
+    /* La sesión guardada, renovada si hace falta. Si la renovación falla se
+       borra y se vuelve al login: una sesión que no sirve y no se puede
+       arreglar deja a la persona encerrada fuera, sin forma de salir. */
+    sesion: function () {
+      if (!sesion || !sesion.access_token) return Promise.resolve(null);
+      if (Date.now() < (sesion.expira_en || 0)) return Promise.resolve(sesion);
+      if (!sesion.refresh_token) { guardar(null); return Promise.resolve(null); }
+      return auth('token?grant_type=refresh_token',
+                  { refresh_token: sesion.refresh_token }, 'renovar la sesión')
+        .then(function (d) { guardar(conVencimiento(d)); return sesion; })
+        .catch(function () { guardar(null); return null; });
+    },
+    salir: function () {
+      var tenia = sesion;
+      guardar(null);
+      // Que falle el aviso al servidor no puede impedir salir.
+      if (tenia) fetch(cfg().SUPABASE_URL + '/auth/v1/logout',
+        { method: 'POST', headers: cabeceras(true) }).catch(function () {});
+      return Promise.resolve();
+    },
+    alCambiar: function () {},
   };
 
-  // ---------- quien soy ----------
-  // Devuelve null si el usuario entro pero todavia no tiene empresa: ese es el
-  // caso de la primera vez, y la app lo manda a crearla.
+  // ---------- quién soy ----------
+  // null = entró pero todavía no tiene empresa: es la primera vez.
   function yo() {
-    return pedir(cliente().from('usuarios').select('*').maybeSingle(), 'buscar tu cuenta');
+    return rest('usuarios?select=*&limit=1', null, 'buscar tu cuenta')
+      .then(function (f) { return (f && f[0]) || null; });
   }
 
-  /* La primera vez: crear la empresa y quedar como dueño.
-
-     VA POR UNA FUNCION EN LA BASE, no por dos inserciones desde aqui, y no es
-     un capricho: una cuenta recien registrada no tiene fila en `usuarios`, asi
-     que `mi_empresa()` devuelve NULL y las politicas de seguridad DENIEGAN las
-     dos inserciones. Para escribir hay que tener empresa y para tener empresa
-     hay que escribir — huevo y gallina.
-     La funcion `crear_empresa` rompe el circulo haciendo las dos cosas de golpe
-     y solo para quien la llama. Ver `arreglo-primera-vez.sql`.
-
-     De paso deja de ser posible la empresa huerfana: dentro de la funcion las
-     dos inserciones son UNA transaccion. */
   function primeraVez(nombreEmpresa) {
-    return pedir(cliente().rpc('crear_empresa', { p_nombre: nombreEmpresa }));
+    return rest('rpc/crear_empresa', { method: 'POST', body: { p_nombre: nombreEmpresa } },
+                'crear la empresa');
   }
 
-  // ---------- catalogos ----------
+  // ---------- ayudas ----------
+  var devolver = { Prefer: 'return=representation' };
+  function primero(f) { return (f && f[0]) || null; }
+  function crear(tabla, d, que) {
+    return rest(tabla, { method: 'POST', body: d, headers: devolver }, que).then(primero);
+  }
+  function editar(tabla, id, d, que) {
+    return rest(tabla + '?id=eq.' + id, { method: 'PATCH', body: d, headers: devolver }, que)
+      .then(primero);
+  }
+  function quitar(tabla, filtro, que) {
+    return rest(tabla + '?' + filtro, { method: 'DELETE' }, que);
+  }
+
+  // ---------- catálogos ----------
   var sucursales = {
-    listar: function () { return pedir(cliente().from('sucursales').select('*').order('nombre'), 'leer los locales'); },
-    crear:  function (empresaId, d) { return pedir(cliente().from('sucursales').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
-    guardar:function (id, d) { return pedir(cliente().from('sucursales').update(d).eq('id', id).select().single()); },
+    listar: function () { return rest('sucursales?select=*&order=nombre', null, 'leer los locales'); },
+    crear:  function (e, d) { return crear('sucursales', Object.assign({ empresa_id: e }, d), 'crear el local'); },
+    guardar:function (id, d) { return editar('sucursales', id, d, 'guardar el local'); },
   };
 
   var cargos = {
-    listar: function () { return pedir(cliente().from('cargos').select('*').eq('activo', true).order('nombre'), 'leer los cargos'); },
-    crear:  function (empresaId, d) { return pedir(cliente().from('cargos').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
-    guardar:function (id, d) { return pedir(cliente().from('cargos').update(d).eq('id', id).select().single()); },
+    listar: function () { return rest('cargos?select=*&activo=eq.true&order=nombre', null, 'leer los cargos'); },
+    crear:  function (e, d) { return crear('cargos', Object.assign({ empresa_id: e }, d), 'crear el cargo'); },
+    guardar:function (id, d) { return editar('cargos', id, d, 'guardar el cargo'); },
   };
 
   var trabajadores = {
     listar: function () {
-      return pedir(cliente().from('trabajadores')
-        .select('*, trabajador_cargos(cargo_id), trabajador_sucursales(sucursal_id)')
-        .eq('activo', true).order('nombre'), 'leer los trabajadores');
+      return rest('trabajadores?select=*,trabajador_cargos(cargo_id),trabajador_sucursales(sucursal_id)'
+                  + '&activo=eq.true&order=nombre', null, 'leer los trabajadores');
     },
-    crear:  function (empresaId, d) { return pedir(cliente().from('trabajadores').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
-    guardar:function (id, d) { return pedir(cliente().from('trabajadores').update(d).eq('id', id).select().single()); },
-    ponerCargos: function (id, cargoIds) {
-      var c = cliente();
-      return pedir(c.from('trabajador_cargos').delete().eq('trabajador_id', id)).then(function () {
-        if (!cargoIds.length) return [];
-        return pedir(c.from('trabajador_cargos').insert(
-          cargoIds.map(function (q) { return { trabajador_id: id, cargo_id: q }; })));
+    crear:  function (e, d) { return crear('trabajadores', Object.assign({ empresa_id: e }, d), 'crear el trabajador'); },
+    guardar:function (id, d) { return editar('trabajadores', id, d, 'guardar el trabajador'); },
+    ponerCargos: function (id, cs) {
+      return quitar('trabajador_cargos', 'trabajador_id=eq.' + id, 'guardar los cargos').then(function () {
+        if (!cs.length) return [];
+        return rest('trabajador_cargos', { method: 'POST', body: cs.map(function (c) {
+          return { trabajador_id: id, cargo_id: c }; }) }, 'guardar los cargos');
       });
     },
-    ponerSucursales: function (id, sucIds) {
-      var c = cliente();
-      return pedir(c.from('trabajador_sucursales').delete().eq('trabajador_id', id)).then(function () {
-        if (!sucIds.length) return [];
-        return pedir(c.from('trabajador_sucursales').insert(
-          sucIds.map(function (s) { return { trabajador_id: id, sucursal_id: s }; })));
+    ponerSucursales: function (id, ss) {
+      return quitar('trabajador_sucursales', 'trabajador_id=eq.' + id, 'guardar los locales').then(function () {
+        if (!ss.length) return [];
+        return rest('trabajador_sucursales', { method: 'POST', body: ss.map(function (s) {
+          return { trabajador_id: id, sucursal_id: s }; }) }, 'guardar los locales');
       });
     },
   };
 
   var horarios = {
-    listar: function () { return pedir(cliente().from('horarios').select('*').order('hora_inicio'), 'leer los horarios'); },
-    crear:  function (empresaId, d) { return pedir(cliente().from('horarios').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
-    borrar: function (id) { return pedir(cliente().from('horarios').delete().eq('id', id)); },
+    listar: function () { return rest('horarios?select=*&order=hora_inicio', null, 'leer los horarios'); },
+    crear:  function (e, d) { return crear('horarios', Object.assign({ empresa_id: e }, d), 'crear el horario'); },
+    borrar: function (id) { return quitar('horarios', 'id=eq.' + id, 'borrar el horario'); },
   };
 
-  // ---------- el nucleo ----------
+  // ---------- el núcleo ----------
+  function delRango(tabla, suc, desde, hasta, que) {
+    return rest(tabla + '?select=*&sucursal_id=eq.' + suc
+                + '&fecha=gte.' + desde + '&fecha=lte.' + hasta
+                + '&order=fecha&order=hora_inicio', null, que);
+  }
+
   var necesidades = {
-    listar: function (sucursalId, desde, hasta) {
-      return pedir(cliente().from('necesidades').select('*')
-        .eq('sucursal_id', sucursalId).gte('fecha', desde).lte('fecha', hasta)
-        .order('fecha').order('hora_inicio'));
-    },
-    crear:  function (d) { return pedir(cliente().from('necesidades').insert(d).select().single()); },
-    guardar:function (id, d) { return pedir(cliente().from('necesidades').update(d).eq('id', id).select().single()); },
-    borrar: function (id) { return pedir(cliente().from('necesidades').delete().eq('id', id)); },
+    listar: function (s, a, b) { return delRango('necesidades', s, a, b, 'leer lo planificado'); },
+    crear:  function (d) { return crear('necesidades', d, 'guardar lo planificado'); },
+    guardar:function (id, d) { return editar('necesidades', id, d, 'guardar lo planificado'); },
+    borrar: function (id) { return quitar('necesidades', 'id=eq.' + id, 'borrar lo planificado'); },
   };
 
   var asignaciones = {
-    listar: function (sucursalId, desde, hasta) {
-      return pedir(cliente().from('asignaciones').select('*')
-        .eq('sucursal_id', sucursalId).gte('fecha', desde).lte('fecha', hasta)
-        .order('fecha').order('hora_inicio'));
-    },
-    crear:  function (d) { return pedir(cliente().from('asignaciones').insert(d).select().single()); },
-    guardar:function (id, d) { return pedir(cliente().from('asignaciones').update(d).eq('id', id).select().single()); },
-    borrar: function (id) { return pedir(cliente().from('asignaciones').delete().eq('id', id)); },
+    listar: function (s, a, b) { return delRango('asignaciones', s, a, b, 'leer las asignaciones'); },
+    crear:  function (d) { return crear('asignaciones', d, 'guardar la asignación'); },
+    guardar:function (id, d) { return editar('asignaciones', id, d, 'guardar la asignación'); },
+    borrar: function (id) { return quitar('asignaciones', 'id=eq.' + id, 'quitar la asignación'); },
   };
 
   var turnos = {
-    listar: function (sucursalId, desde, hasta) {
-      return pedir(cliente().from('turnos').select('*')
-        .eq('sucursal_id', sucursalId).gte('fecha', desde).lte('fecha', hasta)
-        .order('fecha').order('hora_inicio'));
+    listar: function (s, a, b) { return delRango('turnos', s, a, b, 'leer los turnos'); },
+    // Lo que ve el trabajador: SOLO lo publicado. El borrador no sale de aquí.
+    mios: function (t, a, b) {
+      return rest('turnos?select=*&trabajador_id=eq.' + t + '&estado=eq.publicado'
+                  + '&fecha=gte.' + a + '&fecha=lte.' + b
+                  + '&order=fecha&order=hora_inicio', null, 'leer tus turnos');
     },
-    // Lo que ve el trabajador: SOLO lo publicado. El borrador no sale de aqui.
-    mios: function (trabajadorId, desde, hasta) {
-      return pedir(cliente().from('turnos').select('*')
-        .eq('trabajador_id', trabajadorId).eq('estado', 'publicado')
-        .gte('fecha', desde).lte('fecha', hasta)
-        .order('fecha').order('hora_inicio'));
+    crearLote: function (filas) {
+      return rest('turnos', { method: 'POST', body: filas, headers: devolver }, 'publicar');
     },
-    crearLote: function (filas) { return pedir(cliente().from('turnos').insert(filas).select()); },
-    guardar:   function (id, d) { return pedir(cliente().from('turnos').update(d).eq('id', id).select().single()); },
-    borrarDe:  function (asignacionIds) { return pedir(cliente().from('turnos').delete().in('asignacion_id', asignacionIds)); },
+    guardar:  function (id, d) { return editar('turnos', id, d, 'actualizar el turno'); },
+    borrarDe: function (ids) {
+      return quitar('turnos', 'asignacion_id=in.(' + ids.join(',') + ')', 'quitar el turno');
+    },
   };
 
-  // ---------- auditoria ----------
-  /* Se graba desde el primer dia. No es prolijidad: «quien cambio este turno»
-     no se puede reconstruir despues, y en un producto donde se discute un sueldo
-     es lo primero que piden.
-     Si falla, NO se cae la operacion: se avisa por consola. Perder el rastro de
-     un cambio es malo; impedir que la persona trabaje porque el rastro fallo es
+  /* Auditoría: se graba desde el primer día porque «quién cambió este turno» no
+     se reconstruye después. Si falla, NO se cae la operación: perder el rastro
+     de un cambio es malo; impedir que alguien trabaje porque el rastro falló es
      peor. */
   function anotar(empresaId, usuarioId, entidad, entidadId, accion, antes, despues) {
-    return pedir(cliente().from('eventos').insert({
+    return rest('eventos', { method: 'POST', body: {
       empresa_id: empresaId, usuario_id: usuarioId, entidad: entidad,
       entidad_id: entidadId || null, accion: accion,
-      antes: antes || null, despues: despues || null
-    })).catch(function (e) { console.warn('no se pudo anotar el evento:', e.message); });
+      antes: antes || null, despues: despues || null,
+    } }, 'anotar el cambio').catch(function (e) {
+      console.warn('no se pudo anotar el evento:', e.message);
+    });
   }
 
   window.DATOS = {
-    auth: auth, yo: yo, primeraVez: primeraVez,
+    auth: cuenta, yo: yo, primeraVez: primeraVez,
     sucursales: sucursales, cargos: cargos, trabajadores: trabajadores,
     horarios: horarios, necesidades: necesidades, asignaciones: asignaciones,
     turnos: turnos, anotar: anotar,
