@@ -1,23 +1,203 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8">
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Turnos — en construcción</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center;
-         font-family: system-ui, -apple-system, sans-serif; background:#f7f5f1; color:#13343b;
-         padding: 24px; }
-  .caja { max-width: 32rem; text-align:center; }
-  h1 { font-size: 1.6rem; margin:0 0 .5rem; }
-  p { color:#6b7c82; line-height:1.6; margin:0 0 .5rem; }
-  code { background:#eceae4; padding:.1rem .35rem; border-radius:4px; font-size:.9em; }
-  @media (prefers-color-scheme: dark) {
-    body { background:#13343b; color:#f7f5f1; }
-    p { color:#a9bcbf; } code { background:#1d4349; }
-  }
-</style></head><body>
-<div class="caja">
-  <h1>Turnos</h1>
-  <p>Acá va a vivir la aplicación. Todavía no hay nada que mirar.</p>
-  <p>Esta página existe para comprobar que la publicación funciona de punta a punta.</p>
+<title>Turnos</title>
+<link rel="stylesheet" href="estilo.css?v=1">
+</head>
+<body>
+
+<!-- ENTRAR ------------------------------------------------------------ -->
+<!-- Una sola pantalla para entrar y registrarse: dos formularios casi
+     identicos son dos sitios donde arreglar lo mismo. -->
+<section id="p-entrar" class="pantalla centrada">
+  <form class="tarjeta angosta" id="formEntrar">
+    <h1>Turnos</h1>
+    <p class="hint">Planificación de turnos para tu local.</p>
+    <label for="eMail">Correo</label>
+    <input type="email" id="eMail" autocomplete="email" required>
+    <label for="eClave">Contraseña</label>
+    <input type="password" id="eClave" autocomplete="current-password" required minlength="6">
+    <p class="msg" id="eMsg"></p>
+    <div class="acciones">
+      <button type="submit" class="primario" id="btnEntrar">Entrar</button>
+      <button type="button" class="plano" id="btnRegistrar">Crear una cuenta</button>
+    </div>
+  </form>
+</section>
+
+<!-- PRIMERA VEZ -------------------------------------------------------- -->
+<!-- Entro pero no tengo empresa. Pasa una sola vez y no se puede saltar: sin
+     empresa no hay nada a lo que colgar los datos. -->
+<section id="p-primera" class="pantalla centrada" hidden>
+  <form class="tarjeta angosta" id="formPrimera">
+    <h1>Tu empresa</h1>
+    <p class="hint">Es lo único que necesito para empezar. Lo demás se agrega
+    después.</p>
+    <label for="pNombre">¿Cómo se llama?</label>
+    <input type="text" id="pNombre" maxlength="60" required placeholder="Mi restorán">
+    <p class="msg" id="pMsg"></p>
+    <div class="acciones">
+      <button type="submit" class="primario">Crear</button>
+      <button type="button" class="plano" id="btnSalir1">Salir</button>
+    </div>
+  </form>
+</section>
+
+<!-- LA APP ------------------------------------------------------------- -->
+<div id="app" hidden>
+  <header class="barra">
+    <strong id="hEmpresa">—</strong>
+    <nav class="pestanas" id="nav">
+      <button class="tab" data-p="plan" aria-selected="true">Planificar</button>
+      <button class="tab" data-p="equipo">Equipo</button>
+      <button class="tab" data-p="config">Configuración</button>
+      <button class="tab" data-p="mio">Mi calendario</button>
+    </nav>
+    <span class="espacio"></span>
+    <span class="hint" id="hQuien"></span>
+    <button class="plano" id="btnSalir">Salir</button>
+  </header>
+
+  <!-- PLANIFICAR -->
+  <section id="t-plan" class="panel">
+    <div class="controles">
+      <label class="inline" for="cSucursal">Local</label>
+      <select id="cSucursal"></select>
+      <span class="sep"></span>
+      <button class="plano" id="btnAntes" title="Semana anterior">‹</button>
+      <strong id="cSemana" class="semana">—</strong>
+      <button class="plano" id="btnDespues" title="Semana siguiente">›</button>
+      <button class="plano" id="btnHoy">Hoy</button>
+      <span class="espacio"></span>
+      <span class="hint" id="cEstado"></span>
+      <button class="primario" id="btnPublicar">Publicar</button>
+    </div>
+
+    <p class="aviso" id="avisoPlan" hidden></p>
+    <div id="malla" class="malla"></div>
+  </section>
+
+  <!-- EQUIPO -->
+  <section id="t-equipo" class="panel" hidden>
+    <div class="columnas">
+      <div>
+        <div class="controles">
+          <h2>Trabajadores</h2><span class="espacio"></span>
+          <button class="primario" id="btnTrabajador">Agregar</button>
+        </div>
+        <div id="listaTrabajadores" class="lista"></div>
+      </div>
+      <div>
+        <div class="controles">
+          <h2>Cargos</h2><span class="espacio"></span>
+          <button class="primario" id="btnCargo">Agregar</button>
+        </div>
+        <div id="listaCargos" class="lista"></div>
+        <p class="hint sangria">Los cargos <b>sugieren</b> a quién ofrecer un
+        turno, nunca lo impiden: un cajero puede tomar el trabajo de un mesero.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONFIGURACION -->
+  <section id="t-config" class="panel" hidden>
+    <div class="columnas">
+      <div>
+        <div class="controles">
+          <h2>Locales</h2><span class="espacio"></span>
+          <button class="primario" id="btnSucursal">Agregar</button>
+        </div>
+        <div id="listaSucursales" class="lista"></div>
+      </div>
+      <div>
+        <div class="controles">
+          <h2>Horarios guardados</h2><span class="espacio"></span>
+          <button class="primario" id="btnHorario">Agregar</button>
+        </div>
+        <div id="listaHorarios" class="lista"></div>
+        <p class="hint sangria">Son un <b>atajo para copiar</b> horas de uso
+        frecuente. No mandan sobre nada: borrar uno no toca ningún turno.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- MI CALENDARIO (lo que ve el trabajador) -->
+  <section id="t-mio" class="panel" hidden>
+    <h2>Mis turnos</h2>
+    <p class="hint">Solo lo que ya está publicado.</p>
+    <div id="listaMios" class="lista"></div>
+  </section>
 </div>
-</body></html>
+
+<!-- DIALOGOS ----------------------------------------------------------- -->
+
+<!-- Necesidad: qué hace falta, sin nombres todavía. -->
+<dialog id="dlgNec" class="dlg">
+  <form method="dialog">
+    <h3 id="nTit">Qué hace falta</h3>
+    <div class="fldrow">
+      <div class="fld"><label for="nFecha">Día</label><input type="date" id="nFecha"></div>
+      <div class="fld"><label for="nCargo">Cargo</label><select id="nCargo"></select></div>
+    </div>
+    <div class="fldrow">
+      <div class="fld"><label for="nEntra">Entra</label><input type="time" id="nEntra" value="09:00"></div>
+      <div class="fld"><label for="nSale">Sale</label><input type="time" id="nSale" value="17:00"></div>
+      <div class="fld corta"><label for="nCuantos">Personas</label>
+        <input type="number" id="nCuantos" min="1" max="50" value="1"></div>
+    </div>
+    <div class="fld"><label for="nHorario">Copiar horas de…</label><select id="nHorario"></select></div>
+    <p class="hint" id="nMedia" hidden>Cruza la medianoche: termina al día siguiente.</p>
+    <p class="msg" id="nMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="nGuardar">Guardar</button>
+      <button type="button" class="plano" id="nBorrar" hidden>Borrar</button>
+      <button type="button" class="plano" id="nCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Asignación: quién lo cubre. Puede quedar sin nadie. -->
+<dialog id="dlgAsig" class="dlg">
+  <form method="dialog">
+    <h3 id="aTit">Quién lo cubre</h3>
+    <p class="hint" id="aDe"></p>
+    <div class="fld"><label for="aQuien">Persona</label><select id="aQuien"></select></div>
+    <p class="hint" id="aOjo" hidden></p>
+    <div class="fldrow">
+      <div class="fld"><label for="aEntra">Entra</label><input type="time" id="aEntra"></div>
+      <div class="fld"><label for="aSale">Sale</label><input type="time" id="aSale"></div>
+    </div>
+    <p class="hint">Puedes cubrir <b>solo un trozo</b>: deja las horas que de
+    verdad va a trabajar esa persona.</p>
+    <p class="msg" id="aMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="aGuardar">Guardar</button>
+      <button type="button" class="plano" id="aBorrar" hidden>Quitar</button>
+      <button type="button" class="plano" id="aCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Uno solo para trabajador / cargo / local / horario: son formularios de
+     dos o tres campos y cuatro diálogos casi iguales es cuatro sitios donde
+     arreglar el mismo defecto. -->
+<dialog id="dlgFicha" class="dlg">
+  <form method="dialog">
+    <h3 id="fTit">—</h3>
+    <div id="fCampos"></div>
+    <p class="msg" id="fMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="fGuardar">Guardar</button>
+      <button type="button" class="plano" id="fCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js?v=1"></script>
+<script src="datos.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
