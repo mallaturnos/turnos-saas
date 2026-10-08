@@ -166,6 +166,27 @@ button:disabled { opacity:.5; cursor:default; }
   .messem { grid-template-columns:repeat(2, 1fr); }
 }
 
+/* ---------- la malla girada: gente o cargos en las filas ---------- */
+.malla.girada { display:block; overflow-x:auto; }
+table.girada { border-collapse:separate; border-spacing:0; width:100%; min-width:46rem;
+               background:var(--blanco); border:1px solid var(--borde); border-radius:var(--radio); }
+table.girada th, table.girada td { border-bottom:1px solid var(--borde); padding:.35rem .4rem;
+                                   vertical-align:top; }
+table.girada thead th { background:#f0ede7; position:sticky; top:3.1rem; z-index:2;
+                        text-align:left; font-size:.8rem; }
+table.girada thead th b { display:block; text-transform:capitalize; }
+table.girada thead th span { color:var(--gris); font-weight:400; font-size:.75rem; }
+/* El nombre se queda a la vista al desplazar en horizontal: una fila sin nombre
+   es una fila que no se puede leer. */
+th.rot { position:sticky; left:0; z-index:3; background:var(--blanco); min-width:8rem;
+         text-align:left; font-size:.88rem; }
+thead th.rot { z-index:4; background:#f0ede7; }
+table.girada td.hoy, table.girada th.hoy { background:var(--verde-claro); }
+table.girada tr.suelto th.rot { color:var(--gris); font-style:italic; }
+table.girada .gente { padding:0; }
+table.girada .nada { color:#cfcabd; }
+table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { border-bottom:0; }
+
 /* ---------- listas ---------- */
 .columnas { display:grid; gap:1.25rem; grid-template-columns:repeat(auto-fit, minmax(19rem, 1fr)); align-items:start; }
 .lista { display:flex; flex-direction:column; gap:.4rem; }

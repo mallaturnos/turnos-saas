@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=22">
+<link rel="stylesheet" href="estilo.css?v=23">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v22</span></p>
+      <span style="float:right;opacity:.55" id="ver">v23</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -66,6 +66,13 @@
     <div class="controles">
       <label class="inline" for="cSucursal">Local</label>
       <select id="cSucursal"></select>
+      <span class="sep"></span>
+      <label class="inline" for="cAgrupar">Ver</label>
+      <select id="cAgrupar">
+        <option value="dia">por día</option>
+        <option value="persona">por persona</option>
+        <option value="cargo">por cargo</option>
+      </select>
       <span class="sep"></span>
       <div class="vistas" id="cVista">
         <button class="tab" data-v="dia">Día</button>
@@ -203,6 +210,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=15"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

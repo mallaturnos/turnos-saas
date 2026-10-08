@@ -63,7 +63,7 @@ var esc = function (t) {
 var S = {
   sesion:null, yo:null, empresa:null,
   sucursales:[], cargos:[], trabajadores:[], horarios:[],
-  sucursal:null, lunes:null, vista:'semana', dia:null,
+  sucursal:null, lunes:null, vista:'semana', dia:null, agrupar:'dia',
   necesidades:[], asignaciones:[], turnos:[],
   yoTrabajador:null,
 };
@@ -359,6 +359,7 @@ function pintarSelectores() {
   $$('#cVista button').forEach(function (b) {
     b.setAttribute('aria-selected', String(b.dataset.v === S.vista));
   });
+  if ($('#cAgrupar')) $('#cAgrupar').value = S.agrupar;
 }
 
 function recargarSemana() {
@@ -412,6 +413,10 @@ function avisoPlan(html) {
 // LA MALLA
 // ====================================================================
 function pintarMalla() {
+  // Agrupar por persona o por cargo da vuelta la tabla: las filas dejan de ser
+  // días y pasan a ser gente o cargos. En la vista Mes no se ofrece: 31 columnas
+  // no se leen, y fingir que sí es peor que no tenerlo.
+  if (S.agrupar !== 'dia' && S.vista !== 'mes') return pintarGirada();
   if (S.vista === 'dia') return pintarDia();
   if (S.vista === 'mes') return pintarMes();
   pintarSemana();
@@ -510,6 +515,60 @@ function pintarSuelta(a) {
     + '<ul class="gente">' + pintarAsignacion(a) + '</ul></div>';
 }
 
+/* LA MALLA GIRADA: filas de gente (o de cargos) y columnas de días.
+
+   Esto es lo que Skello llama «Employés | Postes», y aquí sale casi gratis por
+   una decisión del modelo: el cargo viaja EN EL TURNO, no en la persona. Si el
+   cargo fuera una propiedad de la gente —como era en la malla antes del 03-10—
+   esta vista no se podría dibujar sin inventar datos.
+
+   Las dos agrupaciones comparten el mismo dibujo y solo cambian en dos cosas:
+   de dónde salen las filas y cómo se decide qué asignación va en cada una. */
+function pintarGirada() {
+  var dias = [];
+  if (S.vista === 'dia') dias = [S.dia];
+  else for (var i = 0; i < 7; i++) dias.push(masDias(S.lunes, i));
+
+  var filas, deQuien;
+  if (S.agrupar === 'persona') {
+    filas = S.trabajadores.map(function (p) { return { id: p.id, nombre: p.nombre }; });
+    // Lo pendiente no se esconde: tiene su propia fila al final.
+    filas.push({ id: null, nombre: 'Sin asignar', suelto: true });
+    deQuien = function (a) { return a.trabajador_id; };
+  } else {
+    filas = S.cargos.map(function (q) { return { id: q.id, nombre: q.nombre }; });
+    deQuien = function (a) { return a.cargo_id; };
+  }
+
+  var hoy = hoyTexto();
+  var html = '<table class="girada"><thead><tr><th class="rot"></th>'
+    + dias.map(function (f) {
+        return '<th' + (f === hoy ? ' class="hoy"' : '') + '><b>' + nombreDia(f) + '</b>'
+             + '<span>' + diaMes(f) + '</span></th>';
+      }).join('') + '</tr></thead><tbody>';
+
+  filas.forEach(function (fila) {
+    html += '<tr' + (fila.suelto ? ' class="suelto"' : '') + '><th class="rot">'
+          + esc(fila.nombre) + '</th>';
+    dias.forEach(function (f) {
+      var suyas = S.asignaciones.filter(function (a) {
+        return a.fecha === f && deQuien(a) === fila.id;
+      });
+      html += '<td' + (f === hoy ? ' class="hoy"' : '') + '>'
+        + (suyas.length
+            ? '<ul class="gente">' + suyas.map(pintarAsignacion).join('') + '</ul>'
+            : '<span class="nada">·</span>')
+        + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  var m = $('#malla');
+  m.className = 'malla girada';
+  m.innerHTML = html + '</tbody></table>';
+  $('#cEstado').textContent = resumenPublicar();
+}
+
 // ---------- navegación ----------
 // El paso del «anterior/siguiente» depende de la vista: un día, una semana o
 // un mes. Si siempre moviera una semana, en la vista Mes no pasaría nada
@@ -527,6 +586,16 @@ $('#btnAntes').addEventListener('click',    function () { mover(-1); });
 $('#btnDespues').addEventListener('click',  function () { mover(1); });
 $('#btnHoy').addEventListener('click',      function () {
   S.dia = hoyTexto(); S.lunes = lunesDe(S.dia); pintarSelectores(); recargarSemana();
+});
+$('#cAgrupar').addEventListener('change', function () {
+  S.agrupar = this.value;
+  // Agrupar por gente no tiene sentido en el Mes: se vuelve a Semana y se dice.
+  if (S.agrupar !== 'dia' && S.vista === 'mes') {
+    S.vista = 'semana';
+    avisoPlan('La vista <b>Mes</b> no se puede agrupar por persona ni por cargo '
+            + '—serían 31 columnas—, así que te dejé en <b>Semana</b>.');
+  }
+  pintarSelectores(); pintarMalla();
 });
 $('#cVista').addEventListener('click', function (ev) {
   var b = ev.target.closest('button'); if (!b) return;
