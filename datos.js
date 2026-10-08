@@ -73,14 +73,15 @@
      lento, y la persona se queda mirando una pantalla que no va a cambiar
      nunca. Veinte segundos es mas de lo que cualquier consulta honesta demora.
      Esto NO arregla la causa: la convierte en algo que se puede leer. */
-  function conTope(p, queHacia) {
+  function conTope(p, queHacia, ms) {
+    ms = ms || 20000;
     return Promise.race([
       p,
       new Promise(function (_, rechazar) {
         setTimeout(function () {
-          rechazar(new Error('La base no contestó en 20 segundos (' + queHacia + '). '
-            + 'Puede ser tu conexión o el proyecto despertando; vuelve a intentar.'));
-        }, 20000);
+          rechazar(new Error('No hubo respuesta en ' + Math.round(ms/1000)
+            + ' segundos al ' + queHacia + '.'));
+        }, ms);
       }),
     ]);
   }
@@ -123,9 +124,24 @@
 
   // ---------- entrar y salir ----------
   var auth = {
+    /* Consultar la sesion guardada NO puede bloquear la aplicacion.
+
+       El arreglo anterior evitaba esta llamada solo cuando no habia nada
+       guardado — o sea, la primera vez. En cuanto alguien entra UNA vez, queda
+       sesion guardada y en la siguiente visita volvia el mismo cuelgue.
+
+       Ahora: ocho segundos de paciencia y se sigue adelante como si no hubiera
+       sesion. Y se BOTA el cliente, para que el login posterior empiece con uno
+       limpio en vez de heredar el que se quedo a medias: eso era lo que dejaba
+       la pantalla en «Conectando…» para siempre.
+
+       Lo peor que puede pasar con esto es que alguien tenga que volver a
+       escribir su clave. Lo que se evita es que no pueda entrar nunca. */
     sesion:   function () {
       if (!haySesionGuardada()) return Promise.resolve(null);
-      return cliente().auth.getSession().then(function (r) { return r.data.session; });
+      return conTope(cliente().auth.getSession(), 'verificar la sesión', 8000)
+        .then(function (r) { return r.data.session; })
+        .catch(function () { sb = null; return null; });
     },
     entrar:   function (email, clave) { return conTope(pedir(cliente().auth.signInWithPassword({ email: email, password: clave })), 'entrar'); },
     registrar:function (email, clave) { return conTope(pedir(cliente().auth.signUp({ email: email, password: clave })), 'crear la cuenta'); },
