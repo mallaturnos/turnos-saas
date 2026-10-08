@@ -142,6 +142,15 @@ function mostrar(cual) {
   // El tope solo se cancela cuando de verdad salimos del login.
   if (cual !== 'entrar') { clearTimeout(window.__tope); entrando = false; }
   pararReloj();
+  /* Y SE BORRA EL MENSAJE.
+
+     Esto fue media tarde de confusión. Al abrir la página sin sesión, el código
+     escribía «Buscando tu cuenta…» y enseguida mostraba el formulario… pero
+     dejaba ese texto puesto. Quedaba ahí, fijo, bajo un formulario que estaba
+     perfectamente usable, y parecía un cuelgue. Pedro me mandó cinco fotos de
+     eso y las cinco veces busqué el problema en la red, en la biblioteca y en
+     su navegador. El problema era que yo no borraba un texto. */
+  aviso('#eMsg', '');
   $('#p-entrar').hidden  = cual !== 'entrar';
   $('#p-primera').hidden = cual !== 'primera';
   $('#app').hidden       = cual !== 'app';
@@ -161,8 +170,8 @@ $('#formEntrar').addEventListener('submit', function (ev) {
 
 function entrarDeVerdad() {
   var email = $('#eMail').value.trim(), clave = $('#eClave').value;
-  aviso('#eMsg', 'Conectando…');
   entrando = true;
+  paso('Conectando…', generacion);
   // Si en 15 segundos no pasó nada, decirlo. Un colgado callado se ve idéntico
   // a algo que está tardando, y la persona se queda mirando sin saber cuál es.
   clearTimeout(window.__tope);
@@ -272,9 +281,12 @@ function arrancar(sesionYaTengo) {
   var paso0 = sesionYaTengo ? Promise.resolve(sesionYaTengo) : DATOS.auth.sesion();
   return paso0.then(function (ses) {
     if (!vigente()) return;
-    paso('Buscando tu cuenta…', mia);
     // Si llega tarde y ya hay alguien entrando, no toca la pantalla.
+    // Y se comprueba ANTES de anunciar el paso: anunciar «buscando tu cuenta»
+    // cuando no hay ninguna sesión que buscar es prometer trabajo que no se va
+    // a hacer, y deja a la persona esperando algo que nunca iba a pasar.
     if (!ses) { if (!entrando) mostrar('entrar'); return; }
+    paso('Buscando tu cuenta…', mia);
     S.sesion = ses;
     return DATOS.yo().then(function (u) {
       if (!vigente()) return;
