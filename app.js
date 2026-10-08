@@ -196,7 +196,8 @@ function arrancar(sesionYaTengo) {
       if (!u) { mostrar('primera'); return; }
       S.yo = u;
       paso('Cargando tus datos…');
-      return cargarTodo().then(function () { mostrar('app'); });
+      return cargarTodo().then(function () { mostrar('app'); })
+        .catch(function (e) { entrando = false; aviso('#eMsg', e.message, 'bad'); throw e; });
     });
   }).catch(function (e) {
     mostrar('entrar');

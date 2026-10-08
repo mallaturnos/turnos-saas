@@ -85,8 +85,13 @@
     ]);
   }
 
-  function pedir(p) {
-    return p.then(function (r) {
+  /* NINGUNA consulta puede colgarse en silencio, y cada una dice su nombre.
+
+     El 08-10 la pantalla se quedo en «Cargando tus datos…» sin decir cual de
+     las cuatro consultas no volvia. Con el nombre dentro del error, la proxima
+     vez se sabe en el primer intento. */
+  function pedir(p, que) {
+    return conTope(p, que || 'consultar').then(function (r) {
       if (r.error) throw new Error(r.error.message || 'Error hablando con la base');
       return r.data;
     });
@@ -132,7 +137,7 @@
   // Devuelve null si el usuario entro pero todavia no tiene empresa: ese es el
   // caso de la primera vez, y la app lo manda a crearla.
   function yo() {
-    return pedir(cliente().from('usuarios').select('*').maybeSingle());
+    return pedir(cliente().from('usuarios').select('*').maybeSingle(), 'buscar tu cuenta');
   }
 
   /* La primera vez: crear la empresa y quedar como dueño.
@@ -153,13 +158,13 @@
 
   // ---------- catalogos ----------
   var sucursales = {
-    listar: function () { return pedir(cliente().from('sucursales').select('*').order('nombre')); },
+    listar: function () { return pedir(cliente().from('sucursales').select('*').order('nombre'), 'leer los locales'); },
     crear:  function (empresaId, d) { return pedir(cliente().from('sucursales').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
     guardar:function (id, d) { return pedir(cliente().from('sucursales').update(d).eq('id', id).select().single()); },
   };
 
   var cargos = {
-    listar: function () { return pedir(cliente().from('cargos').select('*').eq('activo', true).order('nombre')); },
+    listar: function () { return pedir(cliente().from('cargos').select('*').eq('activo', true).order('nombre'), 'leer los cargos'); },
     crear:  function (empresaId, d) { return pedir(cliente().from('cargos').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
     guardar:function (id, d) { return pedir(cliente().from('cargos').update(d).eq('id', id).select().single()); },
   };
@@ -168,7 +173,7 @@
     listar: function () {
       return pedir(cliente().from('trabajadores')
         .select('*, trabajador_cargos(cargo_id), trabajador_sucursales(sucursal_id)')
-        .eq('activo', true).order('nombre'));
+        .eq('activo', true).order('nombre'), 'leer los trabajadores');
     },
     crear:  function (empresaId, d) { return pedir(cliente().from('trabajadores').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
     guardar:function (id, d) { return pedir(cliente().from('trabajadores').update(d).eq('id', id).select().single()); },
@@ -191,7 +196,7 @@
   };
 
   var horarios = {
-    listar: function () { return pedir(cliente().from('horarios').select('*').order('hora_inicio')); },
+    listar: function () { return pedir(cliente().from('horarios').select('*').order('hora_inicio'), 'leer los horarios'); },
     crear:  function (empresaId, d) { return pedir(cliente().from('horarios').insert(Object.assign({ empresa_id: empresaId }, d)).select().single()); },
     borrar: function (id) { return pedir(cliente().from('horarios').delete().eq('id', id)); },
   };
