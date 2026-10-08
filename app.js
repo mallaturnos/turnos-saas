@@ -202,30 +202,52 @@ $$('#btnSalir, #btnSalir1').forEach(function (b) {
 
    Vale para la persona tambien: «buscando tu cuenta» es informacion, «Entrando»
    repetido treinta segundos es angustia. */
-function paso(txt) { if (!$('#p-entrar').hidden) aviso('#eMsg', txt); }
+/* UN SOLO ARRANQUE A LA VEZ.
+
+   `arrancar()` corre al cargar la pagina Y otra vez al entrar. Las dos cadenas
+   quedaban vivas a la vez y se pisaban el mensaje: cuando la primera fallaba y
+   mostraba el error en rojo, la segunda lo sobrescribia con su «Cargando tus
+   datos…» en gris. Pedro veia un cuelgue mudo y yo veia un codigo que, leido,
+   tenia que avisar. Los dos teniamos razon.
+
+   Cada arranque toma un numero. El que ya no es el ultimo se calla: no escribe
+   en la pantalla ni la cambia de sitio. */
+var generacion = 0;
+function paso(txt, mia) {
+  if (mia !== undefined && mia !== generacion) return;
+  if (!$('#p-entrar').hidden) aviso('#eMsg', txt);
+}
 
 function arrancar(sesionYaTengo) {
-  paso('Verificando la sesión…');
+  var mia = ++generacion;
+  var vigente = function () { return mia === generacion; };
+  paso('Verificando la sesión…', mia);
   var paso0 = sesionYaTengo ? Promise.resolve(sesionYaTengo) : DATOS.auth.sesion();
   return paso0.then(function (ses) {
-    paso('Buscando tu cuenta…');
+    if (!vigente()) return;
+    paso('Buscando tu cuenta…', mia);
     // Si llega tarde y ya hay alguien entrando, no toca la pantalla.
     if (!ses) { if (!entrando) mostrar('entrar'); return; }
     S.sesion = ses;
     return DATOS.yo().then(function (u) {
+      if (!vigente()) return;
       if (!u) { mostrar('primera'); return; }
       S.yo = u;
-      paso('Cargando tus datos…');
-      return cargarTodo().then(function () { mostrar('app'); })
-        .catch(function (e) { entrando = false; aviso('#eMsg', e.message, 'bad'); throw e; });
+      paso('Cargando tus datos…', mia);
+      return cargarTodo(mia).then(function () { if (vigente()) mostrar('app'); })
+        .catch(function (e) {
+          if (!vigente()) return;
+          entrando = false; aviso('#eMsg', e.message, 'bad');
+        });
     });
   }).catch(function (e) {
+    if (!vigente()) return;
     mostrar('entrar');
     aviso('#eMsg', e.message, 'bad');
   });
 }
 
-function cargarTodo() {
+function cargarTodo(mia) {
   return Promise.all([
     DATOS.sucursales.listar(), DATOS.cargos.listar(),
     DATOS.trabajadores.listar(), DATOS.horarios.listar(),
