@@ -131,6 +131,41 @@ button:disabled { opacity:.5; cursor:default; }
 }
 .mas:hover { background:var(--verde-claro); color:var(--verde); border-color:var(--verde); }
 
+/* ---------- las tres vistas ---------- */
+.vistas { display:flex; gap:.15rem; background:var(--papel); padding:.15rem;
+          border-radius:8px; border:1px solid var(--borde); }
+.vistas .tab { padding:.3rem .7rem; font-size:.88rem; }
+.numsem { color:var(--gris); font-size:.78rem; font-weight:600;
+          background:var(--verde-claro); padding:.1rem .4rem; border-radius:99px; }
+
+/* Un día solo: ancho cómodo y centrado, no estirado a toda la pantalla — una
+   columna de 1400 px no se lee, se barre con la vista. */
+.malla.unadia { grid-template-columns:minmax(0, 34rem); justify-content:center; }
+
+/* El mes: una fila por semana, con su número a la izquierda. */
+.malla.mes { display:block; }
+.mescab { display:grid; grid-template-columns:repeat(7, 1fr); gap:.4rem;
+          margin:0 0 .3rem 2.2rem; }
+.mescab span { font-size:.75rem; color:var(--gris); text-transform:uppercase;
+               letter-spacing:.5px; padding-left:.2rem; }
+.mesfila { display:flex; align-items:stretch; gap:.4rem; margin-bottom:.4rem; }
+.mesfila > .numsem { align-self:flex-start; margin-top:.5rem; width:1.8rem; text-align:center; }
+.messem { display:grid; grid-template-columns:repeat(7, 1fr); gap:.4rem; flex:1; min-width:0; }
+.dia.chico { font-size:.82rem; }
+.dia.chico > header { padding:.25rem .45rem; }
+.dia.chico .cuerpo { padding:.3rem; gap:.3rem; }
+.dia.chico .nec > .cab { padding:.2rem .35rem; flex-wrap:wrap; }
+.dia.chico .nec .horas { font-size:.72rem; }
+.dia.chico .gente li { font-size:.78rem; padding:.15rem .3rem; }
+.dia.chico .mas { font-size:.75rem; padding:.2rem; }
+
+@media (max-width:860px) {
+  /* En pantalla angosta el mes no cabe en siete columnas sin volverse
+     ilegible: se cae a dos, peor como calendario pero legible como dato. */
+  .mescab { display:none; }
+  .messem { grid-template-columns:repeat(2, 1fr); }
+}
+
 /* ---------- listas ---------- */
 .columnas { display:grid; gap:1.25rem; grid-template-columns:repeat(auto-fit, minmax(19rem, 1fr)); align-items:start; }
 .lista { display:flex; flex-direction:column; gap:.4rem; }

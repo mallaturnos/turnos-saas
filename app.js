@@ -63,7 +63,7 @@ var esc = function (t) {
 var S = {
   sesion:null, yo:null, empresa:null,
   sucursales:[], cargos:[], trabajadores:[], horarios:[],
-  sucursal:null, lunes:null,
+  sucursal:null, lunes:null, vista:'semana', dia:null,
   necesidades:[], asignaciones:[], turnos:[],
   yoTrabajador:null,
 };
@@ -89,6 +89,21 @@ function masDias(texto, n) {
   d.setDate(d.getDate() + n);
   return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
 }
+/* Número de semana del año, ISO-8601: la semana 1 es la del primer jueves.
+   Copiado tal cual de la malla, donde ya está probado. No se reescribe algo que
+   funciona solo por tenerlo en otro archivo: se reescribe y se cuelan errores de
+   borde que ya estaban resueltos. */
+function semanaISO(fechaIso) {
+  var p = String(fechaIso).slice(0, 10).split('-').map(Number);
+  var x = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7) + 3);   // el jueves de esa semana
+  var ene4 = new Date(Date.UTC(x.getUTCFullYear(), 0, 4));
+  ene4.setUTCDate(ene4.getUTCDate() - ((ene4.getUTCDay() + 6) % 7) + 3);
+  return 1 + Math.round((x - ene4) / 604800000);
+}
+
+var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+             'septiembre','octubre','noviembre','diciembre'];
 var DIAS = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
 function nombreDia(texto) {
   var p = texto.split('-').map(Number);
@@ -317,6 +332,7 @@ function cargarTodo(mia) {
     $('#hQuien').textContent = S.yo.email;
     if (!S.sucursal) S.sucursal = (S.sucursales[0] || {}).id || null;
     if (!S.lunes) S.lunes = lunesDe(hoyTexto());
+    if (!S.dia) S.dia = hoyTexto();
     pintarSelectores();
     pintarEquipo(); pintarConfig();
     return recargarSemana();
@@ -329,7 +345,20 @@ function pintarSelectores() {
     return '<option value="' + s.id + '">' + esc(s.nombre) + '</option>';
   }).join('');
   if (S.sucursal) sel.value = S.sucursal;
-  $('#cSemana').textContent = diaMes(S.lunes) + ' — ' + diaMes(masDias(S.lunes, 6));
+  var c = $('#cSemana');
+  if (S.vista === 'dia') {
+    c.innerHTML = '<b>' + nombreDia(S.dia) + '</b> ' + diaMes(S.dia)
+                + ' <span class="numsem">Semana ' + semanaISO(S.dia) + '</span>';
+  } else if (S.vista === 'mes') {
+    var p = S.lunes.split('-').map(Number);
+    c.innerHTML = '<b>' + MESES[p[1] - 1] + '</b> ' + p[0];
+  } else {
+    c.innerHTML = diaMes(S.lunes) + ' — ' + diaMes(masDias(S.lunes, 6))
+                + ' <span class="numsem">Semana ' + semanaISO(S.lunes) + '</span>';
+  }
+  $$('#cVista button').forEach(function (b) {
+    b.setAttribute('aria-selected', String(b.dataset.v === S.vista));
+  });
 }
 
 function recargarSemana() {
@@ -341,7 +370,8 @@ function recargarSemana() {
     avisoPlan('Todavía no tienes cargos. Créalos en <b>Equipo</b>: sin cargos no se puede decir qué hace falta.');
   else avisoPlan(null);
 
-  var desde = S.lunes, hasta = masDias(S.lunes, 6);
+  var r = rangoVista();
+  var desde = r.desde, hasta = r.hasta;
   return Promise.all([
     DATOS.necesidades.listar(S.sucursal, desde, hasta),
     DATOS.asignaciones.listar(S.sucursal, desde, hasta),
@@ -350,6 +380,27 @@ function recargarSemana() {
     S.necesidades = r[0]; S.asignaciones = r[1]; S.turnos = r[2];
     pintarMalla();
   }).catch(function (e) { avisoPlan('No pude cargar la semana: ' + esc(e.message)); });
+}
+
+/* Qué trae la base según la vista. Un día, una semana o el mes entero — y el
+   mes se pide COMPLETO, incluidos los días de relleno del principio y el final,
+   porque si no, la primera y la última fila salen vacías sin motivo. */
+function rangoVista() {
+  if (S.vista === 'dia') return { desde: S.dia, hasta: S.dia };
+  if (S.vista === 'mes') {
+    var p = S.lunes.split('-').map(Number);
+    var primero = new Date(p[0], p[1] - 1, 1);
+    var ini = new Date(primero);
+    ini.setDate(1 - ((primero.getDay() + 6) % 7));
+    var fin = new Date(p[0], p[1], 0);                 // último día del mes
+    fin.setDate(fin.getDate() + (6 - ((fin.getDay() + 6) % 7)));
+    var t = function (d) {
+      return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'),
+              String(d.getDate()).padStart(2,'0')].join('-');
+    };
+    return { desde: t(ini), hasta: t(fin) };
+  }
+  return { desde: S.lunes, hasta: masDias(S.lunes, 6) };
 }
 
 function avisoPlan(html) {
@@ -361,29 +412,64 @@ function avisoPlan(html) {
 // LA MALLA
 // ====================================================================
 function pintarMalla() {
-  var hoy = hoyTexto();
-  var html = '';
-  for (var i = 0; i < 7; i++) {
-    var f = masDias(S.lunes, i);
-    var necs = S.necesidades.filter(function (n) { return n.fecha === f; });
-    // Las que no cuelgan de ninguna necesidad: se asignó a alguien sin que
-    // hubiera nada planificado. Van aparte y marcadas, no escondidas.
-    var sueltas = S.asignaciones.filter(function (a) { return a.fecha === f && !a.necesidad_id; });
+  if (S.vista === 'dia') return pintarDia();
+  if (S.vista === 'mes') return pintarMes();
+  pintarSemana();
+}
 
-    html += '<div class="dia' + (f === hoy ? ' hoy' : '') + '">'
-          + '<header><b>' + nombreDia(f) + '</b><span class="num">' + diaMes(f) + '</span></header>'
-          + '<div class="cuerpo">';
+/* La celda de un día es la MISMA en las tres vistas. Si se escribiera tres
+   veces, cada arreglo habría que hacerlo tres veces y una se olvidaría — que es
+   exactamente como se cuelan los defectos de «la mitad de los sitios». */
+function celdaDia(f, hoy, compacta) {
+  var necs = S.necesidades.filter(function (n) { return n.fecha === f; });
+  var sueltas = S.asignaciones.filter(function (a) { return a.fecha === f && !a.necesidad_id; });
+  var html = '<div class="dia' + (f === hoy ? ' hoy' : '') + (compacta ? ' chico' : '') + '">'
+    + '<header><b>' + (compacta ? f.split('-')[2] : nombreDia(f)) + '</b>'
+    + '<span class="num">' + (compacta ? '' : diaMes(f)) + '</span></header>'
+    + '<div class="cuerpo">';
+  necs.forEach(function (n) { html += pintarNecesidad(n); });
+  sueltas.forEach(function (a) { html += pintarSuelta(a); });
+  html += '<button class="mas" data-nueva="' + f + '">+ qué hace falta</button>';
+  if (!compacta) html += '<button class="mas" data-suelta="' + f + '">+ turno suelto</button>';
+  return html + '</div></div>';
+}
 
-    necs.forEach(function (n) { html += pintarNecesidad(n); });
-    sueltas.forEach(function (a) { html += pintarSuelta(a); });
-
-    html += '<button class="mas" data-nueva="' + f + '">+ qué hace falta</button>'
-          + '<button class="mas" data-suelta="' + f + '">+ turno suelto</button>'
-          + '</div></div>';
-  }
-  $('#malla').innerHTML = html;
+function pintarSemana() {
+  var hoy = hoyTexto(), html = '';
+  for (var i = 0; i < 7; i++) html += celdaDia(masDias(S.lunes, i), hoy, false);
+  var m = $('#malla');
+  m.className = 'malla';
+  m.innerHTML = html;
   $('#cEstado').textContent = resumenPublicar();
 }
+
+// Un solo día, ancho. Para el detalle fino de una jornada cargada.
+function pintarDia() {
+  var m = $('#malla');
+  m.className = 'malla unadia';
+  m.innerHTML = celdaDia(S.dia, hoyTexto(), false);
+  $('#cEstado').textContent = resumenPublicar();
+}
+
+/* El mes, con sus semanas numeradas a la izquierda. Las celdas van compactas:
+   en un mes no cabe el detalle, y pretender que quepa lo deja ilegible. Se ve
+   dónde falta gente y se entra al día para arreglarlo. */
+function pintarMes() {
+  var r = rangoVista(), hoy = hoyTexto(), f = r.desde, html = '';
+  html += '<div class="mescab">' + ['lunes','martes','miérc.','jueves','viernes','sábado','domingo']
+    .map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>';
+  while (f <= r.hasta) {
+    html += '<div class="mesfila"><span class="numsem" title="Semana del año">S'
+          + semanaISO(f) + '</span><div class="messem">';
+    for (var i = 0; i < 7; i++) { html += celdaDia(f, hoy, true); f = masDias(f, 1); }
+    html += '</div></div>';
+  }
+  var m = $('#malla');
+  m.className = 'malla mes';
+  m.innerHTML = html;
+  $('#cEstado').textContent = resumenPublicar();
+}
+
 
 function pintarNecesidad(n) {
   var mias = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; });
@@ -425,9 +511,29 @@ function pintarSuelta(a) {
 }
 
 // ---------- navegación ----------
-$('#btnAntes').addEventListener('click',    function () { S.lunes = masDias(S.lunes, -7); pintarSelectores(); recargarSemana(); });
-$('#btnDespues').addEventListener('click',  function () { S.lunes = masDias(S.lunes,  7); pintarSelectores(); recargarSemana(); });
-$('#btnHoy').addEventListener('click',      function () { S.lunes = lunesDe(hoyTexto()); pintarSelectores(); recargarSemana(); });
+// El paso del «anterior/siguiente» depende de la vista: un día, una semana o
+// un mes. Si siempre moviera una semana, en la vista Mes no pasaría nada
+// visible y parecería roto.
+function mover(n) {
+  if (S.vista === 'dia') { S.dia = masDias(S.dia, n); S.lunes = lunesDe(S.dia); }
+  else if (S.vista === 'mes') {
+    var p = S.lunes.split('-').map(Number);
+    var d = new Date(p[0], p[1] - 1 + n, 1);
+    S.lunes = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), '01'].join('-');
+  } else S.lunes = masDias(S.lunes, n * 7);
+  pintarSelectores(); recargarSemana();
+}
+$('#btnAntes').addEventListener('click',    function () { mover(-1); });
+$('#btnDespues').addEventListener('click',  function () { mover(1); });
+$('#btnHoy').addEventListener('click',      function () {
+  S.dia = hoyTexto(); S.lunes = lunesDe(S.dia); pintarSelectores(); recargarSemana();
+});
+$('#cVista').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button'); if (!b) return;
+  S.vista = b.dataset.v;
+  if (!S.dia) S.dia = hoyTexto();
+  pintarSelectores(); recargarSemana();
+});
 $('#cSucursal').addEventListener('change',  function () { S.sucursal = this.value; recargarSemana(); });
 
 $('#nav').addEventListener('click', function (ev) {
