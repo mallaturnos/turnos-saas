@@ -44,8 +44,8 @@
 <div id="lista"></div>
 <div id="fin"></div>
 
-<script src="supabase.js?v=8"></script>
-<script src="config.js?v=8"></script>
+<script src="supabase.js?v=9"></script>
+<script src="config.js?v=9"></script>
 <script>
 (function () {
   var lista = document.getElementById('lista');
@@ -117,6 +117,27 @@
                   + ((r.error && r.error.message) || 'sin error'));
           })
           .catch(function (e) { malas++; p5.mal('NO contesta: ' + e.message); });
+      })
+      .then(function () {
+        // Esto es lo unico que la aplicacion hace al arrancar y esta pagina no
+        // hacia. Si la app se cuelga y esta pagina no, la diferencia esta aqui.
+        var p6 = paso('Leer la sesión guardada');
+        if (typeof window.supabase === 'undefined') return;
+        var cli2 = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON, {
+          auth: { lock: function (n, e, fn) { return fn(); } },
+        });
+        var t3 = reloj();
+        return conTope(cli2.auth.getSession(), 15000)
+          .then(function () { p6.ok('Contestó en ' + Math.round(reloj() - t3) + ' ms.'); })
+          .catch(function (e) { malas++; p6.mal('SE CUELGA: ' + e.message); });
+      })
+      .then(function () {
+        var p7 = paso('El navegador deja guardar datos');
+        try {
+          window.localStorage.setItem('__p', '1');
+          window.localStorage.removeItem('__p');
+          p7.ok('Sí, se puede guardar.');
+        } catch (e) { malas++; p7.mal('BLOQUEADO: ' + e.message); }
       })
       .then(function () {
         var f = document.getElementById('fin');

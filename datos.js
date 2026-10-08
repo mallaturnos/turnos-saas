@@ -16,6 +16,27 @@
 
   var sb = null;
 
+  /* Un almacen que no puede fallar.
+
+     La biblioteca guarda la sesion en el navegador. Si el navegador lo tiene
+     bloqueado —modo restringido, bloqueo de datos de sitio, algunas
+     configuraciones de privacidad—, esas llamadas lanzan, y lanzando desde
+     dentro de la biblioteca el resultado es una promesa que no vuelve nunca:
+     la pantalla se queda esperando sin error.
+
+     Con esto, si el navegador no deja guardar, la sesion vive en memoria. Se
+     pierde al cerrar la pestaña —hay que volver a entrar—, que es infinitamente
+     mejor que no poder entrar. */
+  var enMemoria = {};
+  var almacen = {
+    getItem:    function (k) { try { return window.localStorage.getItem(k); }
+                               catch (e) { return (k in enMemoria) ? enMemoria[k] : null; } },
+    setItem:    function (k, v) { try { window.localStorage.setItem(k, v); }
+                                  catch (e) { enMemoria[k] = v; } },
+    removeItem: function (k) { try { window.localStorage.removeItem(k); }
+                               catch (e) { delete enMemoria[k]; } },
+  };
+
   function cliente() {
     if (sb) return sb;
     if (!window.CONFIG || window.CONFIG.SUPABASE_URL === 'PENDIENTE')
@@ -37,6 +58,7 @@
            Lo que se gana: que entrar funcione siempre. No es un intercambio
            dificil. */
         lock: function (nombre, espera, fn) { return fn(); },
+        storage: almacen,
       },
     });
     return sb;
