@@ -7,6 +7,22 @@
   --radio:10px;
 }
 * { box-sizing:border-box; }
+
+/* QUE «OCULTO» SIGNIFIQUE OCULTO.
+
+   El navegador oculta un elemento con `hidden` poniendole display:none, pero
+   CUALQUIER regla propia que diga `display` lo pisa. Mas abajo,
+   `.pantalla.centrada` dice display:grid, asi que la pantalla de entrada seguia
+   dibujandose aunque el codigo la diera por escondida — y como ocupa el alto
+   completo, tapaba la aplicacion, que estaba cargada justo debajo.
+
+   Esto estuvo desde la primera version. Pedro paso la tarde mirando un
+   formulario de entrada creyendo que la app no cargaba; si cargaba, pero fuera
+   de su vista. Y yo lo comprobaba preguntandole al codigo si el elemento estaba
+   oculto —decia que si— en vez de MIRAR la pantalla.
+
+   Medir no es mirar. */
+[hidden] { display: none !important; }
 html, body { height:100%; }
 body {
   margin:0; background:var(--papel); color:var(--tinta);
