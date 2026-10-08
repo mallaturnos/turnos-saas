@@ -44,8 +44,26 @@
 <div id="lista"></div>
 <div id="fin"></div>
 
-<script src="supabase.js?v=9"></script>
-<script src="config.js?v=9"></script>
+<!-- La prueba que faltaba. Las anteriores entran con una clave INVALIDA, y eso
+     solo demuestra que el servidor contesta. En un login que SI funciona la
+     biblioteca hace ademas otras cosas —guardar la sesion, arrancar el refresco
+     automatico, avisar a quien escuche—, y es ahi donde la app se cuelga.
+     Las credenciales se escriben aqui y no viajan a ninguna parte: este
+     repositorio es publico y no va a guardar la clave de nadie. -->
+<div class="p" style="border-left-color:#13343b; margin-top:18px">
+  <div class="t">🔑 Probar una entrada DE VERDAD</div>
+  <div class="d">Escribe un correo y clave que existan y aprieta el botón.</div>
+  <input id="u" placeholder="correo" style="width:100%;margin-top:8px;padding:8px;
+    border:1px solid #dfdcd5;border-radius:6px;font:inherit">
+  <input id="c" placeholder="clave" type="password" style="width:100%;margin-top:6px;padding:8px;
+    border:1px solid #dfdcd5;border-radius:6px;font:inherit">
+  <button id="b" style="margin-top:8px;padding:9px 16px;border:0;border-radius:6px;
+    background:#0f6b63;color:#fff;font:inherit;font-weight:700;cursor:pointer">Probar</button>
+  <div id="r" style="margin-top:10px;font-weight:700"></div>
+</div>
+
+<script src="supabase.js?v=10"></script>
+<script src="config.js?v=10"></script>
 <script>
 (function () {
   var lista = document.getElementById('lista');
@@ -157,6 +175,26 @@
   });
 
   correr();
+
+  document.getElementById('b').addEventListener('click', function () {
+    var r = document.getElementById('r');
+    var cfg = window.CONFIG || {};
+    r.style.color = '#6b7c82'; r.textContent = 'Probando…';
+    var cli = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON, {
+      auth: { lock: function (n, e, fn) { return fn(); } },
+    });
+    var t = reloj();
+    conTope(cli.auth.signInWithPassword({
+      email: document.getElementById('u').value.trim(),
+      password: document.getElementById('c').value,
+    }), 20000).then(function (res) {
+      var ms = Math.round(reloj() - t);
+      if (res.error) { r.style.color = '#9a2b2b'; r.textContent = '❌ ' + ms + ' ms · ' + res.error.message; }
+      else { r.style.color = '#0f6b63'; r.textContent = '✅ ENTRÓ en ' + ms + ' ms'; }
+    }).catch(function (e) {
+      r.style.color = '#9a2b2b'; r.textContent = '❌ SE COLGÓ · ' + e.message;
+    });
+  });
 })();
 </script>
 </body>
