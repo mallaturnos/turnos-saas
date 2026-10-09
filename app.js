@@ -668,26 +668,26 @@ function pintarDia() {
   }
   filas = filas.filter(function (f) { return f.suyas.length || (f.pide && f.pide.length); });
 
-  /* EL ORDEN DE LAS BARRAS DENTRO DE UN GRUPO ES FIJO: por hora de entrada, y
-     a igual hora por id.
+  /* EL ORDEN DE LAS BARRAS DENTRO DE UN GRUPO: POR IDENTIDAD, NO POR HORA.
 
-     Antes salían en el orden en que volvían de la base, que cambia al guardar:
-     el turno recién editado puede volver en otra posición. Entonces movías una
-     barra y al repintar **aparecía en otra línea**, como si se hubiera cambiado
-     de puesto con la de al lado. Pedro: «y beto pasó donde estaba ana».
+     Esto cambió dos veces y conviene que quede el porqué.
 
-     Con un orden que depende solo del dato, la línea en que cae una barra es
-     consecuencia de su hora y de nada más. Sigue pudiendo cambiar de línea si
-     cambias su hora —eso sí tiene sentido—, pero ya no por el orden de
-     escritura, que no significa nada para quien mira. */
-  var porHora = function (x, y) {
-    var a1 = a2h(x.hora_inicio), b1 = a2h(y.hora_inicio);
-    if (a1 !== b1) return a1 - b1;
-    return String(x.id) < String(y.id) ? -1 : 1;
-  };
+     Primero salían en el orden en que volvían de la base, que cambia al
+     guardar: movías una barra y al repintar aparecía en otra línea
+     (Pedro: «beto pasó donde estaba ana»). Lo ordené **por hora de entrada**,
+     que es determinista… y seguía saltando: si al arrastrar cruzas la hora de
+     la vecina, las dos se cambian de línea en medio del gesto
+     (Pedro: «ana y beto cambian de posicion con algunos movimientos»).
+
+     **Lo que el usuario tiene agarrado no se puede mover solo.** Por eso el
+     orden va por `id`: no significa nada, pero no cambia nunca — y aquí eso
+     vale más que la prolijidad, porque la hora ya se lee en el eje horizontal,
+     que es para lo que existe una línea de tiempo. La fila vertical no tiene
+     que contar la misma historia dos veces. */
+  var porId = function (x, y) { return String(x.id) < String(y.id) ? -1 : 1; };
   filas.forEach(function (f) {
-    f.suyas.sort(porHora);
-    if (f.pide) f.pide.sort(porHora);
+    f.suyas.sort(porId);
+    if (f.pide) f.pide.sort(porId);
   });
 
   // Si la franja es larga, las horas impares quedan como rayita para que los
