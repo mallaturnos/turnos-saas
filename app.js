@@ -447,7 +447,19 @@ function cargarTodo(mia) {
   });
 }
 
+/* En la vista Día, «por día» no existe como agrupación: se trata como por
+   cargo, que es lo que de hecho dibujaba.
+
+   Vive en su propia función porque hace falta ANTES de pintar los botones y
+   ANTES de pintar la malla. La primera versión la tenía solo dentro de
+   `pintarMalla`, que corre DESPUÉS: el botón quedaba oculto pero marcado como
+   elegido, y ninguno de los dos visibles aparecía seleccionado. */
+function agrupacionValida() {
+  if (S.vista === 'dia' && S.agrupar === 'dia') S.agrupar = 'cargo';
+}
+
 function pintarSelectores() {
+  agrupacionValida();
   var sel = $('#cSucursal');
   sel.innerHTML = S.sucursales.map(function (s) {
     return '<option value="' + s.id + '">' + esc(s.nombre) + '</option>';
@@ -467,7 +479,17 @@ function pintarSelectores() {
   $$('#cVista button').forEach(function (b) {
     b.setAttribute('aria-selected', String(b.dataset.v === S.vista));
   });
+  /* «Por día» NO se ofrece en la vista Día. Pedro: «en la vista día, por día
+     es igual a por cargo... ¿cuál es la diferencia?». Ninguna, y ese era el
+     problema: «por día» quiere decir «las filas son días», y en un solo día
+     eso no significa nada — caía en el mismo dibujo que Cargos.
+
+     Un botón que existe y no hace nada es peor que uno que falta: obliga a
+     apretarlo para descubrir que da igual. */
+  var soloUnDia = S.vista === 'dia';
   $$('#cAgrupar button').forEach(function (b) {
+    var porDia = b.dataset.g === 'dia';
+    b.hidden = porDia && soloUnDia;
     b.setAttribute('aria-selected', String(b.dataset.g === S.agrupar));
   });
 }
@@ -523,6 +545,7 @@ function avisoPlan(html) {
 // LA MALLA
 // ====================================================================
 function pintarMalla() {
+  agrupacionValida();
   // Agrupar por persona o por cargo da vuelta la tabla: las filas dejan de ser
   // días y pasan a ser gente o cargos. En la vista Mes no se ofrece: 31 columnas
   // no se leen, y fingir que sí es peor que no tenerlo.
