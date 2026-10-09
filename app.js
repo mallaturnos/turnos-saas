@@ -115,6 +115,19 @@ var hhmm = function (t) { return String(t || '').slice(0,5); };
 /* Horas de un tramo, descontando nada: si sale <= entra, cruza la medianoche.
    NO se calcula restando y ya: esa resta es la que da negativo en los turnos de
    noche y nadie lo ve hasta que alguien reclama su sueldo. */
+/* De «HH:MM» a horas decimales. VIVE AQUÍ, no dentro de `pintarDia`.
+
+   Estuvo anidada dentro de pintarDia y el arrastre la llamó desde fuera: una
+   función anidada no existe fuera, así que `soltarTurno` reventaba con un
+   ReferenceError **en silencio** —el error muere dentro del escuchador del
+   evento, sin alerta y sin cambio—. Desde afuera se veía como «arrastro y no
+   pasa nada», que es el peor sintoma posible: no dice dónde mirar.
+   Ver `memory/funcion-anidada-pantalla-vacia.md`. */
+function a2h(t) {
+  var p = hhmm(t).split(':').map(Number);
+  return p[0] + p[1] / 60;
+}
+
 function horasDe(entra, sale) {
   var a = entra.split(':').map(Number), b = sale.split(':').map(Number);
   var m = (b[0]*60 + b[1]) - (a[0]*60 + a[1]);
@@ -564,9 +577,7 @@ function pintarDia() {
 
   // La franja horaria sale de lo que hay ese día, no de un horario inventado:
   // un local que abre a las 20:00 no quiere ver diez columnas vacías de mañana.
-  var hs = [], a2h = function (t) {
-    var p = hhmm(t).split(':').map(Number); return p[0] + p[1] / 60;
-  };
+  var hs = [];
   delDia.concat(necsDia).forEach(function (x) {
     var i = a2h(x.hora_inicio), f = a2h(x.hora_fin);
     if (f <= i) f += 24;                     // cruza la medianoche
@@ -625,16 +636,16 @@ function pintarDia() {
   // Las filas siguen lo que esté elegido arriba: gente, cargos o lo planificado.
   var filas;
   if (S.agrupar === 'persona') {
-    filas = S.trabajadores.map(function (p) { return { nombre: p.nombre,
+    filas = S.trabajadores.map(function (p) { return { id: p.id, nombre: p.nombre,
       suyas: delDia.filter(function (x) { return x.trabajador_id === p.id; }) }; });
     /* LO PENDIENTE NO SE ESCONDE: su propia fila al final, como en la tabla
        girada. Sin esto, agrupar por persona hacía DESAPARECER los turnos sin
        dueño —no hay fila a la que pertenezcan— y el día se veía cubierto
        cuando no lo estaba. Es el mismo criterio que ya está en pintarGirada(). */
-    filas.push({ nombre: 'Sin asignar', suelto: true,
+    filas.push({ id: null, nombre: 'Sin asignar', suelto: true,
       suyas: delDia.filter(function (x) { return !x.trabajador_id; }) });
   } else {
-    filas = S.cargos.map(function (q) { return { nombre: q.nombre,
+    filas = S.cargos.map(function (q) { return { id: q.id, nombre: q.nombre,
       suyas: delDia.filter(function (x) { return x.cargo_id === q.id; }),
       pide: necsDia.filter(function (n) { return n.cargo_id === q.id; }) }; });
   }
@@ -724,7 +735,11 @@ function pintarDia() {
       + '</div>';
   }
 
-  html += '<div class="linea"><div class="lcab"><span class="lrot"></span>'
+  /* La franja viaja en el HTML: al soltar hace falta convertir una posición en
+     hora, y eso necesita `ini` y `fin`. Leerlos del DOM evita tener que
+     acordarse de pasarlos — y de que un día no coincidan con lo dibujado. */
+  html += '<div class="linea" data-ini="' + ini + '" data-fin="' + fin + '">'
+           + '<div class="lcab"><span class="lrot"></span>'
            + '<div class="lhoras">' + horas + '</div></div>';
 
   if (!filas.length) {
@@ -741,7 +756,8 @@ function pintarDia() {
   filas.forEach(function (f) {
     // Primero lo PEDIDO, de fondo: el trozo sin cubrir queda a la vista.
     if (f.pide && f.pide.length) {
-      html += '<div class="lfila"><span class="lrot">' + esc(f.nombre) + '</span><div class="lpista">';
+      html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
+            + '<span class="lrot">' + esc(f.nombre) + '</span><div class="lpista">';
       f.pide.forEach(function (n) {
         var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
         html += '<span class="lpide" style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
@@ -763,9 +779,10 @@ function pintarDia() {
       var rotulo = S.agrupar === 'persona' ? nombreCargo(x.cargo_id) : quien;
       // El nombre del grupo solo en la primera línea, si no hay fila de pedido.
       var rot = (!f.pide || !f.pide.length) && k === 0 ? esc(f.nombre) : '';
-      html += '<div class="lfila"><span class="lrot chico">' + rot + '</span><div class="lpista">'
+      html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
+            + '<span class="lrot chico">' + rot + '</span><div class="lpista">'
             + '<span class="lbarra ' + colorCargo(x.cargo_id) + (x.trabajador_id ? '' : ' sinnadie')
-            + '" data-asigid="' + x.id + '"'
+            + '" draggable="true" data-asigid="' + x.id + '"'
             + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
             + ' title="' + esc(quien) + ' · ' + esc(nombreCargo(x.cargo_id)) + ' · '
             + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
@@ -778,7 +795,139 @@ function pintarDia() {
   m.className = 'malla undia';
   pintarPie();
   m.innerHTML = html;
+  engancharArrastreDia(m);
   $('#cEstado').textContent = resumenPublicar();
+}
+
+/* ====================================================================
+   ARRASTRAR UNA BARRA EN LA VISTA DÍA
+
+   Pedro lo echó de menos (msg 5274): «las barras no se pueden arrastrar como
+   se hacía antes... recuerdas?». Se hacía, pero en la malla de Tamarama. Esta
+   app nunca lo tuvo. Allá ya se pagaron los errores y aquí se aprovechan:
+
+   · **UN SOLO ESCUCHADOR** en `#malla`, no uno por barra. Las filas se
+     repintan enteras en cada cambio, así que los escuchadores por barra
+     quedarían huérfanos al primer repintado. Por eso la función es
+     IDEMPOTENTE: se llama en cada pintado y solo engancha la primera vez.
+   · **Salto de 15 minutos.** Sin él, soltar da horas como 13:07 y la malla se
+     llena de minutos raros que nadie escribió a propósito.
+   · **Se conserva la duración**, no el fin: mover un turno de 4 horas lo deja
+     de 4 horas. Lo contrario convierte un arrastre en un estiramiento.
+   · **Cambiar de dueño se confirma.** Mover una barra a la fila de otro le
+     saca el turno a alguien; correrla de lado no. No es lo mismo y no puede
+     pedir lo mismo.
+
+   El gesto más útil es hacia y desde «Sin asignar»: así se reparte lo que está
+   pendiente, que es justo para lo que existe esa fila. */
+var SALTO = 0.25;   // 15 minutos
+
+function h2a(h) {
+  // Decimal a «HH:MM», dando la vuelta pasada la medianoche: una barra que se
+  // corre más allá de las 24 sigue siendo una hora del reloj, no la hora 25.
+  var t = ((h % 24) + 24) % 24;
+  var hh = Math.floor(t + 1e-9), mm = Math.round((t - hh) * 60);
+  if (mm === 60) { hh += 1; mm = 0; }
+  return String(hh % 24).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+}
+
+function engancharArrastreDia(caja) {
+  if (!caja || caja.dataset.arrastre) return;
+  caja.dataset.arrastre = '1';
+  var agarre = 0;   // dónde se tomó la barra, como fracción del ancho de la pista
+
+  caja.addEventListener('dragstart', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.lbarra[data-asigid]');
+    if (!b) { if (ev.preventDefault) ev.preventDefault(); return; }
+    var pista = b.closest('.lpista');
+    var r = pista.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    // Se guarda DÓNDE se agarró la barra. Sin esto la barra salta para que su
+    // inicio quede bajo el cursor, y se siente que uno no la está moviendo:
+    // la está tirando.
+    agarre = r.width ? (ev.clientX - rb.left) / r.width : 0;
+    ev.dataTransfer.setData('text/plain', b.dataset.asigid);
+    ev.dataTransfer.effectAllowed = 'move';
+    b.classList.add('llevando');
+  });
+
+  caja.addEventListener('dragend', function () {
+    caja.querySelectorAll('.llevando').forEach(function (x) { x.classList.remove('llevando'); });
+    caja.querySelectorAll('.encima').forEach(function (x) { x.classList.remove('encima'); });
+  });
+
+  caja.addEventListener('dragover', function (ev) {
+    var pista = ev.target.closest && ev.target.closest('.lpista');
+    if (!pista) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    if (!pista.classList.contains('encima')) {
+      caja.querySelectorAll('.encima').forEach(function (x) { x.classList.remove('encima'); });
+      pista.classList.add('encima');
+    }
+  });
+
+  caja.addEventListener('drop', function (ev) {
+    var pista = ev.target.closest && ev.target.closest('.lpista');
+    if (!pista) return;
+    ev.preventDefault();
+    pista.classList.remove('encima');
+    var id = ev.dataTransfer.getData('text/plain'); if (!id) return;
+    var linea = pista.closest('.linea');
+    var r = pista.getBoundingClientRect();
+    var h0 = Number(linea.dataset.ini), h1 = Number(linea.dataset.fin);
+    var hora = null;
+    if (r.width) {
+      var frac = (ev.clientX - r.left) / r.width - agarre;
+      hora = Math.round((h0 + frac * (h1 - h0)) / SALTO) * SALTO;
+    }
+    var fila = pista.closest('.lfila');
+    soltarTurno(id, fila ? (fila.dataset.fila || null) : null, hora);
+  });
+}
+
+function soltarTurno(id, filaId, horaNueva) {
+  var a = S.asignaciones.filter(function (x) { return x.id === id; })[0];
+  if (!a) return;
+
+  var dur = horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin));
+  var antes = a2h(a.hora_inicio);
+  var inicio = (horaNueva != null && Math.abs(horaNueva - antes) >= SALTO) ? horaNueva : antes;
+  if (inicio < 0) inicio = 0;
+  var mismaHora = Math.abs(inicio - antes) < 0.001;
+
+  var cambio = {};
+  if (S.agrupar === 'persona') {
+    if ((a.trabajador_id || null) !== (filaId || null)) cambio.trabajador_id = filaId || null;
+  } else if (filaId && a.cargo_id !== filaId) {
+    cambio.cargo_id = filaId;
+  }
+  // Nada cambió: no se escribe ni se ensucia el Deshacer con un paso vacío.
+  if (mismaHora && !Object.keys(cambio).length) return;
+
+  if (!mismaHora) {
+    cambio.hora_inicio = h2a(inicio);
+    cambio.hora_fin    = h2a(inicio + dur);
+  }
+
+  /* Quitarle el turno a alguien se pregunta; correrlo de lado no.
+     Es la regla que Pedro pidió en la malla y vale igual acá. */
+  if ('trabajador_id' in cambio && a.trabajador_id) {
+    var de = nombreTrab(a.trabajador_id);
+    var para = filaId ? nombreTrab(filaId) : 'Sin asignar';
+    if (!confirm('Este turno es de ' + de + '.\n\n¿Pasárselo a ' + para + '?')) return;
+  }
+
+  var copia = JSON.parse(JSON.stringify(a));
+  DATOS.asignaciones.guardar(id, cambio).then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', id, 'editar', copia,
+                 Object.assign({}, copia, cambio));
+    recordar('mover el turno', function () {
+      return DATOS.asignaciones.guardar(id, {
+        trabajador_id: copia.trabajador_id, cargo_id: copia.cargo_id,
+        hora_inicio: copia.hora_inicio, hora_fin: copia.hora_fin });
+    });
+    return recargarSemana();
+  }).catch(function (e) { alert('No se pudo mover: ' + e.message); });
 }
 
 /* El mes, con sus semanas numeradas a la izquierda. Las celdas van compactas:

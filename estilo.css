@@ -368,3 +368,11 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
                  border:1px dashed var(--borde); border-radius:5px; background:none;
                  color:var(--gris); font-size:.78rem; font-family:inherit; cursor:pointer; }
 .agregar-tramo:hover { background:var(--verde-claro); color:var(--tinta); }
+
+/* ---------- arrastrar una barra en el día ---------- */
+.lbarra[draggable="true"] { cursor:grab; }
+.lbarra.llevando { opacity:.45; cursor:grabbing; }
+/* La pista bajo el cursor se marca: sin eso no se sabe en qué fila va a caer,
+   y con filas de 24 px de alto errarle por una es facilísimo. */
+.lpista.encima { background:var(--verde-claro); border-radius:4px;
+                 outline:1px dashed var(--verde); outline-offset:-1px; }
