@@ -63,7 +63,7 @@ var esc = function (t) {
 var S = {
   sesion:null, yo:null, empresa:null,
   sucursales:[], cargos:[], trabajadores:[], horarios:[],
-  sucursal:null, lunes:null, vista:'semana', dia:null, agrupar:'dia',
+  sucursal:null, lunes:null, vista:'semana', dia:null, agrupar:'dia', cargoGraf:null,
   necesidades:[], asignaciones:[], turnos:[],
   yoTrabajador:null,
 };
@@ -597,7 +597,76 @@ function pintarDia() {
            + (muda ? '' : String(h % 24).padStart(2, '0')) + '</span>';
   }
 
-  var html = '<div class="linea"><div class="lcab"><span class="lrot"></span>'
+  /* EL GRÁFICO DE NECESIDAD POR HORA.
+
+     Una línea con lo que hace falta y barras con lo que hay puesto, hora por
+     hora. Es lo que Skello pone sobre la línea de tiempo, y resuelve algo que
+     las bandas no podían: la banda dice «hacen falta 3» para todo el tramo,
+     pero si una persona se va a las 13:00 el hueco cambia de tamaño a esa hora
+     y la banda sigue diciendo lo mismo.
+
+     LO PUESTO NO SE ESCRIBE: se cuenta de los turnos asignados. Lo único que se
+     teclea es la necesidad. Si se escribieran los dos, el día que no coincidan
+     habría que decidir cuál miente.
+
+     Y es de UN CARGO a la vez: mezclar todos en una línea no dice nada — que
+     falte un cocinero no es lo mismo que falte un cajero. */
+  if (!S.cargoGraf || !S.cargos.some(function (q) { return q.id === S.cargoGraf; }))
+    S.cargoGraf = (necsDia[0] || S.cargos[0] || {}).id || null;
+
+  var html = '';
+  if (S.cargoGraf) {
+    var cuenta = function (lista, h) {
+      return lista.filter(function (x) {
+        var i = a2h(x.hora_inicio), f = a2h(x.hora_fin); if (f <= i) f += 24;
+        return x.cargo_id === S.cargoGraf && i <= h && h < f;
+      });
+    };
+    var necH = [], pueH = [], tope = 1;
+    for (var h = ini; h < fin; h++) {
+      var n = cuenta(necsDia, h).reduce(function (t, x) { return t + x.personas_requeridas; }, 0);
+      var p = cuenta(delDia.filter(function (x) { return x.trabajador_id; }), h).length;
+      necH.push(n); pueH.push(p);
+      tope = Math.max(tope, n, p);
+    }
+    var alto = 92, y = function (v) { return alto - (v / tope) * (alto - 14); };
+    var anchoH = 100 / ancho, g = '';
+    for (var v = 0; v <= tope; v++) {
+      g += '<span class="guia" style="top:' + y(v) + 'px"></span>'
+         + '<span class="guian" style="top:' + (y(v) - 8) + 'px">' + v + '</span>';
+    }
+    necH.forEach(function (n, k) {
+      if (pueH[k]) g += '<span class="gb" style="left:' + (pct(ini + k) + anchoH * 0.1)
+        + '%;width:' + (anchoH * 0.8) + '%;top:' + y(pueH[k]) + 'px;height:'
+        + (alto - y(pueH[k])) + 'px"></span>';
+    });
+    var ant = null;
+    necH.forEach(function (n, k) {
+      g += '<span class="gl" style="left:' + pct(ini + k) + '%;width:' + anchoH
+         + '%;top:' + (y(n) - 1) + 'px"></span>';
+      if (ant !== null && ant !== n) {
+        var arr = Math.min(y(ant), y(n)), aba = Math.max(y(ant), y(n));
+        g += '<span class="glv" style="left:' + pct(ini + k) + '%;top:' + arr
+           + 'px;height:' + (aba - arr) + 'px"></span>';
+      }
+      ant = n;
+    });
+
+    html += '<div class="linea grafcaja">'
+      + '<div class="gtop"><select id="cCargoGraf">'
+      + S.cargos.map(function (q) {
+          return '<option value="' + q.id + '"' + (q.id === S.cargoGraf ? ' selected' : '') + '>'
+               + esc(q.nombre) + '</option>';
+        }).join('')
+      + '</select><span class="gley"><i><span class="mu"></span>hacen falta</i>'
+      + '<i><span class="mb"></span>hay puestos</i></span></div>'
+      + '<div class="gcaja"><span class="lrot"></span>'
+      + '<div class="graf" style="height:' + alto + 'px">' + g + '</div></div>'
+      + '<div class="lcab"><span class="lrot"></span><div class="lhoras">' + horas + '</div></div>'
+      + '</div>';
+  }
+
+  html += '<div class="linea"><div class="lcab"><span class="lrot"></span>'
            + '<div class="lhoras">' + horas + '</div></div>';
 
   if (!filas.length) {
@@ -807,6 +876,14 @@ $('#cAgrupar').addEventListener('click', function (ev) {
             + '—serían 31 columnas—, así que te dejé en <b>Semana</b>.');
   }
   pintarSelectores(); pintarMalla();
+});
+// El selector de cargo del gráfico se repinta con la malla, así que el oyente
+// va en el contenedor y no en el elemento: enganchar el de adentro lo deja
+// muerto en cuanto se vuelve a dibujar.
+$('#malla').addEventListener('change', function (ev) {
+  if (ev.target.id !== 'cCargoGraf') return;
+  S.cargoGraf = ev.target.value;
+  pintarMalla();
 });
 $('#cVista').addEventListener('click', function (ev) {
   var b = ev.target.closest('button'); if (!b) return;
