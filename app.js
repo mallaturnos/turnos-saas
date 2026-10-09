@@ -1502,7 +1502,10 @@ function tarjetaLocal(loc) {
                  + '<b>' + esc(h.nombre) + '</b>'
                  + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
                  + '<span class="espacio"></span>'
-                 + (compartido ? '<span class="chip">en todos</span>' : '')
+                 /* «en todos» no dice de que. Lo pregunto Pedro apenas lo vio
+                    (msg 5296) y tenia razon: una etiqueta que necesita que te
+                    expliquen que significa no esta etiquetando nada. */
+                 + (compartido ? '<span class="chip">todos los locales</span>' : '')
                  + '<button class="plano" data-borrart="' + h.id + '">Borrar</button></div>';
           }).join('') + '</div>'
         : '<p class="hint sin-tramos">Ninguno todavía. Son opcionales.</p>')
