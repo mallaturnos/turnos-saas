@@ -171,8 +171,27 @@
   }
 
   // ---------- catálogos ----------
+  /* ¿Está pegada la migración del horario del local?
+
+     Hace falta saberlo ANTES de guardar: si las columnas no existen y se
+     mandan igual, PostgREST rechaza el POST entero y dejaría de poder
+     guardarse un local — o sea, una migración sin pegar rompiendo la app, que
+     es justo lo que no puede pasar. Leer es seguro (`select=*` simplemente no
+     las trae); escribir no.
+
+     Se pregunta por las columnas, no por las filas: una empresa recién creada
+     no tiene locales todavía y mirar el primero no diría nada. */
+  var hayHorarioLocal = null;
+  function probarHorarioLocal() {
+    if (hayHorarioLocal !== null) return Promise.resolve(hayHorarioLocal);
+    return rest('sucursales?select=abre,cierra&limit=1', null, 'ver el horario del local')
+      .then(function () { hayHorarioLocal = true;  return true; })
+      .catch(function () { hayHorarioLocal = false; return false; });
+  }
+
   var sucursales = {
     listar: function () { return rest('sucursales?select=*&order=nombre', null, 'leer los locales'); },
+    hayHorario: probarHorarioLocal,
     crear:  function (e, d) { return crear('sucursales', Object.assign({ empresa_id: e }, d), 'crear el local'); },
     guardar:function (id, d) { return editar('sucursales', id, d, 'guardar el local'); },
   };

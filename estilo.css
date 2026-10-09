@@ -266,6 +266,38 @@ thead th.rot { z-index:3; background:#f0ede7; }
 table.girada td.hoy, table.girada th.hoy { background:var(--verde-claro); }
 table.girada tr.suelto th.rot { color:var(--gris); font-style:italic; }
 table.girada .gente { padding:0; }
+
+/* EL BLOQUE DE LA SEMANA (A1, como Skello): horario arriba, la otra cara del
+   turno abajo, y las horas en la esquina. El borde de color lo pone el CARGO,
+   igual que las barras del día, para que la semana se lea sin leer texto. */
+.gente.bloques { gap:.25rem; }
+.gente.bloques .blq { display:block; position:relative; padding:.3rem .4rem;
+  background:#fafaf8; border:1px solid var(--borde); border-left-width:3px;
+  border-radius:4px; cursor:pointer; }
+.gente.bloques .blq:hover { background:var(--verde-claro); }
+.gente.bloques .blq b { font-size:.8rem; font-weight:600; }
+.gente.bloques .blq .dur { position:absolute; top:.3rem; right:.4rem;
+  font-size:.7rem; color:var(--gris); }
+.gente.bloques .blq em { display:block; font-style:normal; font-size:.75rem;
+  color:var(--gris); margin-top:.05rem; padding-right:1.6rem; }
+/* El turno sin dueño se raya, como en la línea de tiempo del día: se ve que
+   existe y que le falta alguien, sin esconderlo. */
+.gente.bloques .blq.pendiente {
+  background:repeating-linear-gradient(45deg,#fafaf8,#fafaf8 5px,#ebe6dc 5px,#ebe6dc 10px); }
+.gente.bloques .blq.pendiente em { font-style:italic; }
+/* El punto de publicado/borrador va DENTRO del bloque, no como ::before de la
+   lista: ahí se colaba delante del horario y partía la línea.
+   HAY QUE ANULAR LA REGLA VIEJA: el bloque sigue siendo un <li> dentro de
+   .gente, así que `.gente li.borrador::before` lo seguía alcanzando y salían
+   DOS marcas, una a cada lado del horario. No se vio en el texto del DOM
+   —innerText no trae los pseudo-elementos—, se vio MIRANDO la captura. */
+.gente.bloques .blq::before { content:none; }
+.gente.bloques .blq.publicado b::after { content:" ●"; color:var(--verde); font-size:.55rem; }
+.gente.bloques .blq.borrador  b::after { content:" ○"; color:var(--gris);  font-size:.55rem; }
+.gente.bloques .blq.c1 { border-left-color:#0f6b63; }
+.gente.bloques .blq.c2 { border-left-color:#8a6d2f; }
+.gente.bloques .blq.c3 { border-left-color:#3a5a86; }
+.gente.bloques .blq.c4 { border-left-color:#8a3f3f; }
 table.girada .nada { color:#cfcabd; }
 table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { border-bottom:0; }
 
@@ -295,3 +327,12 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
   .barra { padding:.5rem .6rem; }
   .semana { min-width:8rem; font-size:.9rem; }
 }
+
+
+/* ---------- propiedades del establecimiento ---------- */
+.caja-est { background:var(--blanco); border:1px solid var(--borde);
+            border-radius:var(--radio); padding:.8rem 1rem 1rem; margin-bottom:1.25rem; }
+.caja-est .controles { margin-bottom:.5rem; }
+.caja-est .controles .sub { color:var(--gris); font-size:.85rem; margin-left:.5rem; }
+.caja-est .fldrow { display:flex; gap:1rem; flex-wrap:wrap; }
+.caja-est .fldrow > * { flex:1 1 11rem; }

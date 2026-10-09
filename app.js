@@ -365,6 +365,14 @@ function cargarTodo(mia) {
     DATOS.trabajadores.listar(), DATOS.horarios.listar(),
   ]).then(function (r) {
     S.sucursales = r[0]; S.cargos = r[1]; S.trabajadores = r[2]; S.horarios = r[3];
+    // Se pregunta una sola vez y no se bloquea el arranque con esto: si la
+    // respuesta llega tarde, la app ya esta pintada y solo cambia que la ficha
+    // del local muestre los campos o el aviso de la migracion pendiente.
+    if (DATOS.sucursales.hayHorario) {
+      DATOS.sucursales.hayHorario().then(function (hay) {
+        if (S.hayHorarioLocal !== hay) { S.hayHorarioLocal = hay; pintarConfig(); }
+      });
+    }
     S.yoTrabajador = S.trabajadores.filter(function (p) { return p.usuario_id === S.yo.id; })[0] || null;
     $('#hEmpresa').textContent = 'Turnos';
     $('#hQuien').textContent = S.yo.email;
@@ -456,9 +464,16 @@ function pintarMalla() {
   // Agrupar por persona o por cargo da vuelta la tabla: las filas dejan de ser
   // días y pasan a ser gente o cargos. En la vista Mes no se ofrece: 31 columnas
   // no se leen, y fingir que sí es peor que no tenerlo.
-  if (S.agrupar !== 'dia' && S.vista !== 'mes') return pintarGirada();
+  //
+  // EL DÍA SIEMPRE ES LÍNEA DE TIEMPO, se agrupe como se agrupe (09-10).
+  // Antes esta función preguntaba primero por la agrupación, así que «Personas»
+  // y «Cargos» en la vista Día caían en la tabla de fichas y la rama por persona
+  // de pintarDia() —escrita desde el principio— no se ejecutaba nunca.
+  // Verificado contra las capturas de Skello: su regla de horas vive solo en la
+  // vista Día, y ahí las solapas Employés|Postes siguen mostrando barras.
   if (S.vista === 'dia') return pintarDia();
   if (S.vista === 'mes') return pintarMes();
+  if (S.agrupar !== 'dia') return pintarGirada();
   pintarSemana();
 }
 
@@ -566,8 +581,35 @@ function pintarDia() {
      Y un mínimo de diez horas, porque una franja de tres no se lee.
      Si un turno cruza la medianoche, la franja se estira hasta donde termine:
      ese turno existe y tiene que verse entero, no cortado en el borde. */
-  var ini = hs.length ? Math.max(0, Math.floor(Math.min.apply(null, hs)) - 2) : 8;
-  var fin = hs.length ? Math.ceil(Math.max.apply(null, hs)) + 2 : 20;
+  /* EL MARCO DEL DÍA: primero el horario del local, si está puesto.
+
+     Deducir la franja de los turnos tiene un problema que solo se ve
+     comparando dos días: cada día se dibuja a su propia escala, así que un día
+     con un turno de 09 a 13 se ve IGUAL DE LLENO que uno de 08 a 23. Con el
+     horario del local, todos los días del mismo local se miden con la misma
+     vara y recién ahí «lleno» y «vacío» quieren decir algo.
+
+     Si no está puesto —o falta la migración— se sigue deduciendo, igual que
+     antes. Esto no puede romperse por un dato que nadie escribió todavía. */
+  var loc = S.sucursales.filter(function (x) { return x.id === S.sucursal; })[0] || {};
+  var ini, fin;
+  if (loc.abre && loc.cierra) {
+    ini = Math.floor(a2h(loc.abre));
+    fin = Math.ceil(a2h(loc.cierra));
+    if (fin <= ini) fin += 24;              // el local cierra de madrugada
+    /* Un turno fuera del horario del local NO se recorta: existe y tiene que
+       verse entero. El horario es el marco de referencia, no una tijera —si
+       alguien quedó anotado a las 06:00 en un local que abre a las 08:00, eso
+       es justo lo que hay que poder ver. */
+    if (hs.length) {
+      ini = Math.min(ini, Math.floor(Math.min.apply(null, hs)));
+      fin = Math.max(fin, Math.ceil(Math.max.apply(null, hs)));
+    }
+    ini = Math.max(0, ini);
+  } else {
+    ini = hs.length ? Math.max(0, Math.floor(Math.min.apply(null, hs)) - 2) : 8;
+    fin = hs.length ? Math.ceil(Math.max.apply(null, hs)) + 2 : 20;
+  }
   if (fin - ini < 10) {
     ini = Math.max(0, ini - Math.floor((10 - (fin - ini)) / 2));
     fin = ini + 10;
@@ -580,6 +622,12 @@ function pintarDia() {
   if (S.agrupar === 'persona') {
     filas = S.trabajadores.map(function (p) { return { nombre: p.nombre,
       suyas: delDia.filter(function (x) { return x.trabajador_id === p.id; }) }; });
+    /* LO PENDIENTE NO SE ESCONDE: su propia fila al final, como en la tabla
+       girada. Sin esto, agrupar por persona hacía DESAPARECER los turnos sin
+       dueño —no hay fila a la que pertenezcan— y el día se veía cubierto
+       cuando no lo estaba. Es el mismo criterio que ya está en pintarGirada(). */
+    filas.push({ nombre: 'Sin asignar', suelto: true,
+      suyas: delDia.filter(function (x) { return !x.trabajador_id; }) });
   } else {
     filas = S.cargos.map(function (q) { return { nombre: q.nombre,
       suyas: delDia.filter(function (x) { return x.cargo_id === q.id; }),
@@ -779,6 +827,37 @@ function pintarSuelta(a) {
     + '<ul class="gente">' + pintarAsignacion(a) + '</ul></div>';
 }
 
+/* EL BLOQUE DE LA SEMANA, como lo arma Skello (opción A1, elegida por Pedro
+   el 09-10 tras ver las dos láminas).
+
+   Horario arriba, la otra cara del turno abajo, y las HORAS en la esquina.
+   Verificado en sus 29 capturas: «El bloque creado muestra horario arriba,
+   puesto abajo y las horas en la esquina».
+
+   La cara que va abajo depende de cómo esté agrupado, y es lo mismo que hacen
+   ellos: si las filas son personas, cada bloque dice su PUESTO —el nombre ya
+   está en la fila y repetirlo no informa—; si las filas son cargos, dice QUIÉN.
+
+   Se descartó A2 (una barrita proporcional dentro del bloque) porque necesita
+   un marco común contra el cual medir, y ese marco es la jornada del local, que
+   todavía no existe: hoy la franja se deduce de los turnos que haya. Con un
+   marco sacado del propio día, un día flojo se dibuja igual de lleno que uno
+   cargado y la barrita miente. Queda anotado para cuando esa jornada exista. */
+function pintarBloqueSemana(a, abajo) {
+  var publicado = S.turnos.some(function (t) {
+    return t.asignacion_id === a.id && t.estado === 'publicado';
+  });
+  var sinDueno = !a.trabajador_id;
+  var pie = abajo === 'cargo' ? nombreCargo(a.cargo_id)
+          : (sinDueno ? 'sin asignar' : nombreTrab(a.trabajador_id));
+  return '<li class="blq ' + colorCargo(a.cargo_id)
+       + (sinDueno ? ' pendiente' : (publicado ? ' publicado' : ' borrador'))
+       + '" data-asigid="' + a.id + '">'
+       + '<b>' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</b>'
+       + '<span class="dur">' + numero(horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin))) + 'h</span>'
+       + '<em>' + esc(pie) + '</em></li>';
+}
+
 /* LA MALLA GIRADA: filas de gente (o de cargos) y columnas de días.
 
    Esto es lo que Skello llama «Employés | Postes», y aquí sale casi gratis por
@@ -818,9 +897,14 @@ function pintarGirada() {
       var suyas = S.asignaciones.filter(function (a) {
         return a.fecha === f && deQuien(a) === fila.id;
       });
+      // La cara que NO es la fila: filas de personas → el puesto; filas de
+      // cargos → quién lo hace.
+      var abajo = S.agrupar === 'persona' ? 'cargo' : 'persona';
       html += '<td' + (f === hoy ? ' class="hoy"' : '') + '>'
         + (suyas.length
-            ? '<ul class="gente">' + suyas.map(pintarAsignacion).join('') + '</ul>'
+            ? '<ul class="gente bloques">'
+              + suyas.map(function (a) { return pintarBloqueSemana(a, abajo); }).join('')
+              + '</ul>'
             : '<span class="nada">·</span>')
         + '</td>';
     });
@@ -896,7 +980,14 @@ $('#cVista').addEventListener('click', function (ev) {
   if (!S.dia) S.dia = hoyTexto();
   pintarSelectores(); recargarSemana();
 });
-$('#cSucursal').addEventListener('change',  function () { S.sucursal = this.value; recargarSemana(); });
+$('#cSucursal').addEventListener('change',  function () {
+  S.sucursal = this.value;
+  // La sección Establecimiento muestra las propiedades del local ELEGIDO: si no
+  // se repinta aquí, al cambiar de local seguiría editando el anterior y el
+  // Guardar escribiría en el equivocado sin que nada lo delate.
+  pintarEstablecimiento();
+  recargarSemana();
+});
 
 $('#nav').addEventListener('click', function (ev) {
   var b = ev.target.closest('.tab'); if (!b) return;
@@ -1211,7 +1302,12 @@ function abrirFicha(tipo, dato) {
            + campo('text', 'fZona', 'Zona horaria', dato ? dato.zona_horaria : 'America/Santiago')
            + '<p class="hint">El nombre de la zona, no la diferencia de horas: así el cambio de '
            + 'hora se arregla solo. Chile tiene dos — <code>America/Santiago</code> y '
-           + '<code>America/Punta_Arenas</code>.</p>';
+           + '<code>America/Punta_Arenas</code>.</p>'
+           /* El horario del local NO se edita aquí: vive en su propia sección
+              «Establecimiento», como el Établissement de Skello (msg 5255).
+              Tenerlo en los dos lados seria pedir que algún dia discrepen. */
+           + '<p class="hint">El horario del local se edita en <b>Establecimiento</b>, '
+           + 'arriba en esta misma pantalla.</p>';
   } else {
     $('#fTit').textContent = dato ? 'Horario' : 'Nuevo horario';
     campos = campo('text', 'fNombre', 'Nombre', dato ? dato.nombre : '')
@@ -1251,6 +1347,7 @@ $('#fGuardar').addEventListener('click', function () {
     p = d ? DATOS.cargos.guardar(d.id, { nombre: nombre }) : DATOS.cargos.crear(emp, { nombre: nombre });
   } else if (t === 'sucursal') {
     var s = { nombre: nombre, zona_horaria: ($('#fZona').value || 'America/Santiago').trim() };
+
     p = d ? DATOS.sucursales.guardar(d.id, s) : DATOS.sucursales.crear(emp, s);
   } else if (t === 'horario') {
     var h = { nombre: nombre, hora_inicio: $('#fEntra').value, hora_fin: $('#fSale').value };
@@ -1298,7 +1395,62 @@ function pintarEquipo() {
     : '<p class="vacio">Sin cargos no se puede decir qué hace falta. Crea el primero.</p>';
 }
 
+/* PROPIEDADES DEL ESTABLECIMIENTO.
+
+   Skello tiene «Établissement» como una entrada propia del menú de
+   configuración, y Pedro la pidió igual (msg 5255) tras ver el horario metido
+   dentro del diálogo del local. Tiene razón: un horario escondido en una ficha
+   que hay que abrir no se encuentra, y es un dato que se mira seguido.
+
+   Edita el local ELEGIDO ARRIBA, no «el local» en abstracto — en Skello
+   primero se elige establecimiento y después se ven sus propiedades. */
+function pintarEstablecimiento() {
+  var caja = $('#establecimiento');
+  if (!caja) return;
+  var loc = S.sucursales.filter(function (x) { return x.id === S.sucursal; })[0];
+  if (!loc) {
+    caja.innerHTML = '<h2>Establecimiento</h2>'
+      + '<p class="vacio">Crea tu primer local abajo para poder configurarlo.</p>';
+    return;
+  }
+  var falta = S.hayHorarioLocal === false;
+  caja.innerHTML = '<div class="controles"><h2>Establecimiento</h2>'
+    + '<span class="sub">' + esc(loc.nombre) + '</span><span class="espacio"></span>'
+    + '<button class="primario" id="btnGuardarEst"' + (falta ? ' disabled' : '') + '>Guardar</button></div>'
+    + '<div class="fldrow">'
+      + campo('text', 'eZona', 'Zona horaria', loc.zona_horaria || 'America/Santiago')
+      + campo('time', 'eAbre',   'Abre',   loc.abre   ? hhmm(loc.abre)   : '')
+      + campo('time', 'eCierra', 'Cierra', loc.cierra ? hhmm(loc.cierra) : '')
+    + '</div>'
+    + (falta
+        ? '<p class="hint">⚠️ El horario todavía no se puede guardar: falta pegar '
+          + '<code>arreglo-horario-local.sql</code> en Supabase. Mientras tanto la franja '
+          + 'del día se deduce de los turnos, como hasta ahora.</p>'
+        : '<p class="hint"><b>Abre y cierra</b> son el marco con el que se dibuja el día. '
+          + 'En blanco, la franja se deduce de los turnos. Si cierras de madrugada pon la '
+          + 'hora igual: <code>20:00</code> a <code>04:00</code> se entiende. '
+          + 'Un turno fuera del horario <b>no se recorta</b>.</p>');
+}
+
+document.addEventListener('click', function (ev) {
+  if (ev.target.id !== 'btnGuardarEst') return;
+  var loc = S.sucursales.filter(function (x) { return x.id === S.sucursal; })[0];
+  if (!loc) return;
+  var d = { zona_horaria: ($('#eZona').value || 'America/Santiago').trim() };
+  // Mismo cuidado que en el diálogo: sin las columnas, no se mandan.
+  if (S.hayHorarioLocal) {
+    d.abre   = $('#eAbre').value   || null;
+    d.cierra = $('#eCierra').value || null;
+  }
+  ev.target.disabled = true;
+  DATOS.sucursales.guardar(loc.id, d)
+    .then(cargarTodo)
+    .catch(function (e) { alert('No se pudo guardar: ' + e.message); })
+    .then(function () { var b = $('#btnGuardarEst'); if (b) b.disabled = false; });
+});
+
 function pintarConfig() {
+  pintarEstablecimiento();
   $('#listaSucursales').innerHTML = S.sucursales.length
     ? S.sucursales.map(function (s) {
         return '<div class="item" data-tipo="sucursal" data-id="' + s.id + '"><b>' + esc(s.nombre) + '</b>'

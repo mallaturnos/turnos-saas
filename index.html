@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v34</span></p>
+      <span style="float:right;opacity:.55" id="ver">v38</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -61,7 +61,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v34</span>
+    <span class="hint" id="ver2" title="Versión publicada">v38</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -124,6 +124,12 @@
 
   <!-- CONFIGURACION -->
   <section id="t-config" class="panel" hidden>
+    <!-- PROPIEDADES DEL ESTABLECIMIENTO, como el «Établissement» de Skello:
+         una seccion propia del menu de configuracion, no un campo escondido
+         dentro del dialogo del local. Pedro lo pidio asi (msg 5255).
+         Es del local ELEGIDO ARRIBA: cambiar de local cambia lo que se edita
+         aqui, igual que en Skello, donde primero eliges establecimiento. -->
+    <div id="establecimiento" class="caja-est"></div>
     <div class="columnas">
       <div>
         <div class="controles">
@@ -131,6 +137,8 @@
           <button class="primario" id="btnSucursal">Agregar</button>
         </div>
         <div id="listaSucursales" class="lista"></div>
+        <p class="hint sangria">Aqui se crean y se renombran. Lo demas de cada
+        local se edita arriba, en <b>Establecimiento</b>.</p>
       </div>
       <div>
         <div class="controles">
