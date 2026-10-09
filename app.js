@@ -122,6 +122,15 @@ function horasDe(entra, sale) {
   return m / 60;
 }
 
+/* El color sale del CARGO, no del turno.
+
+   Así dos turnos del mismo cargo a horas distintas se ven del mismo color, y la
+   semana se lee de un vistazo sin leer texto. El número ya estaba guardado en el
+   catálogo desde el primer día; solo faltaba usarlo. */
+var colorCargo = function (id) {
+  var q = S.cargos.filter(function (x) { return x.id === id; })[0];
+  return 'c' + (((q && q.color) || 1) % 4 || 4);
+};
 var nombreCargo = function (id) {
   var q = S.cargos.filter(function (x) { return x.id === id; })[0];
   return q ? q.nombre : '—';
@@ -130,6 +139,35 @@ var nombreTrab = function (id) {
   var p = S.trabajadores.filter(function (x) { return x.id === id; })[0];
   return p ? p.nombre : '—';
 };
+
+/* ---------- DESHACER ----------
+
+   Guarda cómo revertir las últimas diez cosas que se hicieron. Cada acción
+   apunta su inversa en el momento de hacerla, que es cuando se sabe: después
+   habría que adivinar qué había antes.
+
+   DOS LÍMITES, dichos y no escondidos:
+   · Deshacer un BORRADO vuelve a crear la fila, pero con un identificador
+     nuevo. Para la persona es lo mismo —vuelve su turno— pero no es
+     literalmente la fila de antes.
+   · No deshace lo que hizo otra persona en otro computador. Es la historia de
+     ESTA pantalla, no de la base.
+
+   Si alguna vez se necesita deshacer de verdad, con varias personas a la vez,
+   eso se construye en la base con la tabla `eventos` que ya se está grabando.
+   Esto es el arreglo barato que sirve para el 95 % de los casos. */
+var hist = [];
+function recordar(texto, deshacer) {
+  hist.push({ texto: texto, deshacer: deshacer });
+  if (hist.length > 10) hist.shift();
+  pintarDeshacer();
+}
+function pintarDeshacer() {
+  var b = $('#btnDeshacer'); if (!b) return;
+  var u = hist[hist.length - 1];
+  b.disabled = !u;
+  b.title = u ? 'Deshacer: ' + u.texto : 'No hay nada que deshacer';
+}
 
 function aviso(sel, texto, clase) {
   // Un mensaje de error para el reloj: si no, lo borraria al segundo siguiente.
@@ -447,7 +485,42 @@ function pintarSemana() {
   var m = $('#malla');
   m.className = 'malla';
   m.innerHTML = html;
+  pintarPie();
   $('#cEstado').textContent = resumenPublicar();
+}
+
+/* Las horas que llevas puestas, por día y en total.
+
+   Skello la tiene al pie de la malla («Heures travaillées») y es de las cosas
+   que más se usan sin darse cuenta: mientras repartes gente, ves cuántas horas
+   estás comprometiendo. Las horas son plata, y verlas DESPUÉS, en un informe,
+   llega tarde para corregir.
+
+   Se cuenta solo lo que tiene persona: un turno pendiente no son horas de
+   nadie todavía. */
+function horasDeDia(f) {
+  return S.asignaciones.reduce(function (t, a) {
+    if (a.fecha !== f || !a.trabajador_id) return t;
+    return t + horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin));
+  }, 0);
+}
+function numero(h) {
+  return (Math.round(h * 10) / 10).toString().replace('.', ',');
+}
+function pintarPie() {
+  var pie = $('#pieHoras');
+  if (!pie) return;
+  if (S.vista !== 'semana') { pie.hidden = true; return; }
+  var total = 0, celdas = '';
+  for (var i = 0; i < 7; i++) {
+    var f = masDias(S.lunes, i), h = horasDeDia(f);
+    total += h;
+    celdas += '<span' + (h ? '' : ' class="cero"') + '><b>' + nombreDia(f).slice(0, 3) + '</b>'
+            + (h ? numero(h) + ' h' : '—') + '</span>';
+  }
+  pie.hidden = false;
+  pie.innerHTML = '<span class="prot">Horas repartidas</span>' + celdas
+                + '<span class="ptot"><b>Semana</b>' + numero(total) + ' h</span>';
 }
 
 /* EL DÍA ES UNA LÍNEA DE TIEMPO, no una lista.
@@ -556,7 +629,7 @@ function pintarDia() {
       // El nombre del grupo solo en la primera línea, si no hay fila de pedido.
       var rot = (!f.pide || !f.pide.length) && k === 0 ? esc(f.nombre) : '';
       html += '<div class="lfila"><span class="lrot chico">' + rot + '</span><div class="lpista">'
-            + '<span class="lbarra' + (x.trabajador_id ? '' : ' sinnadie')
+            + '<span class="lbarra ' + colorCargo(x.cargo_id) + (x.trabajador_id ? '' : ' sinnadie')
             + '" data-asigid="' + x.id + '"'
             + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
             + ' title="' + esc(quien) + ' · ' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
@@ -567,6 +640,7 @@ function pintarDia() {
 
   html += '</div>' + celdaDia(S.dia, hoyTexto(), false);
   m.className = 'malla undia';
+  pintarPie();
   m.innerHTML = html;
   $('#cEstado').textContent = resumenPublicar();
 }
@@ -586,6 +660,7 @@ function pintarMes() {
   }
   var m = $('#malla');
   m.className = 'malla mes';
+  pintarPie();
   m.innerHTML = html;
   $('#cEstado').textContent = resumenPublicar();
 }
@@ -599,7 +674,7 @@ function pintarNecesidad(n) {
   var texto = falta === 0 ? 'Completo'
             : (falta > 0 ? 'Falta ' + falta : 'Sobra ' + (-falta));
 
-  return '<div class="nec">'
+  return '<div class="nec ' + colorCargo(n.cargo_id) + '">'
     + '<div class="cab" data-nec="' + n.id + '">'
       + '<span class="cargo">' + esc(nombreCargo(n.cargo_id)) + '</span>'
       + '<span class="horas">' + hhmm(n.hora_inicio) + '–' + hhmm(n.hora_fin) + '</span>'
@@ -623,7 +698,7 @@ function pintarAsignacion(a) {
 }
 
 function pintarSuelta(a) {
-  return '<div class="nec suelta">'
+  return '<div class="nec suelta ' + colorCargo(a.cargo_id) + '">'
     + '<div class="cab"><span class="cargo">' + esc(nombreCargo(a.cargo_id)) + '</span>'
     + '<span class="horas">' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</span>'
     + '<span class="espacio"></span><span class="cobertura cob-falta">sin planificar</span></div>'
@@ -681,6 +756,7 @@ function pintarGirada() {
   var m = $('#malla');
   m.className = 'malla girada';
   m.innerHTML = html + '</tbody></table>';
+  pintarPie();
   $('#cEstado').textContent = resumenPublicar();
 }
 
@@ -699,6 +775,19 @@ function mover(n) {
 }
 $('#btnAntes').addEventListener('click',    function () { mover(-1); });
 $('#btnDespues').addEventListener('click',  function () { mover(1); });
+$('#btnDeshacer').addEventListener('click', function () {
+  var u = hist.pop(); if (!u) return;
+  var b = this; b.disabled = true;
+  pintarDeshacer();
+  Promise.resolve().then(u.deshacer).then(function () {
+    return recargarSemana();
+  }).catch(function (e) {
+    // Si no se pudo deshacer, se devuelve a la pila: perder la posibilidad de
+    // intentarlo otra vez sería peor que el fallo.
+    hist.push(u); pintarDeshacer();
+    alert('No pude deshacer «' + u.texto + '»: ' + e.message);
+  }).then(function () { pintarDeshacer(); });
+});
 $('#btnHoy').addEventListener('click',      function () {
   S.dia = hoyTexto(); S.lunes = lunesDe(S.dia); pintarSelectores(); recargarSemana();
 });
@@ -805,8 +894,17 @@ $('#nGuardar').addEventListener('click', function () {
   if (!d.fecha || !d.hora_inicio || !d.hora_fin) return aviso('#nMsg', 'Faltan el día y las horas.', 'bad');
   aviso('#nMsg', 'Guardando…');
   var p = necActual ? DATOS.necesidades.guardar(necActual.id, d) : DATOS.necesidades.crear(d);
+  var antes = necActual && JSON.parse(JSON.stringify(necActual));
   p.then(function (fila) {
     DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', fila.id, necActual ? 'editar' : 'crear', necActual, fila);
+    if (antes) recordar('el cambio en ' + nombreCargo(antes.cargo_id), function () {
+      return DATOS.necesidades.guardar(antes.id, {
+        fecha: antes.fecha, cargo_id: antes.cargo_id, hora_inicio: antes.hora_inicio,
+        hora_fin: antes.hora_fin, personas_requeridas: antes.personas_requeridas });
+    });
+    else recordar('crear ' + nombreCargo(fila.cargo_id), function () {
+      return DATOS.necesidades.borrar(fila.id);
+    });
     $('#dlgNec').close(); return recargarSemana();
   }).catch(function (e) { aviso('#nMsg', e.message, 'bad'); });
 });
@@ -821,8 +919,15 @@ $('#nBorrar').addEventListener('click', function () {
       + 'esas asignaciones quedan como «sin planificar», no se borran. ¿Sigo?'
     : '¿Borrar lo que hace falta ese día?';
   if (!confirm(m)) return;
+  var copia = JSON.parse(JSON.stringify(necActual));
   DATOS.necesidades.borrar(necActual.id).then(function () {
     DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', necActual.id, 'borrar', necActual, null);
+    recordar('borrar ' + nombreCargo(copia.cargo_id), function () {
+      return DATOS.necesidades.crear({
+        empresa_id: copia.empresa_id, sucursal_id: copia.sucursal_id, fecha: copia.fecha,
+        cargo_id: copia.cargo_id, hora_inicio: copia.hora_inicio, hora_fin: copia.hora_fin,
+        personas_requeridas: copia.personas_requeridas });
+    });
     $('#dlgNec').close(); return recargarSemana();
   }).catch(function (e) { aviso('#nMsg', e.message, 'bad'); });
 });
@@ -897,8 +1002,16 @@ $('#aGuardar').addEventListener('click', function () {
   if (!d.hora_inicio || !d.hora_fin) return aviso('#aMsg', 'Faltan las horas.', 'bad');
   aviso('#aMsg', 'Guardando…');
   var p = asigActual ? DATOS.asignaciones.guardar(asigActual.id, d) : DATOS.asignaciones.crear(d);
+  var antesA = asigActual && JSON.parse(JSON.stringify(asigActual));
   p.then(function (fila) {
     DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', fila.id, asigActual ? 'editar' : 'crear', asigActual, fila);
+    if (antesA) recordar('el cambio en el turno', function () {
+      return DATOS.asignaciones.guardar(antesA.id, {
+        trabajador_id: antesA.trabajador_id, hora_inicio: antesA.hora_inicio,
+        hora_fin: antesA.hora_fin, cargo_id: antesA.cargo_id });
+    });
+    else recordar('asignar a ' + (fila.trabajador_id ? nombreTrab(fila.trabajador_id) : 'pendiente'),
+      function () { return DATOS.asignaciones.borrar(fila.id); });
     $('#dlgAsig').close(); return recargarSemana();
   }).catch(function (e) {
     // El índice único es el que impide duplicar el MISMO bloque. Traducirlo,

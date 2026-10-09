@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=27">
+<link rel="stylesheet" href="estilo.css?v=32">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v31</span></p>
+      <span style="float:right;opacity:.55" id="ver">v32</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -61,7 +61,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v31</span>
+    <span class="hint" id="ver2" title="Versión publicada">v32</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -87,6 +87,7 @@
       <strong id="cSemana" class="semana">—</strong>
       <button class="plano" id="btnDespues" title="Siguiente">›</button>
       <button class="plano" id="btnHoy">Hoy</button>
+      <button class="plano" id="btnDeshacer" disabled title="No hay nada que deshacer">↶ Deshacer</button>
       <span class="espacio"></span>
       <span class="hint" id="cEstado"></span>
       <button class="primario" id="btnPublicar">Publicar</button>
@@ -94,6 +95,9 @@
 
     <p class="aviso" id="avisoPlan" hidden></p>
     <div id="malla" class="malla"></div>
+    <!-- Las horas que llevas puestas, mientras las pones. Las horas son plata, y
+         verlas después en un informe llega tarde para corregir. -->
+    <div id="pieHoras" class="piehoras" hidden></div>
   </section>
 
   <!-- EQUIPO -->

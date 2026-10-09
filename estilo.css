@@ -131,6 +131,28 @@ button:disabled { opacity:.5; cursor:default; }
 }
 .mas:hover { background:var(--verde-claro); color:var(--verde); border-color:var(--verde); }
 
+/* ---------- el color sale del cargo ---------- */
+.nec.c1 > .cab { background:#eaf1f0; }
+.nec.c2 > .cab { background:#f3eee4; }
+.nec.c3 > .cab { background:#e9eef5; }
+.nec.c4 > .cab { background:#f6ecec; }
+.nec.c1 { border-color:#cfe0dd; } .nec.c2 { border-color:#e3d8c2; }
+.nec.c3 { border-color:#cdd8e8; } .nec.c4 { border-color:#e8cfcf; }
+.lbarra.c1 { background:#0f6b63; } .lbarra.c2 { background:#8a6d2f; }
+.lbarra.c3 { background:#3a5a86; } .lbarra.c4 { background:#8a3f3f; }
+.nec.suelta > .cab { background:var(--amar); }
+
+/* ---------- las horas que llevas puestas ---------- */
+.piehoras { display:flex; align-items:center; gap:.1rem; flex-wrap:wrap; margin-top:.8rem;
+            background:var(--blanco); border:1px solid var(--borde); border-radius:var(--radio);
+            padding:.5rem .7rem; font-size:.85rem; }
+.piehoras span { display:flex; flex-direction:column; min-width:4.2rem; padding:0 .3rem; }
+.piehoras b { font-size:.72rem; color:var(--gris); font-weight:600; text-transform:capitalize; }
+.piehoras .prot { min-width:9rem; font-weight:700; justify-content:center; }
+.piehoras .cero { color:#c9c4b8; }
+.piehoras .ptot { margin-left:auto; font-weight:700; color:var(--verde);
+                  border-left:1px solid var(--borde); padding-left:.8rem; }
+
 /* ---------- las tres vistas ---------- */
 .vistas { display:flex; gap:.15rem; background:var(--papel); padding:.15rem;
           border-radius:8px; border:1px solid var(--borde); }
