@@ -787,6 +787,9 @@ function pintarDia() {
             + ' title="' + esc(quien) + ' · ' + esc(nombreCargo(x.cargo_id)) + ' · '
             + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
             + '<b>' + esc(rotulo) + '</b> <i>' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '</i>'
+            // Una tira a cada borde para estirar. Van DENTRO de la barra para
+            // que se muevan con ella sin tener que recalcular nada.
+            + '<span class="tirador izq"></span><span class="tirador der"></span>'
             + '</span></div></div>';
     });
   });
@@ -796,6 +799,7 @@ function pintarDia() {
   pintarPie();
   m.innerHTML = html;
   engancharArrastreDia(m);
+  engancharEstirarDia(m);
   $('#cEstado').textContent = resumenPublicar();
 }
 
@@ -883,6 +887,87 @@ function engancharArrastreDia(caja) {
     var fila = pista.closest('.lfila');
     soltarTurno(id, fila ? (fila.dataset.fila || null) : null, hora);
   });
+}
+
+/* ESTIRAR UNA BARRA POR SUS BORDES.
+
+   Va con EVENTOS DE PUNTERO y no con el arrastre del navegador, y no es un
+   capricho: arrastrar mueve la barra entera y estirar mueve un solo borde, asi
+   que son dos gestos distintos sobre el mismo elemento. Si los dos usaran el
+   mismo mecanismo se pelearian. Mientras se estira, la barra deja de ser
+   `draggable` para que el navegador no empiece un arrastre encima.
+
+   Minimo de 15 minutos: una barra de cero no se puede volver a agarrar, y un
+   turno de cero minutos no significa nada. */
+var MINIMO = 0.25;
+
+function engancharEstirarDia(caja) {
+  if (!caja || caja.dataset.estirar) return;
+  caja.dataset.estirar = '1';
+  var est = null;
+
+  caja.addEventListener('pointerdown', function (ev) {
+    var t = ev.target.closest && ev.target.closest('.tirador');
+    if (!t) return;
+    var b = t.closest('.lbarra'), pista = b.closest('.lpista'), linea = pista.closest('.linea');
+    if (!b || !pista || !linea) return;
+    var a = S.asignaciones.filter(function (x) { return x.id === b.dataset.asigid; })[0];
+    if (!a) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    b.draggable = false;                       // que no arranque un arrastre encima
+    var i = a2h(a.hora_inicio), f = a2h(a.hora_fin); if (f <= i) f += 24;
+    est = { b: b, t: t, pista: pista, id: a.id, lado: t.classList.contains('izq') ? 'izq' : 'der',
+            h0: Number(linea.dataset.ini), h1: Number(linea.dataset.fin), ini: i, fin: f };
+    est.iniOrig = i; est.finOrig = f;
+    b.classList.add('estirando');
+    t.setPointerCapture(ev.pointerId);
+  });
+
+  caja.addEventListener('pointermove', function (ev) {
+    if (!est) return;
+    var r = est.pista.getBoundingClientRect(); if (!r.width) return;
+    var h = est.h0 + ((ev.clientX - r.left) / r.width) * (est.h1 - est.h0);
+    h = Math.round(h / SALTO) * SALTO;
+    if (est.lado === 'izq') est.ini = Math.min(h, est.fin - MINIMO);
+    else                    est.fin = Math.max(h, est.ini + MINIMO);
+    // Se dibuja mientras se arrastra: sin eso el borde no sigue al dedo y uno
+    // suelta a ciegas esperando haber acertado.
+    var pc = function (x) { return ((x - est.h0) / (est.h1 - est.h0)) * 100; };
+    est.b.style.left  = pc(est.ini) + '%';
+    est.b.style.width = (pc(est.fin) - pc(est.ini)) + '%';
+    var e = est.b.querySelector('i');
+    if (e) e.textContent = h2a(est.ini) + '–' + h2a(est.fin);
+  });
+
+  function terminar() {
+    if (!est) return;
+    var e = est;
+    est = null;
+    e.b.classList.remove('estirando');
+    e.b.draggable = true;
+    var cambio = Math.abs(e.ini - e.iniOrig) >= 0.001 || Math.abs(e.fin - e.finOrig) >= 0.001;
+    if (!cambio) return;
+    estirarTurno(e.id, e.ini, e.fin);
+  }
+  caja.addEventListener('pointerup', terminar);
+  caja.addEventListener('pointercancel', terminar);
+}
+
+function estirarTurno(id, ini, fin) {
+  var a = S.asignaciones.filter(function (x) { return x.id === id; })[0];
+  if (!a) return;
+  var copia = JSON.parse(JSON.stringify(a));
+  var cambio = { hora_inicio: h2a(ini), hora_fin: h2a(fin) };
+  DATOS.asignaciones.guardar(id, cambio).then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', id, 'editar', copia,
+                 Object.assign({}, copia, cambio));
+    recordar('cambiar la hora del turno', function () {
+      return DATOS.asignaciones.guardar(id, {
+        hora_inicio: copia.hora_inicio, hora_fin: copia.hora_fin });
+    });
+    return recargarSemana();
+  }).catch(function (e) { alert('No se pudo cambiar la hora: ' + e.message); });
 }
 
 function soltarTurno(id, filaId, horaNueva) {
