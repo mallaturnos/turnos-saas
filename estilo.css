@@ -371,7 +371,10 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 
 /* ---------- arrastrar una barra en el día ---------- */
 /* Ya no hay arrastre nativo: el cursor lo pone la barra misma. */
-.lbarra[data-asigid] { cursor:grab; touch-action:none; }
+.lbarra[data-asigid] { cursor:grab; touch-action:none;
+  /* Evita que arrastrar seleccione el texto de la barra. Va por CSS y no con
+     preventDefault en el pointerdown, que de paso se comía el clic. */
+  user-select:none; -webkit-user-select:none; }
 .lbarra.llevando { opacity:.45; cursor:grabbing; }
 /* La pista bajo el cursor se marca: sin eso no se sabe en qué fila va a caer,
    y con filas de 24 px de alto errarle por una es facilísimo. */

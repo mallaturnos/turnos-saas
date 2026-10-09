@@ -668,6 +668,28 @@ function pintarDia() {
   }
   filas = filas.filter(function (f) { return f.suyas.length || (f.pide && f.pide.length); });
 
+  /* EL ORDEN DE LAS BARRAS DENTRO DE UN GRUPO ES FIJO: por hora de entrada, y
+     a igual hora por id.
+
+     Antes salían en el orden en que volvían de la base, que cambia al guardar:
+     el turno recién editado puede volver en otra posición. Entonces movías una
+     barra y al repintar **aparecía en otra línea**, como si se hubiera cambiado
+     de puesto con la de al lado. Pedro: «y beto pasó donde estaba ana».
+
+     Con un orden que depende solo del dato, la línea en que cae una barra es
+     consecuencia de su hora y de nada más. Sigue pudiendo cambiar de línea si
+     cambias su hora —eso sí tiene sentido—, pero ya no por el orden de
+     escritura, que no significa nada para quien mira. */
+  var porHora = function (x, y) {
+    var a1 = a2h(x.hora_inicio), b1 = a2h(y.hora_inicio);
+    if (a1 !== b1) return a1 - b1;
+    return String(x.id) < String(y.id) ? -1 : 1;
+  };
+  filas.forEach(function (f) {
+    f.suyas.sort(porHora);
+    if (f.pide) f.pide.sort(porHora);
+  });
+
   // Si la franja es larga, las horas impares quedan como rayita para que los
   // números no se amontonen; si es corta, se rotulan todas.
   var saltar = ancho > 14;
@@ -847,6 +869,7 @@ function engancharGestosDia(caja) {
   if (!caja || caja.dataset.gestos) return;
   caja.dataset.gestos = '1';
   var g = null;
+  var tragarClic = false;
 
   var pct = function (h, h0, h1) { return ((h - h0) / (h1 - h0)) * 100; };
   var horaEn = function (g, clientX) {
@@ -872,9 +895,14 @@ function engancharGestosDia(caja) {
       x0: ev.clientX, fila: null,
     };
     // Dónde se agarró la barra, para que no salte bajo el cursor al empezar.
-    var rb = b.getBoundingClientRect();
     g.agarre = horaEn(g, ev.clientX) - i;
-    ev.preventDefault();
+    /* OJO: NADA de `preventDefault()` aquí.
+
+       Lo tenía, para que no se seleccionara texto al arrastrar, y me costó un
+       defecto: `preventDefault` en el `pointerdown` suprime los eventos de
+       ratón que vienen después — incluido el `click`—, así que **apretar una
+       barra dejó de abrir la ficha**. La selección de texto se evita con CSS
+       (`user-select:none`), que no tiene ese efecto secundario. */
     try { b.setPointerCapture(ev.pointerId); } catch (e) {}
   });
 
@@ -883,6 +911,8 @@ function engancharGestosDia(caja) {
     if (!g.activo) {
       if (Math.abs(ev.clientX - g.x0) < UMBRAL) return;   // todavía es un clic
       g.activo = true;
+      // Recién aquí, cuando ya es un arrastre de verdad y no un clic.
+      if (ev.cancelable) ev.preventDefault();
       g.b.classList.add(g.modo === 'mover' ? 'llevando' : 'estirando');
       // Mientras se mueve, la barra no estorba: así se puede saber qué fila
       // hay DEBAJO del cursor para soltarla ahí.
@@ -917,9 +947,26 @@ function engancharGestosDia(caja) {
     if (e) e.textContent = h2a(g.ini) + '–' + h2a(g.fin);
   });
 
+  /* EL CLIC QUE VIENE DESPUÉS DEL GESTO.
+
+     El navegador dispara un `click` al soltar aunque el puntero se haya movido
+     media pantalla, así que al terminar de arrastrar se abría también la ficha
+     «Quién lo cubre». Pedro lo vio al tiro: «se me abrió esta ventana también».
+
+     Se traga ese clic —y solo ese— en fase de captura, para que no llegue al
+     escuchador de la barra. Un clic de verdad, sin arrastre, sigue abriendo la
+     ficha: es lo que distingue el umbral de 3 px. */
+  caja.addEventListener('click', function (ev) {
+    if (!tragarClic) return;
+    tragarClic = false;
+    ev.stopPropagation();
+    ev.preventDefault();
+  }, true);
+
   function soltar() {
     if (!g) return;
     var x = g; g = null;
+    if (x.activo) tragarClic = true;
     caja.querySelectorAll('.lpista.encima').forEach(function (p) { p.classList.remove('encima'); });
     x.b.classList.remove('llevando', 'estirando');
     x.b.style.pointerEvents = '';
