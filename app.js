@@ -793,24 +793,32 @@ function pintarDia() {
      de lo que una línea de tiempo tiene que mostrar. Lo vi al mirar la captura;
      el conteo de barras decía 3 y parecía correcto. */
   filas.forEach(function (f) {
-    // Primero lo PEDIDO, de fondo: el trozo sin cubrir queda a la vista.
+    /* Primero lo PEDIDO, de fondo: el trozo sin cubrir queda a la vista.
+
+       UNA LÍNEA POR NECESIDAD, no todas en la misma. Un cargo puede pedir dos
+       tramos distintos el mismo día —«hacen falta 2 de 09 a 17» y «hacen falta
+       3 de 12 a 20»— y si se dibujan en la misma línea **se encaraman**: no se
+       ve dónde termina una y empieza la otra, y desde que se pueden arrastrar
+       tampoco se puede agarrar la de abajo. Pedro: «está mal... sale
+       sobrepuesto o no?».
+
+       Es exactamente el mismo defecto que ya se había arreglado para los
+       turnos y que a las necesidades no se les aplicó. El rótulo del grupo va
+       solo en la primera línea, como allá. */
     if (f.pide && f.pide.length) {
-      html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
-            + '<span class="lrot">' + esc(f.nombre) + '</span><div class="lpista">';
-      f.pide.forEach(function (n) {
+      f.pide.forEach(function (n, k) {
         var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
-        /* La banda de lo PEDIDO también se mueve y se estira. Pedro:
-           «donde dice hacen falta... no se pueden mover... se deberían poder
-           mover verdad??». Sí: una necesidad es un tramo de horas igual que un
-           turno, y hasta ahora solo se podía cambiar entrando a su ficha. */
-        html += '<span class="lpide" data-necid="' + n.id + '"'
+        html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
+              + '<span class="lrot">' + (k === 0 ? esc(f.nombre) : '') + '</span>'
+              + '<div class="lpista">'
+              + '<span class="lpide" data-necid="' + n.id + '"'
               + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
               + ' title="Hacen falta ' + n.personas_requeridas + ' · '
               + hhmm(n.hora_inicio) + '–' + hhmm(n.hora_fin) + '">'
               + '<span class="lpidetxt">hacen falta ' + n.personas_requeridas + '</span>'
-              + '<span class="tirador izq"></span><span class="tirador der"></span></span>';
+              + '<span class="tirador izq"></span><span class="tirador der"></span>'
+              + '</span></div></div>';
       });
-      html += '</div></div>';
     }
     f.suyas.forEach(function (x, k) {
       var i = a2h(x.hora_inicio), ff = a2h(x.hora_fin); if (ff <= i) ff += 24;
