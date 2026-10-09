@@ -989,14 +989,10 @@ $('#cVista').addEventListener('click', function (ev) {
   if (!S.dia) S.dia = hoyTexto();
   pintarSelectores(); recargarSemana();
 });
-$('#cSucursal').addEventListener('change',  function () {
-  S.sucursal = this.value;
-  // La sección Establecimiento muestra las propiedades del local ELEGIDO: si no
-  // se repinta aquí, al cambiar de local seguiría editando el anterior y el
-  // Guardar escribiría en el equivocado sin que nada lo delate.
-  pintarEstablecimiento();
-  recargarSemana();
-});
+/* Vuelve a ser lo que era: elegir local aquí es elegir QUÉ SE PLANIFICA, y
+   nada más. Con las tarjetas, Configuración ya no depende de este selector —
+   ese acoplamiento lo había metido yo y fue justo lo que confundió a Pedro. */
+$('#cSucursal').addEventListener('change',  function () { S.sucursal = this.value; recargarSemana(); });
 
 $('#nav').addEventListener('click', function (ev) {
   var b = ev.target.closest('.tab'); if (!b) return;
@@ -1420,103 +1416,69 @@ function pintarEquipo() {
     : '<p class="vacio">Sin cargos no se puede decir qué hace falta. Crea el primero.</p>';
 }
 
-/* PROPIEDADES DEL ESTABLECIMIENTO.
+/* UNA TARJETA POR LOCAL  (opcion C, Pedro msg 5277)
 
-   Skello tiene «Établissement» como una entrada propia del menú de
-   configuración, y Pedro la pidió igual (msg 5255) tras ver el horario metido
-   dentro del diálogo del local. Tiene razón: un horario escondido en una ficha
-   que hay que abrir no se encuentra, y es un dato que se mira seguido.
+   Lo que habia antes eran DOS controles para la misma idea: el desplegable de
+   «Establecimiento» y la lista «Locales» con el elegido marcado. Pedro: «esto
+   esta poco intuitivo». Tenia razon — tener que preguntarse cual de los dos
+   usar ERA el defecto, y lo habia creado yo arreglando el anterior.
 
-   Edita el local ELEGIDO ARRIBA, no «el local» en abstracto — en Skello
-   primero se elige establecimiento y después se ven sus propiedades. */
-function pintarEstablecimiento() {
-  var caja = $('#establecimiento');
-  if (!caja) return;
-  var loc = S.sucursales.filter(function (x) { return x.id === S.sucursal; })[0];
-  if (!loc) {
-    caja.innerHTML = '<h2>Establecimiento</h2>'
-      + '<p class="vacio">Crea tu primer local abajo para poder configurarlo.</p>';
-    return;
-  }
+   Ahora no hay nada que elegir antes de escribir: cada local es una tarjeta
+   con sus datos, y comparar dos es mirar. De paso se corta un acoplamiento
+   feo que yo mismo habia metido: cambiar de local aqui ya no cambia lo que se
+   esta planificando. */
+function tarjetaLocal(loc) {
   var falta = S.hayHorarioLocal === false;
-  /* SU PROPIO SELECTOR, y no «el local elegido arriba».
-
-     Lo de arriba vive en la pantalla Planificar, que está OCULTA cuando se
-     está en Configuración: esta sección editaba un local que no se podía ni
-     ver ni cambiar desde aquí, y con dos locales se podía escribirle el
-     horario de uno al otro sin que nada avisara. Lo cazó Pedro el 09-10
-     (msg 5266) y es un defecto que mi prueba no vio porque probé el
-     MECANISMO —repintar al cambiar— y no el RECORRIDO: cambié el selector
-     desde la consola, que es justo lo que el usuario no puede hacer. */
-  caja.innerHTML = '<div class="controles"><h2>Establecimiento</h2>'
-    + '<select id="eLocal" aria-label="Qué local estás configurando">'
-    + S.sucursales.map(function (x) {
-        return '<option value="' + x.id + '"' + (x.id === loc.id ? ' selected' : '') + '>'
-             + esc(x.nombre) + '</option>';
-      }).join('')
-    + '</select><span class="espacio"></span>'
-    + '<button class="primario" id="btnGuardarEst"' + (falta ? ' disabled' : '') + '>Guardar</button></div>'
+  var sinHora = !loc.abre || !loc.cierra;
+  return '<div class="tarj-local" data-loc="' + loc.id + '">'
+    + '<div class="cab"><b>' + esc(loc.nombre) + '</b>'
+      + '<button class="plano" data-renombrar="' + loc.id + '">Renombrar</button>'
+      + '<span class="espacio"></span>'
+      + '<button class="primario chico" data-guardar-loc="' + loc.id + '"'
+      + (falta ? ' disabled' : '') + '>Guardar</button></div>'
     + '<div class="fldrow">'
-      + campo('text', 'eZona', 'Zona horaria', loc.zona_horaria || 'America/Santiago')
-      + campo('time', 'eAbre',   'Abre',   loc.abre   ? hhmm(loc.abre)   : '')
-      + campo('time', 'eCierra', 'Cierra', loc.cierra ? hhmm(loc.cierra) : '')
+      + campo('text', 'z_' + loc.id, 'Zona horaria', loc.zona_horaria || 'America/Santiago')
+      + campo('time', 'a_' + loc.id, 'Abre',   loc.abre   ? hhmm(loc.abre)   : '')
+      + campo('time', 'c_' + loc.id, 'Cierra', loc.cierra ? hhmm(loc.cierra) : '')
     + '</div>'
     + (falta
-        ? '<p class="hint">⚠️ El horario todavía no se puede guardar: falta pegar '
-          + '<code>arreglo-horario-local.sql</code> en Supabase. Mientras tanto la franja '
-          + 'del día se deduce de los turnos, como hasta ahora.</p>'
-        : '<p class="hint"><b>Abre y cierra</b> son el marco con el que se dibuja el día. '
-          + 'En blanco, la franja se deduce de los turnos. Si cierras de madrugada pon la '
-          + 'hora igual: <code>20:00</code> a <code>04:00</code> se entiende. '
-          + 'Un turno fuera del horario <b>no se recorta</b>.</p>');
+        ? '<p class="hint">⚠️ El horario no se puede guardar todavía: falta pegar '
+          + '<code>arreglo-horario-local.sql</code>.</p>'
+        : (sinHora
+            ? '<p class="hint"><span class="avisito">sin horario</span> '
+              + 'La franja del día se deduce de los turnos.</p>'
+            : ''))
+    + '</div>';   // ← faltaba: sin esto el navegador ANIDA una tarjeta dentro
+                  //   de la anterior. Y no lo delata contar `.tarj-local`,
+                  //   porque anidadas tambien cuentan: se vio MIRANDO.
 }
 
-document.addEventListener('change', function (ev) {
-  if (ev.target.id !== 'eLocal') return;
-  // El local es uno solo en toda la app: cambiarlo aquí cambia también lo que
-  // se planifica. Es lo mismo que hace Skello —primero eliges establecimiento
-  // y todo lo demás habla de ese— y evita tener dos nociones de «local actual»
-  // que algún día no coincidan.
-  S.sucursal = ev.target.value;
-  pintarEstablecimiento();
-  pintarSelectores();
-  pintarConfig();
-  recargarSemana();
-});
-
 document.addEventListener('click', function (ev) {
-  if (ev.target.id !== 'btnGuardarEst') return;
-  var loc = S.sucursales.filter(function (x) { return x.id === S.sucursal; })[0];
-  if (!loc) return;
-  var d = { zona_horaria: ($('#eZona').value || 'America/Santiago').trim() };
-  // Mismo cuidado que en el diálogo: sin las columnas, no se mandan.
-  if (S.hayHorarioLocal) {
-    d.abre   = $('#eAbre').value   || null;
-    d.cierra = $('#eCierra').value || null;
+  var id = ev.target.dataset.guardarLoc;
+  if (id) {
+    var loc = S.sucursales.filter(function (x) { return x.id === id; })[0];
+    if (!loc) return;
+    var d = { zona_horaria: ($('#z_' + id).value || 'America/Santiago').trim() };
+    // Igual que antes: sin las columnas no se mandan, o PostgREST rechaza el
+    // POST entero y deja de poder guardarse el local.
+    if (S.hayHorarioLocal) {
+      d.abre   = $('#a_' + id).value || null;
+      d.cierra = $('#c_' + id).value || null;
+    }
+    ev.target.disabled = true;
+    return DATOS.sucursales.guardar(id, d).then(cargarTodo)
+      .catch(function (e) { alert('No se pudo guardar: ' + e.message); });
   }
-  ev.target.disabled = true;
-  DATOS.sucursales.guardar(loc.id, d)
-    .then(cargarTodo)
-    .catch(function (e) { alert('No se pudo guardar: ' + e.message); })
-    .then(function () { var b = $('#btnGuardarEst'); if (b) b.disabled = false; });
+  var r = ev.target.dataset.renombrar;
+  if (r) {
+    var l2 = S.sucursales.filter(function (x) { return x.id === r; })[0];
+    if (l2) abrirFicha('sucursal', l2);
+  }
 });
 
 function pintarConfig() {
-  pintarEstablecimiento();
   $('#listaSucursales').innerHTML = S.sucursales.length
-    ? S.sucursales.map(function (s) {
-        /* El horario de CADA local, a la vista. Pedro: «si tengo dos locales
-           con horarios distintos no se logran diferenciar». Tenía razón: la
-           lista mostraba solo el nombre y la zona horaria, que son iguales en
-           los dos, así que no había forma de compararlos sin ir entrando. */
-        var hor = (s.abre && s.cierra) ? (hhmm(s.abre) + '–' + hhmm(s.cierra))
-                : (S.hayHorarioLocal === false ? '' : 'sin horario');
-        return '<div class="item' + (s.id === S.sucursal ? ' elegido' : '')
-             + '" data-tipo="sucursal" data-id="' + s.id + '"><b>' + esc(s.nombre) + '</b>'
-             + '<span class="sub">' + esc(s.zona_horaria) + '</span>'
-             + (hor ? '<span class="espacio"></span><span class="sub horario">' + hor + '</span>' : '')
-             + '</div>';
-      }).join('')
+    ? S.sucursales.map(tarjetaLocal).join('')
     : '<p class="vacio">Crea tu primer local para poder planificar.</p>';
 
   $('#listaHorarios').innerHTML = S.horarios.length

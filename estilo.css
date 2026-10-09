@@ -329,16 +329,20 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 }
 
 
-/* ---------- propiedades del establecimiento ---------- */
-.caja-est { background:var(--blanco); border:1px solid var(--borde);
-            border-radius:var(--radio); padding:.8rem 1rem 1rem; margin-bottom:1.25rem; }
-.caja-est .controles { margin-bottom:.5rem; }
-.caja-est .controles .sub { color:var(--gris); font-size:.85rem; margin-left:.5rem; }
-.caja-est .fldrow { display:flex; gap:1rem; flex-wrap:wrap; }
-.caja-est .fldrow > * { flex:1 1 11rem; }
-.caja-est .controles select { font-size:.9rem; padding:.2rem .4rem;
-  flex:0 0 auto; max-width:16rem; width:auto; }
-/* El local que se está configurando, marcado en la lista de abajo: si no, con
-   dos locales no se sabe cuál de los dos muestra la sección de arriba. */
-#listaSucursales .item.elegido { border-color:var(--verde); box-shadow:inset 3px 0 0 var(--verde); }
-#listaSucursales .item .horario { font-variant-numeric:tabular-nums; }
+/* ---------- una tarjeta por local (opcion C) ---------- */
+.tarjetas-local { display:grid; gap:.9rem; align-items:start;
+                  grid-template-columns:repeat(auto-fit, minmax(21rem, 1fr)); }
+.tarj-local { background:var(--blanco); border:1px solid var(--borde);
+              border-radius:var(--radio); padding:.75rem .9rem .9rem; }
+.tarj-local .cab { display:flex; align-items:center; gap:.5rem; margin-bottom:.6rem; }
+.tarj-local .cab b { font-size:.95rem; }
+.tarj-local .fldrow { display:flex; gap:.7rem; flex-wrap:wrap; }
+/* La zona horaria es ancha y las horas angostas: si las tres midieran lo mismo,
+   «America/Santiago» quedaria cortado y los relojes sobrarian de espacio. */
+.tarj-local .fldrow > *:first-child { flex:2 1 11rem; }
+.tarj-local .fldrow > * { flex:1 1 7rem; }
+.tarj-local .hint { margin:.55rem 0 0; }
+.primario.chico { padding:.2rem .7rem; font-size:.8rem; }
+.avisito { background:#fbf3df; color:#8a6d1f; font-size:.72rem;
+           padding:.05rem .5rem; border-radius:20px; }
+.lista.media { max-width:34rem; }
