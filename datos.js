@@ -298,9 +298,24 @@
     });
   }
 
+  /* LA BITÁCORA. Se lee lo último primero y con tope: una empresa con meses
+     de uso tiene miles de eventos y nadie baja hasta el fondo. El «ver más»
+     pide otra tanda con `offset`. */
+  var eventos = {
+    listar: function (desde, cuantos) {
+      return rest('eventos?select=*&order=cuando.desc'
+                  + '&limit=' + (cuantos || 50) + '&offset=' + (desde || 0),
+                  null, 'leer la bitácora');
+    },
+    delTurno: function (entidad, id) {
+      return rest('eventos?select=*&entidad=eq.' + entidad + '&entidad_id=eq.' + id
+                  + '&order=cuando.desc', null, 'leer el historial');
+    },
+  };
+
   window.DATOS = {
     auth: cuenta, yo: yo, primeraVez: primeraVez,
-    sucursales: sucursales, cargos: cargos, trabajadores: trabajadores,
+    sucursales: sucursales, cargos: cargos, trabajadores: trabajadores, eventos: eventos,
     horarios: horarios, necesidades: necesidades, asignaciones: asignaciones,
     turnos: turnos, anotar: anotar,
   };

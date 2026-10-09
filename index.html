@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v52</span></p>
+      <span style="float:right;opacity:.55" id="ver">v53</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -53,6 +53,7 @@
     <nav class="pestanas" id="nav">
       <button class="tab" data-p="plan" aria-selected="true">Planificar</button>
       <button class="tab" data-p="equipo">Equipo</button>
+      <button class="tab" data-p="actividad">Actividad</button>
       <button class="tab" data-p="config">Configuración</button>
       <button class="tab" data-p="mio">Mi calendario</button>
     </nav>
@@ -61,7 +62,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v52</span>
+    <span class="hint" id="ver2" title="Versión publicada">v53</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -142,6 +143,23 @@
          pantalla el segundo boton «Agregar», que era lo que la enredaba, y de
          paso la etiqueta que decia de que local era cada tramo — una etiqueta
          que solo hacia falta porque el tramo estaba en la lista equivocada. -->
+  </section>
+
+  <!-- ACTIVIDAD: la bitacora a la vista (opcion A, Pedro msg 5353).
+       Los datos se graban desde el primer dia en `eventos`; esto solo los
+       pinta. El equivalente en Skello es su «Fil d'actualite». -->
+  <section id="t-actividad" class="panel" hidden>
+    <div class="controles">
+      <h2>Actividad</h2>
+      <span class="filtros" id="filActividad">
+        <button class="chip" data-f="todo" aria-selected="true">Todo</button>
+        <button class="chip" data-f="asignacion">Turnos</button>
+        <button class="chip" data-f="necesidad">Lo que hace falta</button>
+        <button class="chip" data-f="turno">Publicaciones</button>
+      </span>
+    </div>
+    <div id="listaActividad" class="bitacora"></div>
+    <button class="agregar-tramo" id="btnMasActividad" hidden>ver más</button>
   </section>
 
   <!-- MI CALENDARIO (lo que ve el trabajador) -->

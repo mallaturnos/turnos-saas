@@ -1312,8 +1312,21 @@ $('#cSucursal').addEventListener('change',  function () { S.sucursal = this.valu
 $('#nav').addEventListener('click', function (ev) {
   var b = ev.target.closest('.tab'); if (!b) return;
   $$('#nav .tab').forEach(function (t) { t.setAttribute('aria-selected', String(t === b)); });
-  ['plan','equipo','config','mio'].forEach(function (p) { $('#t-'+p).hidden = (p !== b.dataset.p); });
+  /* La lista de paneles sale de las PESTAÑAS que existen, no escrita a mano.
+
+     Estaba escrita a mano y al agregar «Actividad» se me olvidó meterla: la
+     pestaña se marcaba como elegida, las otras se escondían, y la nueva no se
+     mostraba nunca — pantalla en blanco sin un solo error. Si la lista se
+     deduce del menú, agregar una pestaña no puede volver a dejar su panel
+     fuera. */
+  $$('#nav .tab').forEach(function (t) {
+    var panel = $('#t-' + t.dataset.p);
+    if (panel) panel.hidden = (t.dataset.p !== b.dataset.p);
+  });
   if (b.dataset.p === 'mio') pintarMios();
+  // Se pide al entrar, no al arrancar: la bitácora puede ser larga y no
+  // tiene por qué retrasar la pantalla que de verdad se usa.
+  if (b.dataset.p === 'actividad') cargarActividad(false);
 });
 
 // Un solo oyente para toda la malla: los botones se repintan constantemente y
@@ -1894,6 +1907,191 @@ function pintarConfig() {
     abrirFicha(it.dataset.tipo, dato);
   });
 });
+
+// ====================================================================
+// ACTIVIDAD — la bitácora a la vista  (opción A, Pedro msg 5353)
+//
+// Los datos se graban desde el primer día: `eventos` guarda `antes` y
+// `despues` completos. Lo que faltaba era PINTARLOS — y lo que decide si
+// sirve o no es esto de aquí abajo: que cada línea diga QUÉ cambió, en
+// castellano, en vez de «editó una asignación».
+//
+// Un registro que hay que descifrar no se lee, y entonces da igual tenerlo.
+// ====================================================================
+var S_ACT = { eventos: [], filtro: 'todo', pagina: 0 };
+var ACT_TANDA = 50;
+
+/* Quién lo hizo, SIEMPRE EN TERCERA PERSONA.
+
+   La primera versión decía «Tú» cuando eras tú, y salía «Tú publicó», «Tú
+   cambió»: el sujeto en segunda y el verbo en tercera. Para arreglarlo con un
+   «Tú publicaste» harían falta DOS juegos de frases, uno por persona
+   gramatical, y cada frase nueva habría que escribirla dos veces — el día que
+   se olvide una, vuelve el error.
+
+   Con el nombre siempre en tercera, hay un solo juego de frases. Que seas tú
+   se marca aparte, con un «(tú)» detrás del nombre.
+
+   Si no se puede poner nombre —un dueño que no es trabajador, o alguien dado
+   de baja— se usa lo que haya antes del arroba del correo, y si ni eso,
+   «Alguien». Nunca un identificador: no le dice nada a nadie. */
+function quienEvento(uid) {
+  if (!uid) return 'Alguien';
+  var t = S.trabajadores.filter(function (p) { return p.usuario_id === uid; })[0];
+  var yo = S.yo && uid === S.yo.id;
+  var nom = t ? t.nombre
+          : (yo && S.yo.email ? String(S.yo.email).split('@')[0] : null);
+  if (!nom) return 'Alguien';
+  return nom + (yo ? ' (tú)' : '');
+}
+
+function nombreDeTrab(id) { return id ? nombreTrab(id) : null; }
+
+function cuandoTexto(iso) {
+  var d = new Date(iso), hoy = new Date();
+  var hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  var mismoDia = d.toDateString() === hoy.toDateString();
+  return mismoDia ? hh
+    : (String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0')
+       + ' ' + hh);
+}
+
+function rangoDe(o) {
+  return o && o.hora_inicio ? hhmm(o.hora_inicio) + '–' + hhmm(o.hora_fin) : '';
+}
+
+/* De un evento a una frase. Devuelve {que, detalle, tipo}.
+
+   `antes` y `despues` son la fila entera, así que se puede decir exactamente
+   qué se movió sin volver a consultar nada — y sirve igual para filas que ya
+   se borraron, que es justo cuando más falta hace. */
+function frasearEvento(e) {
+  var a = e.antes || null, d = e.despues || null, x = d || a || {};
+  var cargo = x.cargo_id ? esc(nombreCargo(x.cargo_id)) : '';
+  var dia = x.fecha ? nombreDia(x.fecha) + ' ' + diaMes(x.fecha) : '';
+
+  if (e.entidad === 'asignacion') {
+    var quienA = a ? nombreDeTrab(a.trabajador_id) : null;
+    var quienD = d ? nombreDeTrab(d.trabajador_id) : null;
+    if (e.accion === 'crear') {
+      return { tipo: 'crear',
+        que: quienD ? 'asignó a <b>' + esc(quienD) + '</b> en <b>' + cargo + '</b>'
+                    : 'dejó un turno pendiente en <b>' + cargo + '</b>',
+        detalle: (dia ? dia + ' · ' : '') + rangoDe(d) };
+    }
+    if (e.accion === 'borrar') {
+      return { tipo: 'borrar',
+        que: 'quitó el turno de <b>' + esc(quienA || 'nadie') + '</b> en <b>' + cargo + '</b>',
+        detalle: (dia ? dia + ' · ' : '') + rangoDe(a) };
+    }
+    // editar: se dice lo que DE VERDAD cambió, no «editó»
+    if ((a && a.trabajador_id) !== (d && d.trabajador_id)) {
+      if (!quienA) return { tipo: 'crear',
+        que: 'asignó a <b>' + esc(quienD) + '</b> un turno que estaba pendiente',
+        detalle: cargo + (dia ? ' · ' + dia : '') + ' · ' + rangoDe(d) };
+      if (!quienD) return { tipo: 'mover',
+        que: 'dejó pendiente el turno de <b>' + esc(quienA) + '</b>',
+        detalle: cargo + ' · ' + rangoDe(d) };
+      return { tipo: 'mover',
+        que: 'pasó el turno de <b>' + esc(quienA) + '</b> a <b>' + esc(quienD) + '</b>',
+        detalle: cargo + ' · ' + rangoDe(d) };
+    }
+    if (a && d && (a.hora_inicio !== d.hora_inicio || a.hora_fin !== d.hora_fin)) {
+      var dur = function (o) { return horasDe(hhmm(o.hora_inicio), hhmm(o.hora_fin)); };
+      var mismaDur = Math.abs(dur(a) - dur(d)) < 0.01;
+      return { tipo: 'mover',
+        que: (mismaDur ? 'movió' : 'cambió las horas del') + ' turno de <b>'
+             + esc(quienD || 'nadie') + '</b> en <b>' + cargo + '</b>',
+        detalle: rangoDe(a) + ' → ' + rangoDe(d) };
+    }
+    return { tipo: 'mover', que: 'cambió un turno en <b>' + cargo + '</b>',
+             detalle: (dia ? dia + ' · ' : '') + rangoDe(d) };
+  }
+
+  if (e.entidad === 'necesidad') {
+    if (e.accion === 'crear') return { tipo: 'crear',
+      que: 'agregó: hacen falta <b>' + (d.personas_requeridas || '?') + '</b> en <b>' + cargo + '</b>',
+      detalle: (dia ? dia + ' · ' : '') + rangoDe(d) };
+    if (e.accion === 'borrar') return { tipo: 'borrar',
+      que: 'borró lo que hacía falta en <b>' + cargo + '</b>',
+      detalle: (dia ? dia + ' · ' : '') + rangoDe(a) };
+    if (a && d && a.personas_requeridas !== d.personas_requeridas) return { tipo: 'mover',
+      que: 'en <b>' + cargo + '</b> ahora hacen falta <b>' + d.personas_requeridas + '</b>',
+      detalle: 'antes ' + a.personas_requeridas + ' · ' + rangoDe(d) };
+    return { tipo: 'mover',
+      que: 'cambió las horas de lo que hace falta en <b>' + cargo + '</b>',
+      detalle: (a ? rangoDe(a) + ' → ' : '') + rangoDe(d) };
+  }
+
+  if (e.entidad === 'turno') {
+    /* Los campos son los que GRABA la app: `nuevas`, `cambiados` y `semana`.
+       Los escribí primero esperando un `cuantos` que me había inventado en la
+       demo — cuarta vez en el día que el dato del doble no era el de verdad, y
+       esta vez la diferencia la creé yo. Se mira el que graba, no el cómodo. */
+    var nv = d && d.nuevas, cb = d && d.cambiados;
+    var trozos = [];
+    if (nv) trozos.push(nv + (nv === 1 ? ' turno nuevo' : ' turnos nuevos'));
+    if (cb) trozos.push(cb + (cb === 1 ? ' cambiado' : ' cambiados'));
+    var sem = d && d.semana ? 'semana del ' + diaMes(d.semana) : '';
+    return { tipo: 'publicar', que: 'publicó la planificación',
+             detalle: [trozos.join(' · '), sem].filter(Boolean).join(' — ') };
+  }
+
+  var comoSeLlama = { trabajador: 'un trabajador', cargo: 'un cargo',
+                      sucursal: 'un local', horario: 'un tramo' };
+  var cosa = comoSeLlama[e.entidad] || e.entidad;
+  var nom = (d && d.nombre) || (a && a.nombre) || '';
+  return { tipo: e.accion === 'borrar' ? 'borrar' : (e.accion === 'crear' ? 'crear' : 'mover'),
+           que: (e.accion === 'crear' ? 'creó ' : e.accion === 'borrar' ? 'borró ' : 'cambió ')
+                + cosa + (nom ? ' <b>' + esc(nom) + '</b>' : ''), detalle: '' };
+}
+
+function pintarActividad() {
+  var caja = $('#listaActividad'); if (!caja) return;
+  var lista = S_ACT.eventos.filter(function (e) {
+    return S_ACT.filtro === 'todo' || e.entidad === S_ACT.filtro;
+  });
+  if (!lista.length) {
+    caja.innerHTML = '<p class="vacio">' + (S_ACT.eventos.length
+      ? 'Nada de este tipo todavía.'
+      : 'Todavía no hay movimientos. Aquí va quedando todo lo que se hace.') + '</p>';
+    return;
+  }
+  caja.innerHTML = lista.map(function (e) {
+    var f = frasearEvento(e);
+    return '<div class="ev ' + f.tipo + '">'
+      + '<span class="pt"></span>'
+      + '<div class="txt"><div class="q"><b>' + esc(quienEvento(e.usuario_id)) + '</b> '
+      + f.que + '</div>'
+      + (f.detalle ? '<div class="d">' + f.detalle + '</div>' : '') + '</div>'
+      + '<span class="h">' + cuandoTexto(e.cuando) + '</span></div>';
+  }).join('');
+}
+
+function cargarActividad(mas) {
+  if (!DATOS.eventos) return;
+  if (!mas) { S_ACT.pagina = 0; S_ACT.eventos = []; }
+  return DATOS.eventos.listar(S_ACT.pagina * ACT_TANDA, ACT_TANDA).then(function (r) {
+    S_ACT.eventos = S_ACT.eventos.concat(r || []);
+    S_ACT.pagina += 1;
+    var b = $('#btnMasActividad');
+    if (b) b.hidden = !r || r.length < ACT_TANDA;
+    pintarActividad();
+  }).catch(function (e) {
+    $('#listaActividad').innerHTML = '<p class="vacio">No pude leer la bitácora: '
+      + esc(e.message) + '</p>';
+  });
+}
+
+$('#filActividad').addEventListener('click', function (ev) {
+  var b = ev.target.closest('.chip'); if (!b) return;
+  $$('#filActividad .chip').forEach(function (c) {
+    c.setAttribute('aria-selected', String(c === b));
+  });
+  S_ACT.filtro = b.dataset.f;
+  pintarActividad();
+});
+$('#btnMasActividad').addEventListener('click', function () { cargarActividad(true); });
 
 // ====================================================================
 // MI CALENDARIO — lo que ve el trabajador. Solo lo publicado.

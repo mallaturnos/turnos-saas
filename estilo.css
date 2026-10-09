@@ -416,3 +416,30 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 .lpide[data-necid] { cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
 .lpide.llevando, .lpide.estirando { opacity:.55; }
 .lpide .tirador::before, .lpide .tirador::after { background:rgba(19,52,59,.4); }
+
+/* ---------- la bitácora ---------- */
+.bitacora { background:var(--blanco); border:1px solid var(--borde);
+            border-radius:var(--radio); padding:.2rem .9rem; max-width:52rem; }
+.bitacora .ev { display:flex; align-items:flex-start; gap:.55rem; padding:.5rem .1rem;
+                border-bottom:1px solid #f0ece4; }
+.bitacora .ev:last-child { border-bottom:0; }
+/* El punto de color dice de un vistazo SI ALGO SE BORRÓ, que es lo que se
+   busca cuando se entra aquí con una duda. */
+.bitacora .pt { width:7px; height:7px; border-radius:50%; margin-top:.42rem; flex:0 0 auto;
+                background:var(--gris); }
+.bitacora .ev.crear   .pt { background:#0f6b63; }
+.bitacora .ev.mover   .pt { background:#8a6d2f; }
+.bitacora .ev.borrar  .pt { background:#8a3f3f; }
+.bitacora .ev.publicar .pt { background:#3a5a86; }
+.bitacora .txt { flex:1; }
+.bitacora .q { font-size:.88rem; line-height:1.35; }
+.bitacora .d { font-size:.78rem; color:var(--gris); margin-top:.05rem;
+               font-variant-numeric:tabular-nums; }
+.bitacora .h { font-size:.78rem; color:var(--gris); font-variant-numeric:tabular-nums;
+               white-space:nowrap; margin-top:.1rem; }
+.filtros { display:flex; gap:.3rem; flex-wrap:wrap; }
+.chip[data-f] { border:1px solid var(--borde); background:var(--blanco); color:var(--gris);
+                border-radius:20px; padding:.15rem .7rem; font-size:.8rem; cursor:pointer;
+                font-family:inherit; }
+.chip[data-f][aria-selected="true"] { background:var(--tinta); color:#fff; border-color:var(--tinta); }
+#btnMasActividad { max-width:52rem; margin-top:.6rem; }
