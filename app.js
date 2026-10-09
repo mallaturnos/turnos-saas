@@ -1330,19 +1330,19 @@ function abrirFicha(tipo, dato) {
            + campo('time', 'fSale', 'Sale', dato ? hhmm(dato.hora_fin) : '17:00')
            + '</div>'
            + (S.hayAtajoPorLocal === false
-               ? '<p class="hint">Por ahora sirve para todos los locales. Para separarlos '
-                 + 'por local falta pegar <code>arreglo-horarios-por-local.sql</code>.</p>'
-               : '<label for="fSucH">¿Dónde sirve?</label>'
+               ? '<p class="hint">⚠️ Todavía no se puede elegir el local: falta pegar '
+                 + '<code>arreglo-horarios-por-local.sql</code>.</p>'
+               : '<label for="fSucH">¿De qué local?</label>'
                  + '<select id="fSucH" class="fld">'
-                 + '<option value="">En todos los locales</option>'
                  + S.sucursales.map(function (x) {
-                     var elegido = dato ? dato.sucursal_id : tramoPara;
+                     var elegido = (dato && dato.sucursal_id) || tramoPara;
                      var m = elegido === x.id ? ' selected' : '';
-                     return '<option value="' + x.id + '"' + m + '>Solo en ' + esc(x.nombre) + '</option>';
+                     return '<option value="' + x.id + '"' + m + '>' + esc(x.nombre) + '</option>';
                    }).join('')
                  + '</select>'
-                 + '<p class="hint">Un local que abre de noche no necesita los tramos del '
-                 + 'que abre de día.</p>');
+                 + '<p class="hint">El tramo sale del horario del local, así que es de uno '
+                 + 'solo. Si el mismo rango te sirve en otro, créalo también allá: quedan '
+                 + 'separados y cambiar uno no toca al otro.</p>');
   }
   $('#fCampos').innerHTML = campos;
   aviso('#fMsg', '');
@@ -1397,7 +1397,10 @@ $('#fGuardar').addEventListener('click', function () {
     var h = { nombre: nombre, hora_inicio: $('#fEntra').value, hora_fin: $('#fSale').value };
     // Igual que siempre: sin la columna, no se manda.
     if (S.hayAtajoPorLocal) h.sucursal_id = ($('#fSucH') || {}).value || null;
-    p = d ? Promise.resolve(d) : DATOS.horarios.crear(emp, h);
+    // Antes editar no hacia nada (`Promise.resolve`). Con el local como campo,
+    // editar si tiene sentido: es como se corrige un tramo puesto en el local
+    // equivocado.
+    p = d ? DATOS.horarios.guardar(d.id, h) : DATOS.horarios.crear(emp, h);
   } else {
     var w = { nombre: nombre, valor_hora: Number($('#fValor').value) || null };
     p = (d ? DATOS.trabajadores.guardar(d.id, w) : DATOS.trabajadores.crear(emp, w))
@@ -1440,20 +1443,27 @@ function pintarEquipo() {
     : '<p class="vacio">Sin cargos no se puede decir qué hace falta. Crea el primero.</p>';
 }
 
-/* Los atajos que valen en un local: los suyos MAS los compartidos.
+/* Un tramo es de UN local. Punto.
 
-   `sucursal_id` nulo significa «sirve para todos», que es lo que son hoy todos
-   los que ya existen: se crearon cuando el local no era un concepto. Por eso la
-   columna va nula y no NOT NULL — con NOT NULL habria que inventarle un local
-   a cada atajo viejo. Pedro lo pidio en el msg 5284: «si los dos tienen
-   horarios distintos, tambien pueden tener necesidades de horarios distintos».
+   Lo tuve con un «sirve para todos los locales» y estaba de mas. Pedro lo
+   desarmo con una pregunta (msg 5300): «por que dos locales, con horarios
+   distintos, deben tener iguales tramos frecuentes?». No deben — el tramo sale
+   del horario del local, asi que uno que abre de noche no comparte tramos con
+   uno que abre de dia.
 
-   Si la migracion no esta pegada, `sucursal_id` no existe en las filas y todos
-   quedan como compartidos — o sea, exactamente el comportamiento de antes. */
+   Yo lo habia defendido con un argumento de migracion: no inventarle un local
+   a los tramos que ya existieran. Al ir a comprobarlo, NO EXISTIA NINGUNO — su
+   propia captura decia «Ninguno todavia». Estaba protegiendo datos que no
+   habia, y a cambio metia un concepto que el no pidio. El argumento era bueno
+   en abstracto y falso aqui, que para el resultado es lo mismo. */
 function atajosDe(sucursalId) {
-  return S.horarios.filter(function (h) {
-    return !h.sucursal_id || h.sucursal_id === sucursalId;
-  });
+  return S.horarios.filter(function (h) { return h.sucursal_id === sucursalId; });
+}
+
+/* Un tramo sin local no sale en ninguna tarjeta. No se esconde: desaparecer en
+   silencio es peor que verse fuera de sitio. Hoy no deberia haber ninguno. */
+function atajosHuerfanos() {
+  return S.horarios.filter(function (h) { return !h.sucursal_id; });
 }
 
 /* UNA TARJETA POR LOCAL  (opcion C, Pedro msg 5277)
@@ -1488,24 +1498,16 @@ function tarjetaLocal(loc) {
             ? '<p class="hint"><span class="avisito">sin horario</span> '
               + 'La franja del día se deduce de los turnos.</p>'
             : ''))
-    /* LOS TRAMOS, DENTRO DE SU LOCAL (opcion C).
-
-       Un tramo compartido sale en las dos tarjetas, y por eso lleva su marca:
-       sin ella, borrarlo desde aqui lo borraria en el otro local tambien y
-       pareceria que se borro algo que no era de aqui. La maqueta no resolvia
-       esto; aparecio al escribirlo. */
+    /* LOS TRAMOS, DENTRO DE SU LOCAL (opcion C), y de UN solo local.
+       Ya no hay marca de «compartido»: no hay compartidos. */
     + '<div class="sep-tramos">Tramos frecuentes de este local</div>'
     + (atajosDe(loc.id).length
         ? '<div class="tramos">' + atajosDe(loc.id).map(function (h) {
-            var compartido = !h.sucursal_id;
             return '<div class="tramo" data-tramo="' + h.id + '">'
                  + '<b>' + esc(h.nombre) + '</b>'
                  + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
                  + '<span class="espacio"></span>'
-                 /* «en todos» no dice de que. Lo pregunto Pedro apenas lo vio
-                    (msg 5296) y tenia razon: una etiqueta que necesita que te
-                    expliquen que significa no esta etiquetando nada. */
-                 + (compartido ? '<span class="chip">todos los locales</span>' : '')
+                 + '<button class="plano" data-abrirt="' + h.id + '">Editar</button>'
                  + '<button class="plano" data-borrart="' + h.id + '">Borrar</button></div>';
           }).join('') + '</div>'
         : '<p class="hint sin-tramos">Ninguno todavía. Son opcionales.</p>')
@@ -1536,15 +1538,15 @@ document.addEventListener('click', function (ev) {
 
   var bt = ev.target.dataset.borrart;
   if (bt) {
-    var h = S.horarios.filter(function (x) { return x.id === bt; })[0];
-    // Si es compartido se dice en el aviso: se esta borrando en TODOS los
-    // locales, no solo en el que se tiene delante.
-    var msg = (h && !h.sucursal_id)
-      ? '«' + (h ? h.nombre : '') + '» sirve en TODOS los locales.\n\n'
-        + '¿Borrarlo en todos? No afecta a ningún turno: solo es un atajo.'
-      : '¿Borrar este tramo? No afecta a ningún turno: solo es un atajo.';
-    if (!confirm(msg)) return;
+    if (!confirm('¿Borrar este tramo? No afecta a ningún turno: solo es un atajo.')) return;
     return DATOS.horarios.borrar(bt).then(cargarTodo);
+  }
+
+  var at = ev.target.dataset.abrirt;
+  if (at) {
+    var ha = S.horarios.filter(function (x) { return x.id === at; })[0];
+    if (ha) { tramoPara = ha.sucursal_id || (S.sucursales[0] || {}).id || null;
+              return abrirFicha('horario', ha); }
   }
 
   var r = ev.target.dataset.renombrar;
@@ -1555,9 +1557,23 @@ document.addEventListener('click', function (ev) {
 });
 
 function pintarConfig() {
-  $('#listaSucursales').innerHTML = S.sucursales.length
+  var sueltos = atajosHuerfanos();
+  $('#listaSucursales').innerHTML = (S.sucursales.length
     ? S.sucursales.map(tarjetaLocal).join('')
-    : '<p class="vacio">Crea tu primer local para poder planificar.</p>';
+    : '<p class="vacio">Crea tu primer local para poder planificar.</p>')
+    + (sueltos.length
+        ? '<div class="tarj-local"><div class="cab"><b>Tramos sin local</b></div>'
+          + '<p class="hint">No aparecen al planificar en ningún local. Dales uno.</p>'
+          + '<div class="tramos">'
+          + sueltos.map(function (h) {
+              return '<div class="tramo"><b>' + esc(h.nombre) + '</b>'
+                   + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
+                   + '<span class="espacio"></span>'
+                   + '<button class="plano" data-abrirt="' + h.id + '">Darle local</button>'
+                   + '<button class="plano" data-borrart="' + h.id + '">Borrar</button></div>';
+            }).join('')
+          + '</div></div>'
+        : '');
 }
 
 ['#listaTrabajadores','#listaCargos'].forEach(function (sel) {

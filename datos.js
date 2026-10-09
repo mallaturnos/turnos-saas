@@ -239,6 +239,10 @@
     listar: function () { return rest('horarios?select=*&order=hora_inicio', null, 'leer los horarios'); },
     hayPorLocal: probarHorarioPorLocal,
     crear:  function (e, d) { return crear('horarios', Object.assign({ empresa_id: e }, d), 'crear el horario'); },
+    // Editar no existia: la ficha abria y el Guardar no hacia nada. Se nota
+    // recien ahora, porque antes no habia ningun campo que valiera la pena
+    // cambiar — el local si lo es.
+    guardar:function (id, d) { return editar('horarios', id, d, 'guardar el tramo'); },
     borrar: function (id) { return quitar('horarios', 'id=eq.' + id, 'borrar el horario'); },
   };
 
