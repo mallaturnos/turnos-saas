@@ -411,3 +411,8 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 .lbarra.sinnadie .tirador::before, .lbarra.sinnadie .tirador::after {
   background:rgba(19,52,59,.45); }
 .lbarra.estirando { cursor:ew-resize; transition:none; }
+
+/* La banda de lo pedido se agarra igual que una barra. */
+.lpide[data-necid] { cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
+.lpide.llevando, .lpide.estirando { opacity:.55; }
+.lpide .tirador::before, .lpide .tirador::after { background:rgba(19,52,59,.4); }

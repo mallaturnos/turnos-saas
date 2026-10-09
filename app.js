@@ -799,9 +799,16 @@ function pintarDia() {
             + '<span class="lrot">' + esc(f.nombre) + '</span><div class="lpista">';
       f.pide.forEach(function (n) {
         var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
-        html += '<span class="lpide" style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
-              + ' title="Hacen falta ' + n.personas_requeridas + '">'
-              + '<span class="lpidetxt">hacen falta ' + n.personas_requeridas + '</span></span>';
+        /* La banda de lo PEDIDO también se mueve y se estira. Pedro:
+           «donde dice hacen falta... no se pueden mover... se deberían poder
+           mover verdad??». Sí: una necesidad es un tramo de horas igual que un
+           turno, y hasta ahora solo se podía cambiar entrando a su ficha. */
+        html += '<span class="lpide" data-necid="' + n.id + '"'
+              + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
+              + ' title="Hacen falta ' + n.personas_requeridas + ' · '
+              + hhmm(n.hora_inicio) + '–' + hhmm(n.hora_fin) + '">'
+              + '<span class="lpidetxt">hacen falta ' + n.personas_requeridas + '</span>'
+              + '<span class="tirador izq"></span><span class="tirador der"></span></span>';
       });
       html += '</div></div>';
     }
@@ -879,16 +886,21 @@ function engancharGestosDia(caja) {
 
   caja.addEventListener('pointerdown', function (ev) {
     if (ev.button != null && ev.button !== 0) return;
-    var b = ev.target.closest && ev.target.closest('.lbarra[data-asigid]');
+    var b = ev.target.closest && ev.target.closest('.lbarra[data-asigid], .lpide[data-necid]');
     if (!b) return;
     var pista = b.closest('.lpista'), linea = pista && pista.closest('.linea');
     if (!pista || !linea) return;
-    var a = S.asignaciones.filter(function (x) { return x.id === b.dataset.asigid; })[0];
+    // Una necesidad y un turno se arrastran igual; solo cambia dónde se guarda
+    // y que la necesidad NO cambia de fila (pertenece a su cargo).
+    var esNec = !!b.dataset.necid;
+    var a = esNec
+      ? S.necesidades.filter(function (x) { return x.id === b.dataset.necid; })[0]
+      : S.asignaciones.filter(function (x) { return x.id === b.dataset.asigid; })[0];
     if (!a) return;
     var i = a2h(a.hora_inicio), f = a2h(a.hora_fin); if (f <= i) f += 24;
     var tir = ev.target.closest('.tirador');
     g = {
-      b: b, pista: pista, id: a.id, activo: false,
+      b: b, pista: pista, id: a.id, esNec: esNec, activo: false,
       modo: tir ? (tir.classList.contains('izq') ? 'izq' : 'der') : 'mover',
       h0: Number(linea.dataset.ini), h1: Number(linea.dataset.fin),
       ini: i, fin: f, iniOrig: i, finOrig: f,
@@ -973,6 +985,11 @@ function engancharGestosDia(caja) {
     if (!x.activo) return;                 // fue un clic: lo atiende la ficha
 
     var movido = Math.abs(x.ini - x.iniOrig) >= 0.001 || Math.abs(x.fin - x.finOrig) >= 0.001;
+
+    /* La necesidad no cambia de fila: es de su cargo y ahí se queda. Solo se
+       le corren las horas, se mueva donde se mueva el cursor. */
+    if (x.esNec) { if (movido) moverNecesidad(x.id, x.ini, x.fin); return; }
+
     if (x.modo === 'mover') {
       var destino = x.fila ? (x.fila.dataset.fila || null) : undefined;
       // Soltar fuera de toda fila no es «dejarlo sin dueño»: es no haber
@@ -986,6 +1003,22 @@ function engancharGestosDia(caja) {
   caja.addEventListener('pointercancel', soltar);
 }
 
+
+function moverNecesidad(id, ini, fin) {
+  var n = S.necesidades.filter(function (x) { return x.id === id; })[0];
+  if (!n) return;
+  var copia = JSON.parse(JSON.stringify(n));
+  var cambio = { hora_inicio: h2a(ini), hora_fin: h2a(fin) };
+  DATOS.necesidades.guardar(id, cambio).then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', id, 'editar', copia,
+                 Object.assign({}, copia, cambio));
+    recordar('cambiar las horas de lo que hace falta', function () {
+      return DATOS.necesidades.guardar(id, {
+        hora_inicio: copia.hora_inicio, hora_fin: copia.hora_fin });
+    });
+    return recargarSemana();
+  }).catch(function (e) { alert('No se pudo mover: ' + e.message); });
+}
 
 function estirarTurno(id, ini, fin) {
   var a = S.asignaciones.filter(function (x) { return x.id === id; })[0];
