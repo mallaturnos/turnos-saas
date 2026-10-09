@@ -370,7 +370,8 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 .agregar-tramo:hover { background:var(--verde-claro); color:var(--tinta); }
 
 /* ---------- arrastrar una barra en el día ---------- */
-.lbarra[draggable="true"] { cursor:grab; }
+/* Ya no hay arrastre nativo: el cursor lo pone la barra misma. */
+.lbarra[data-asigid] { cursor:grab; touch-action:none; }
 .lbarra.llevando { opacity:.45; cursor:grabbing; }
 /* La pista bajo el cursor se marca: sin eso no se sabe en qué fila va a caer,
    y con filas de 24 px de alto errarle por una es facilísimo. */
@@ -378,16 +379,32 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
                  outline:1px dashed var(--verde); outline-offset:-1px; }
 
 /* ---------- estirar la barra por sus bordes ---------- */
-.lbarra { position:relative; }
-/* 8 px de agarre: menos es imposible de tomar con el mouse, y mas se come la
-   barra de un turno corto. Solo aparecen al pasar por encima para no llenar la
-   pantalla de adornos. */
-.tirador { position:absolute; top:0; bottom:0; width:8px; cursor:ew-resize;
-           opacity:0; background:rgba(255,255,255,.55); }
-.tirador.izq { left:0;  border-radius:4px 0 0 4px; }
-.tirador.der { right:0; border-radius:0 4px 4px 0; }
-.lbarra:hover .tirador, .lbarra.estirando .tirador { opacity:1; }
-.lbarra.estirando { cursor:ew-resize; }
-/* Mientras se estira no hay transicion: si la hubiera, el borde iria detras
-   del dedo y pareceria que la barra se resiste. */
-.lbarra.estirando { transition:none; }
+/* OJO: la barra YA es `position:absolute` (línea 233) y eso es lo que hace que
+   su `width` en % mida el turno. Aquí había un `.lbarra { position:relative }`
+   puesto «para que los tiradores se posicionen dentro», y pisaba el absolute:
+   un <span> en flujo normal IGNORA el width, así que TODAS las barras pasaron
+   a medir lo que mide su texto —tres turnos de 8 h, 3 h y 8 h se dibujaban
+   idénticos—. No hacía falta: `absolute` ya es un ancestro posicionado. */
+/* LAS TIRAS SE VEN SIEMPRE, no solo al pasar por encima.
+
+   Con 8 px invisibles «costaba hacer los cambios» (Pedro): hay que adivinar
+   donde esta el agarre antes de poder usarlo. Ahora son 14 px, llevan dos
+   rayitas que dicen «esto se toma», y la zona sensible SOBRESALE 3 px de la
+   barra — es mas facil pasarse del borde que quedarse corto.
+
+   Y nunca mas del 30 % de la barra: en un turno corto las dos tiras se comian
+   el bloque entero y ya no se podia MOVER, solo estirar. */
+.tirador { position:absolute; top:0; bottom:0; width:14px; max-width:30%;
+           cursor:ew-resize; touch-action:none;
+           display:flex; align-items:center; justify-content:center; gap:2px; }
+.tirador::before, .tirador::after {
+  content:""; width:1px; height:9px; background:rgba(255,255,255,.75); border-radius:1px; }
+.tirador.izq { left:-3px; }
+.tirador.der { right:-3px; }
+.lbarra:hover .tirador::before, .lbarra:hover .tirador::after,
+.lbarra.estirando .tirador::before, .lbarra.estirando .tirador::after {
+  background:#fff; height:11px; width:2px; }
+/* La barra sin dueño es clara: ahi las rayitas blancas no se ven. */
+.lbarra.sinnadie .tirador::before, .lbarra.sinnadie .tirador::after {
+  background:rgba(19,52,59,.45); }
+.lbarra.estirando { cursor:ew-resize; transition:none; }

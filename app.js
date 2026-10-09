@@ -128,6 +128,23 @@ function a2h(t) {
   return p[0] + p[1] / 60;
 }
 
+/* Y la vuelta: de horas decimales a «HH:MM», dando la vuelta pasada la
+   medianoche — una barra corrida más allá de las 24 sigue siendo una hora del
+   reloj, no la hora 25.
+
+   VIVE AQUÍ, AL LADO DE `a2h`, y eso no es orden por el orden: estuvo dentro
+   del bloque del arrastre y al reescribir ese bloque **desapareció con él**.
+   Las cuatro llamadas quedaron apuntando a nada y `soltarTurno` reventaba con
+   un ReferenceError silencioso dentro del escuchador — el mismo síntoma de la
+   mañana, «arrastro y no pasa nada», provocado esta vez por mi propio
+   refactor. Una función que usan varios no puede vivir dentro de uno. */
+function h2a(h) {
+  var t = ((h % 24) + 24) % 24;
+  var hh = Math.floor(t + 1e-9), mm = Math.round((t - hh) * 60);
+  if (mm === 60) { hh += 1; mm = 0; }
+  return String(hh % 24).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+}
+
 function horasDe(entra, sale) {
   var a = entra.split(':').map(Number), b = sale.split(':').map(Number);
   var m = (b[0]*60 + b[1]) - (a[0]*60 + a[1]);
@@ -782,7 +799,7 @@ function pintarDia() {
       html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
             + '<span class="lrot chico">' + rot + '</span><div class="lpista">'
             + '<span class="lbarra ' + colorCargo(x.cargo_id) + (x.trabajador_id ? '' : ' sinnadie')
-            + '" draggable="true" data-asigid="' + x.id + '"'
+            + '" data-asigid="' + x.id + '"'
             + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
             + ' title="' + esc(quien) + ' · ' + esc(nombreCargo(x.cargo_id)) + ' · '
             + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
@@ -798,161 +815,130 @@ function pintarDia() {
   m.className = 'malla undia';
   pintarPie();
   m.innerHTML = html;
-  engancharArrastreDia(m);
-  engancharEstirarDia(m);
+  engancharGestosDia(m);
   $('#cEstado').textContent = resumenPublicar();
 }
 
 /* ====================================================================
-   ARRASTRAR UNA BARRA EN LA VISTA DÍA
+   MOVER Y ESTIRAR UNA BARRA — UN SOLO MECANISMO, EVENTOS DE PUNTERO
 
-   Pedro lo echó de menos (msg 5274): «las barras no se pueden arrastrar como
-   se hacía antes... recuerdas?». Se hacía, pero en la malla de Tamarama. Esta
-   app nunca lo tuvo. Allá ya se pagaron los errores y aquí se aprovechan:
+   La primera versión usaba el arrastre nativo del navegador para mover y
+   eventos de puntero para estirar. Pedro lo probó y lo dijo exacto:
+   «se queda medio pegado, avanza pero no se mueve». Es el síntoma clásico del
+   arrastre nativo — lo que sigue al cursor es una SILUETA FANTASMA que pinta
+   el navegador; la barra de verdad se queda quieta hasta que sueltas. Encima
+   el gesto compite con el de estirar, y había que ir apagando `draggable`
+   para que no se pelearan.
 
-   · **UN SOLO ESCUCHADOR** en `#malla`, no uno por barra. Las filas se
-     repintan enteras en cada cambio, así que los escuchadores por barra
-     quedarían huérfanos al primer repintado. Por eso la función es
-     IDEMPOTENTE: se llama en cada pintado y solo engancha la primera vez.
-   · **Salto de 15 minutos.** Sin él, soltar da horas como 13:07 y la malla se
-     llena de minutos raros que nadie escribió a propósito.
-   · **Se conserva la duración**, no el fin: mover un turno de 4 horas lo deja
-     de 4 horas. Lo contrario convierte un arrastre en un estiramiento.
-   · **Cambiar de dueño se confirma.** Mover una barra a la fila de otro le
-     saca el turno a alguien; correrla de lado no. No es lo mismo y no puede
-     pedir lo mismo.
+   Ahora los dos gestos son lo mismo: se toma la barra, SE MUEVE LA BARRA, y
+   se ve dónde va a quedar antes de soltar. Lo que gana:
+   · La barra sigue al dedo de verdad, sin fantasma ni retardo.
+   · Funciona igual con mouse, lápiz y dedo (el nativo no anda en táctil).
+   · Un solo mecanismo, así que nada que coordinar entre dos.
 
-   El gesto más útil es hacia y desde «Sin asignar»: así se reparte lo que está
-   pendiente, que es justo para lo que existe esa fila. */
-var SALTO = 0.25;   // 15 minutos
+   Un clic sin mover sigue abriendo la ficha: el gesto no arranca hasta que el
+   puntero se corre 3 px, y así un dedo poco firme no convierte un clic en un
+   arrastre accidental. */
+var SALTO  = 0.25;   // 15 minutos
+var MINIMO = 0.25;   // ningún turno más corto que eso
+var UMBRAL = 3;      // px antes de considerar que esto es un arrastre
 
-function h2a(h) {
-  // Decimal a «HH:MM», dando la vuelta pasada la medianoche: una barra que se
-  // corre más allá de las 24 sigue siendo una hora del reloj, no la hora 25.
-  var t = ((h % 24) + 24) % 24;
-  var hh = Math.floor(t + 1e-9), mm = Math.round((t - hh) * 60);
-  if (mm === 60) { hh += 1; mm = 0; }
-  return String(hh % 24).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
-}
+function engancharGestosDia(caja) {
+  if (!caja || caja.dataset.gestos) return;
+  caja.dataset.gestos = '1';
+  var g = null;
 
-function engancharArrastreDia(caja) {
-  if (!caja || caja.dataset.arrastre) return;
-  caja.dataset.arrastre = '1';
-  var agarre = 0;   // dónde se tomó la barra, como fracción del ancho de la pista
-
-  caja.addEventListener('dragstart', function (ev) {
-    var b = ev.target.closest && ev.target.closest('.lbarra[data-asigid]');
-    if (!b) { if (ev.preventDefault) ev.preventDefault(); return; }
-    var pista = b.closest('.lpista');
-    var r = pista.getBoundingClientRect(), rb = b.getBoundingClientRect();
-    // Se guarda DÓNDE se agarró la barra. Sin esto la barra salta para que su
-    // inicio quede bajo el cursor, y se siente que uno no la está moviendo:
-    // la está tirando.
-    agarre = r.width ? (ev.clientX - rb.left) / r.width : 0;
-    ev.dataTransfer.setData('text/plain', b.dataset.asigid);
-    ev.dataTransfer.effectAllowed = 'move';
-    b.classList.add('llevando');
-  });
-
-  caja.addEventListener('dragend', function () {
-    caja.querySelectorAll('.llevando').forEach(function (x) { x.classList.remove('llevando'); });
-    caja.querySelectorAll('.encima').forEach(function (x) { x.classList.remove('encima'); });
-  });
-
-  caja.addEventListener('dragover', function (ev) {
-    var pista = ev.target.closest && ev.target.closest('.lpista');
-    if (!pista) return;
-    ev.preventDefault();
-    ev.dataTransfer.dropEffect = 'move';
-    if (!pista.classList.contains('encima')) {
-      caja.querySelectorAll('.encima').forEach(function (x) { x.classList.remove('encima'); });
-      pista.classList.add('encima');
-    }
-  });
-
-  caja.addEventListener('drop', function (ev) {
-    var pista = ev.target.closest && ev.target.closest('.lpista');
-    if (!pista) return;
-    ev.preventDefault();
-    pista.classList.remove('encima');
-    var id = ev.dataTransfer.getData('text/plain'); if (!id) return;
-    var linea = pista.closest('.linea');
-    var r = pista.getBoundingClientRect();
-    var h0 = Number(linea.dataset.ini), h1 = Number(linea.dataset.fin);
-    var hora = null;
-    if (r.width) {
-      var frac = (ev.clientX - r.left) / r.width - agarre;
-      hora = Math.round((h0 + frac * (h1 - h0)) / SALTO) * SALTO;
-    }
-    var fila = pista.closest('.lfila');
-    soltarTurno(id, fila ? (fila.dataset.fila || null) : null, hora);
-  });
-}
-
-/* ESTIRAR UNA BARRA POR SUS BORDES.
-
-   Va con EVENTOS DE PUNTERO y no con el arrastre del navegador, y no es un
-   capricho: arrastrar mueve la barra entera y estirar mueve un solo borde, asi
-   que son dos gestos distintos sobre el mismo elemento. Si los dos usaran el
-   mismo mecanismo se pelearian. Mientras se estira, la barra deja de ser
-   `draggable` para que el navegador no empiece un arrastre encima.
-
-   Minimo de 15 minutos: una barra de cero no se puede volver a agarrar, y un
-   turno de cero minutos no significa nada. */
-var MINIMO = 0.25;
-
-function engancharEstirarDia(caja) {
-  if (!caja || caja.dataset.estirar) return;
-  caja.dataset.estirar = '1';
-  var est = null;
+  var pct = function (h, h0, h1) { return ((h - h0) / (h1 - h0)) * 100; };
+  var horaEn = function (g, clientX) {
+    var r = g.pista.getBoundingClientRect(); if (!r.width) return null;
+    return g.h0 + ((clientX - r.left) / r.width) * (g.h1 - g.h0);
+  };
 
   caja.addEventListener('pointerdown', function (ev) {
-    var t = ev.target.closest && ev.target.closest('.tirador');
-    if (!t) return;
-    var b = t.closest('.lbarra'), pista = b.closest('.lpista'), linea = pista.closest('.linea');
-    if (!b || !pista || !linea) return;
+    if (ev.button != null && ev.button !== 0) return;
+    var b = ev.target.closest && ev.target.closest('.lbarra[data-asigid]');
+    if (!b) return;
+    var pista = b.closest('.lpista'), linea = pista && pista.closest('.linea');
+    if (!pista || !linea) return;
     var a = S.asignaciones.filter(function (x) { return x.id === b.dataset.asigid; })[0];
     if (!a) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    b.draggable = false;                       // que no arranque un arrastre encima
     var i = a2h(a.hora_inicio), f = a2h(a.hora_fin); if (f <= i) f += 24;
-    est = { b: b, t: t, pista: pista, id: a.id, lado: t.classList.contains('izq') ? 'izq' : 'der',
-            h0: Number(linea.dataset.ini), h1: Number(linea.dataset.fin), ini: i, fin: f };
-    est.iniOrig = i; est.finOrig = f;
-    b.classList.add('estirando');
-    t.setPointerCapture(ev.pointerId);
+    var tir = ev.target.closest('.tirador');
+    g = {
+      b: b, pista: pista, id: a.id, activo: false,
+      modo: tir ? (tir.classList.contains('izq') ? 'izq' : 'der') : 'mover',
+      h0: Number(linea.dataset.ini), h1: Number(linea.dataset.fin),
+      ini: i, fin: f, iniOrig: i, finOrig: f,
+      x0: ev.clientX, fila: null,
+    };
+    // Dónde se agarró la barra, para que no salte bajo el cursor al empezar.
+    var rb = b.getBoundingClientRect();
+    g.agarre = horaEn(g, ev.clientX) - i;
+    ev.preventDefault();
+    try { b.setPointerCapture(ev.pointerId); } catch (e) {}
   });
 
   caja.addEventListener('pointermove', function (ev) {
-    if (!est) return;
-    var r = est.pista.getBoundingClientRect(); if (!r.width) return;
-    var h = est.h0 + ((ev.clientX - r.left) / r.width) * (est.h1 - est.h0);
-    h = Math.round(h / SALTO) * SALTO;
-    if (est.lado === 'izq') est.ini = Math.min(h, est.fin - MINIMO);
-    else                    est.fin = Math.max(h, est.ini + MINIMO);
-    // Se dibuja mientras se arrastra: sin eso el borde no sigue al dedo y uno
-    // suelta a ciegas esperando haber acertado.
-    var pc = function (x) { return ((x - est.h0) / (est.h1 - est.h0)) * 100; };
-    est.b.style.left  = pc(est.ini) + '%';
-    est.b.style.width = (pc(est.fin) - pc(est.ini)) + '%';
-    var e = est.b.querySelector('i');
-    if (e) e.textContent = h2a(est.ini) + '–' + h2a(est.fin);
+    if (!g) return;
+    if (!g.activo) {
+      if (Math.abs(ev.clientX - g.x0) < UMBRAL) return;   // todavía es un clic
+      g.activo = true;
+      g.b.classList.add(g.modo === 'mover' ? 'llevando' : 'estirando');
+      // Mientras se mueve, la barra no estorba: así se puede saber qué fila
+      // hay DEBAJO del cursor para soltarla ahí.
+      if (g.modo === 'mover') g.b.style.pointerEvents = 'none';
+    }
+    var h = horaEn(g, ev.clientX);
+    if (h == null) return;
+
+    if (g.modo === 'mover') {
+      var dur = g.finOrig - g.iniOrig;
+      g.ini = Math.round((h - g.agarre) / SALTO) * SALTO;
+      if (g.ini < 0) g.ini = 0;
+      g.fin = g.ini + dur;
+      // La fila de debajo se marca: con filas de 24 px, errarle por una es fácil.
+      var bajo = document.elementFromPoint(ev.clientX, ev.clientY);
+      var fila = bajo && bajo.closest && bajo.closest('.lfila');
+      if (fila !== g.fila) {
+        caja.querySelectorAll('.lpista.encima').forEach(function (x) { x.classList.remove('encima'); });
+        g.fila = fila;
+        var p2 = fila && fila.querySelector('.lpista');
+        if (p2) p2.classList.add('encima');
+      }
+    } else if (g.modo === 'izq') {
+      g.ini = Math.min(Math.round(h / SALTO) * SALTO, g.fin - MINIMO);
+    } else {
+      g.fin = Math.max(Math.round(h / SALTO) * SALTO, g.ini + MINIMO);
+    }
+
+    g.b.style.left  = pct(g.ini, g.h0, g.h1) + '%';
+    g.b.style.width = (pct(g.fin, g.h0, g.h1) - pct(g.ini, g.h0, g.h1)) + '%';
+    var e = g.b.querySelector('i');
+    if (e) e.textContent = h2a(g.ini) + '–' + h2a(g.fin);
   });
 
-  function terminar() {
-    if (!est) return;
-    var e = est;
-    est = null;
-    e.b.classList.remove('estirando');
-    e.b.draggable = true;
-    var cambio = Math.abs(e.ini - e.iniOrig) >= 0.001 || Math.abs(e.fin - e.finOrig) >= 0.001;
-    if (!cambio) return;
-    estirarTurno(e.id, e.ini, e.fin);
+  function soltar() {
+    if (!g) return;
+    var x = g; g = null;
+    caja.querySelectorAll('.lpista.encima').forEach(function (p) { p.classList.remove('encima'); });
+    x.b.classList.remove('llevando', 'estirando');
+    x.b.style.pointerEvents = '';
+    if (!x.activo) return;                 // fue un clic: lo atiende la ficha
+
+    var movido = Math.abs(x.ini - x.iniOrig) >= 0.001 || Math.abs(x.fin - x.finOrig) >= 0.001;
+    if (x.modo === 'mover') {
+      var destino = x.fila ? (x.fila.dataset.fila || null) : undefined;
+      // Soltar fuera de toda fila no es «dejarlo sin dueño»: es no haber
+      // elegido. Se conserva el dueño y solo cambia la hora.
+      if (destino === undefined) return movido ? soltarTurno(x.id, null, x.ini, true) : null;
+      return soltarTurno(x.id, destino, x.ini, false);
+    }
+    if (movido) estirarTurno(x.id, x.ini, x.fin);
   }
-  caja.addEventListener('pointerup', terminar);
-  caja.addEventListener('pointercancel', terminar);
+  caja.addEventListener('pointerup', soltar);
+  caja.addEventListener('pointercancel', soltar);
 }
+
 
 function estirarTurno(id, ini, fin) {
   var a = S.asignaciones.filter(function (x) { return x.id === id; })[0];
@@ -970,7 +956,7 @@ function estirarTurno(id, ini, fin) {
   }).catch(function (e) { alert('No se pudo cambiar la hora: ' + e.message); });
 }
 
-function soltarTurno(id, filaId, horaNueva) {
+function soltarTurno(id, filaId, horaNueva, soloHora) {
   var a = S.asignaciones.filter(function (x) { return x.id === id; })[0];
   if (!a) return;
 
@@ -981,7 +967,9 @@ function soltarTurno(id, filaId, horaNueva) {
   var mismaHora = Math.abs(inicio - antes) < 0.001;
 
   var cambio = {};
-  if (S.agrupar === 'persona') {
+  if (soloHora) {
+    // Se soltó fuera de las filas: no se eligió dueño, así que no se toca.
+  } else if (S.agrupar === 'persona') {
     if ((a.trabajador_id || null) !== (filaId || null)) cambio.trabajador_id = filaId || null;
   } else if (filaId && a.cargo_id !== filaId) {
     cambio.cargo_id = filaId;
