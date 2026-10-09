@@ -611,8 +611,13 @@ function pintarDia() {
 
      Y es de UN CARGO a la vez: mezclar todos en una línea no dice nada — que
      falte un cocinero no es lo mismo que falte un cajero. */
+  /* Ojo con el id: de la necesidad se toma su CARGO, no su propio identificador.
+     La primera versión ponía `necsDia[0].id` —el id de la necesidad— como cargo
+     elegido. El selector no encontraba esa opción, el navegador mostraba la
+     primera de la lista, y el gráfico salía plano en cero contando turnos de un
+     cargo que no existe. En el código se veía perfecto. */
   if (!S.cargoGraf || !S.cargos.some(function (q) { return q.id === S.cargoGraf; }))
-    S.cargoGraf = (necsDia[0] || S.cargos[0] || {}).id || null;
+    S.cargoGraf = (necsDia[0] ? necsDia[0].cargo_id : (S.cargos[0] || {}).id) || null;
 
   var html = '';
   if (S.cargoGraf) {
