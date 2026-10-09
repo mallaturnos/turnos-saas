@@ -545,6 +545,23 @@ function pintarMalla() {
 function celdaDia(f, hoy, compacta) {
   var necs = S.necesidades.filter(function (n) { return n.fecha === f; });
   var sueltas = S.asignaciones.filter(function (a) { return a.fecha === f && !a.necesidad_id; });
+
+  /* AGRUPADAS POR CARGO, y dentro del cargo por hora.
+
+     Salían en el orden en que volvían de la base, así que crear otra «Caja»
+     la mandaba al final de la tarjeta, lejos de la Caja que ya estaba.
+     Pedro: «cuando creo otra caja, ¿no debería salir arriba en caja? ¿por qué
+     la tiras abajo?».
+
+     OJO, esto NO contradice lo de la línea de tiempo, donde el orden es por
+     identidad: allá se arrastran las barras y recalcular el orden las movería
+     bajo el dedo. Aquí no se arrastra nada — es una lista — así que el orden
+     sí puede significar algo, y lo que significa es «lo del mismo cargo, junto». */
+  necs.sort(function (x, y) {
+    var cx = nombreCargo(x.cargo_id) || '', cy = nombreCargo(y.cargo_id) || '';
+    if (cx !== cy) return cx.localeCompare(cy, 'es');
+    return a2h(x.hora_inicio) - a2h(y.hora_inicio);
+  });
   var html = '<div class="dia' + (f === hoy ? ' hoy' : '') + (compacta ? ' chico' : '') + '">'
     + '<header><b>' + (compacta ? f.split('-')[2] : nombreDia(f)) + '</b>'
     + '<span class="num">' + (compacta ? '' : diaMes(f)) + '</span></header>'
