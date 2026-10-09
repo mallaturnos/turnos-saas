@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v42</span></p>
+      <span style="float:right;opacity:.55" id="ver">v43</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -61,7 +61,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v42</span>
+    <span class="hint" id="ver2" title="Versión publicada">v43</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -133,17 +133,15 @@
          mirar. -->
     <div class="controles">
       <h2>Locales</h2><span class="espacio"></span>
-      <button class="primario" id="btnSucursal">Agregar</button>
+      <button class="primario" id="btnSucursal">+ Nuevo local</button>
     </div>
     <div id="listaSucursales" class="tarjetas-local"></div>
 
-    <div class="controles" style="margin-top:1.5rem">
-      <h2>Horarios guardados</h2><span class="espacio"></span>
-      <button class="primario" id="btnHorario">Agregar</button>
-    </div>
-    <div id="listaHorarios" class="lista media"></div>
-    <p class="hint sangria">Son un <b>atajo para copiar</b> horas de uso
-    frecuente. No mandan sobre nada: borrar uno no toca ningún turno.</p>
+    <!-- La seccion «Horarios guardados» ya no existe: sus tramos viven dentro
+         de la tarjeta de su local (opcion C, Pedro msg 5292). Eso saca de la
+         pantalla el segundo boton «Agregar», que era lo que la enredaba, y de
+         paso la etiqueta que decia de que local era cada tramo — una etiqueta
+         que solo hacia falta porque el tramo estaba en la lista equivocada. -->
   </section>
 
   <!-- MI CALENDARIO (lo que ve el trabajador) -->

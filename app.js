@@ -1291,6 +1291,10 @@ $('#btnPublicar').addEventListener('click', function () {
 // formularios casi iguales son cuatro sitios donde arreglar el mismo defecto.
 // ====================================================================
 var ficha = null;
+// Desde que tarjeta se apreto «+ agregar tramo»: ese local queda elegido en el
+// dialogo. Si se abriera siempre en «todos», el gesto diria una cosa y el
+// formulario otra.
+var tramoPara = null;
 function abrirFicha(tipo, dato) {
   ficha = { tipo: tipo, dato: dato || null };
   var campos = '';
@@ -1319,7 +1323,7 @@ function abrirFicha(tipo, dato) {
            + '<p class="hint">El horario del local se edita en <b>Establecimiento</b>, '
            + 'arriba en esta misma pantalla.</p>';
   } else {
-    $('#fTit').textContent = dato ? 'Horario' : 'Nuevo horario';
+    $('#fTit').textContent = dato ? 'Tramo frecuente' : 'Nuevo tramo';
     campos = campo('text', 'fNombre', 'Nombre', dato ? dato.nombre : '')
            + '<div class="fldrow">'
            + campo('time', 'fEntra', 'Entra', dato ? hhmm(dato.hora_inicio) : '09:00')
@@ -1332,7 +1336,8 @@ function abrirFicha(tipo, dato) {
                  + '<select id="fSucH" class="fld">'
                  + '<option value="">En todos los locales</option>'
                  + S.sucursales.map(function (x) {
-                     var m = dato && dato.sucursal_id === x.id ? ' selected' : '';
+                     var elegido = dato ? dato.sucursal_id : tramoPara;
+                     var m = elegido === x.id ? ' selected' : '';
                      return '<option value="' + x.id + '"' + m + '>Solo en ' + esc(x.nombre) + '</option>';
                    }).join('')
                  + '</select>'
@@ -1418,7 +1423,6 @@ $('#fGuardar').addEventListener('click', function () {
 $('#btnTrabajador').addEventListener('click', function () { abrirFicha('trabajador', null); });
 $('#btnCargo').addEventListener('click',      function () { abrirFicha('cargo', null); });
 $('#btnSucursal').addEventListener('click',   function () { abrirFicha('sucursal', null); });
-$('#btnHorario').addEventListener('click',    function () { abrirFicha('horario', null); });
 
 function pintarEquipo() {
   $('#listaTrabajadores').innerHTML = S.trabajadores.length
@@ -1484,6 +1488,25 @@ function tarjetaLocal(loc) {
             ? '<p class="hint"><span class="avisito">sin horario</span> '
               + 'La franja del día se deduce de los turnos.</p>'
             : ''))
+    /* LOS TRAMOS, DENTRO DE SU LOCAL (opcion C).
+
+       Un tramo compartido sale en las dos tarjetas, y por eso lleva su marca:
+       sin ella, borrarlo desde aqui lo borraria en el otro local tambien y
+       pareceria que se borro algo que no era de aqui. La maqueta no resolvia
+       esto; aparecio al escribirlo. */
+    + '<div class="sep-tramos">Tramos frecuentes de este local</div>'
+    + (atajosDe(loc.id).length
+        ? '<div class="tramos">' + atajosDe(loc.id).map(function (h) {
+            var compartido = !h.sucursal_id;
+            return '<div class="tramo" data-tramo="' + h.id + '">'
+                 + '<b>' + esc(h.nombre) + '</b>'
+                 + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
+                 + '<span class="espacio"></span>'
+                 + (compartido ? '<span class="chip">en todos</span>' : '')
+                 + '<button class="plano" data-borrart="' + h.id + '">Borrar</button></div>';
+          }).join('') + '</div>'
+        : '<p class="hint sin-tramos">Ninguno todavía. Son opcionales.</p>')
+    + '<button class="agregar-tramo" data-nuevotramo="' + loc.id + '">+ agregar tramo</button>'
     + '</div>';   // ← faltaba: sin esto el navegador ANIDA una tarjeta dentro
                   //   de la anterior. Y no lo delata contar `.tarj-local`,
                   //   porque anidadas tambien cuentan: se vio MIRANDO.
@@ -1505,6 +1528,22 @@ document.addEventListener('click', function (ev) {
     return DATOS.sucursales.guardar(id, d).then(cargarTodo)
       .catch(function (e) { alert('No se pudo guardar: ' + e.message); });
   }
+  var nt = ev.target.dataset.nuevotramo;
+  if (nt) { tramoPara = nt; return abrirFicha('horario', null); }
+
+  var bt = ev.target.dataset.borrart;
+  if (bt) {
+    var h = S.horarios.filter(function (x) { return x.id === bt; })[0];
+    // Si es compartido se dice en el aviso: se esta borrando en TODOS los
+    // locales, no solo en el que se tiene delante.
+    var msg = (h && !h.sucursal_id)
+      ? '«' + (h ? h.nombre : '') + '» sirve en TODOS los locales.\n\n'
+        + '¿Borrarlo en todos? No afecta a ningún turno: solo es un atajo.'
+      : '¿Borrar este tramo? No afecta a ningún turno: solo es un atajo.';
+    if (!confirm(msg)) return;
+    return DATOS.horarios.borrar(bt).then(cargarTodo);
+  }
+
   var r = ev.target.dataset.renombrar;
   if (r) {
     var l2 = S.sucursales.filter(function (x) { return x.id === r; })[0];
@@ -1516,33 +1555,12 @@ function pintarConfig() {
   $('#listaSucursales').innerHTML = S.sucursales.length
     ? S.sucursales.map(tarjetaLocal).join('')
     : '<p class="vacio">Crea tu primer local para poder planificar.</p>';
-
-  $('#listaHorarios').innerHTML = S.horarios.length
-    ? S.horarios.map(function (h) {
-        // De qué local es. Sin esto, con dos locales no se sabe por qué un
-        // atajo aparece al planificar en uno y no en el otro.
-        var suc = h.sucursal_id
-          ? (S.sucursales.filter(function (x) { return x.id === h.sucursal_id; })[0] || {}).nombre
-          : 'todos los locales';
-        return '<div class="item" data-tipo="horario" data-id="' + h.id + '"><b>' + esc(h.nombre) + '</b>'
-             + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
-             + '<span class="espacio"></span>'
-             + '<span class="sub chip">' + esc(suc || '—') + '</span>'
-             + '<button class="plano" data-borrarh="' + h.id + '">Borrar</button></div>';
-      }).join('')
-    : '<p class="vacio">Ninguno todavía. Son opcionales.</p>';
 }
 
-['#listaTrabajadores','#listaCargos','#listaSucursales','#listaHorarios'].forEach(function (sel) {
+['#listaTrabajadores','#listaCargos'].forEach(function (sel) {
   $(sel).addEventListener('click', function (ev) {
-    var bh = ev.target.dataset.borrarh;
-    if (bh) {
-      ev.stopPropagation();
-      if (!confirm('¿Borrar este horario? No afecta a ningún turno: solo es un atajo.')) return;
-      return DATOS.horarios.borrar(bh).then(cargarTodo);
-    }
     var it = ev.target.closest('.item'); if (!it) return;
-    var listas = { trabajador:S.trabajadores, cargo:S.cargos, sucursal:S.sucursales, horario:S.horarios };
+    var listas = { trabajador:S.trabajadores, cargo:S.cargos };
     var dato = listas[it.dataset.tipo].filter(function (x) { return x.id === it.dataset.id; })[0];
     abrirFicha(it.dataset.tipo, dato);
   });
