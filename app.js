@@ -145,6 +145,32 @@ function h2a(h) {
   return String(hh % 24).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
 }
 
+/* CUÁNTO DURA, en H:MM.
+
+   Pedro (msg 5361): «en todas las partes cuando aparece una hora de inicio y
+   otra de fin, debería existir un contador de horas». Tiene razón y la clave
+   está en «en todas las partes»: había TRECE sitios que pintan un par de
+   horas, y arreglarlos de a uno garantiza que mañana alguien agregue el
+   catorceavo sin contador.
+
+   Por eso el par de horas se arma SIEMPRE con estas funciones y no a mano.
+   Es el mismo criterio que la lista de paneles: no dejar nada que haya que
+   acordarse de mantener. */
+function durTexto(ini, fin) {
+  var h = horasDe(hhmm(ini), hhmm(fin));
+  var hh = Math.floor(h + 1e-9), mm = Math.round((h - hh) * 60);
+  if (mm === 60) { hh += 1; mm = 0; }
+  return hh + ':' + String(mm).padStart(2, '0');
+}
+// Para atributos (title=) y <option>: sin etiquetas, que ahí no se pintan.
+function rangoTxt(ini, fin) {
+  return hhmm(ini) + '–' + hhmm(fin) + ' · ' + durTexto(ini, fin);
+}
+// Para la pantalla: la duración en su propia etiqueta, más apagada.
+function rangoHtml(ini, fin) {
+  return hhmm(ini) + '–' + hhmm(fin) + ' <span class="dur">' + durTexto(ini, fin) + '</span>';
+}
+
 function horasDe(entra, sale) {
   var a = entra.split(':').map(Number), b = sale.split(':').map(Number);
   var m = (b[0]*60 + b[1]) - (a[0]*60 + a[1]);
@@ -814,7 +840,7 @@ function pintarDia() {
               + '<span class="lpide" data-necid="' + n.id + '"'
               + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
               + ' title="Hacen falta ' + n.personas_requeridas + ' · '
-              + hhmm(n.hora_inicio) + '–' + hhmm(n.hora_fin) + '">'
+              + rangoTxt(n.hora_inicio, n.hora_fin) + '">'
               + '<span class="lpidetxt">hacen falta ' + n.personas_requeridas + '</span>'
               + '<span class="tirador izq"></span><span class="tirador der"></span>'
               + '</span></div></div>';
@@ -839,8 +865,8 @@ function pintarDia() {
             + '" data-asigid="' + x.id + '"'
             + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
             + ' title="' + esc(quien) + ' · ' + esc(nombreCargo(x.cargo_id)) + ' · '
-            + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
-            + '<b>' + esc(rotulo) + '</b> <i>' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '</i>'
+            + rangoTxt(x.hora_inicio, x.hora_fin) + '">'
+            + '<b>' + esc(rotulo) + '</b> <i>' + rangoHtml(x.hora_inicio, x.hora_fin) + '</i>'
             // Una tira a cada borde para estirar. Van DENTRO de la barra para
             // que se muevan con ella sin tener que recalcular nada.
             + '<span class="tirador izq"></span><span class="tirador der"></span>'
@@ -1123,7 +1149,7 @@ function pintarNecesidad(n) {
   return '<div class="nec ' + colorCargo(n.cargo_id) + '">'
     + '<div class="cab" data-nec="' + n.id + '">'
       + '<span class="cargo">' + esc(nombreCargo(n.cargo_id)) + '</span>'
-      + '<span class="horas">' + hhmm(n.hora_inicio) + '–' + hhmm(n.hora_fin) + '</span>'
+      + '<span class="horas">' + rangoHtml(n.hora_inicio, n.hora_fin) + '</span>'
       + '<span class="espacio"></span>'
       + '<span class="cobertura ' + clase + '">' + texto + '</span>'
     + '</div>'
@@ -1140,13 +1166,13 @@ function pintarAsignacion(a) {
   var quien = a.trabajador_id ? esc(nombreTrab(a.trabajador_id)) : 'pendiente';
   return '<li class="' + (a.trabajador_id ? (publicado ? 'publicado' : 'borrador') : 'pendiente')
        + '" data-asigid="' + a.id + '">'
-       + quien + '<span class="hs">' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</span></li>';
+       + quien + '<span class="hs">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span></li>';
 }
 
 function pintarSuelta(a) {
   return '<div class="nec suelta ' + colorCargo(a.cargo_id) + '">'
     + '<div class="cab"><span class="cargo">' + esc(nombreCargo(a.cargo_id)) + '</span>'
-    + '<span class="horas">' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</span>'
+    + '<span class="horas">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span>'
     + '<span class="espacio"></span><span class="cobertura cob-falta">sin planificar</span></div>'
     + '<ul class="gente">' + pintarAsignacion(a) + '</ul></div>';
 }
@@ -1178,7 +1204,9 @@ function pintarBloqueSemana(a, abajo) {
        + (sinDueno ? ' pendiente' : (publicado ? ' publicado' : ' borrador'))
        + '" data-asigid="' + a.id + '">'
        + '<b>' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</b>'
-       + '<span class="dur">' + numero(horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin))) + 'h</span>'
+       // Mismo formato H:MM que en todo el resto: dos maneras de escribir lo
+       // mismo obligan a traducir mentalmente, y eso ya es un costo.
+       + '<span class="dur">' + durTexto(a.hora_inicio, a.hora_fin) + '</span>'
        + '<em>' + esc(pie) + '</em></li>';
 }
 
@@ -1359,7 +1387,7 @@ function abrirNecesidad(n, fecha) {
   $('#nHorario').innerHTML = '<option value="">— escribir las horas —</option>'
     + atajosDe(S.sucursal).map(function (h) {
         return '<option value="' + h.id + '">' + esc(h.nombre) + ' · '
-             + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</option>';
+             + rangoTxt(h.hora_inicio, h.hora_fin) + '</option>';
       }).join('');
   $('#nFecha').value   = n ? n.fecha : (fecha || hoyTexto());
   $('#nCargo').value   = n ? n.cargo_id : S.cargos[0].id;
@@ -1372,12 +1400,32 @@ function abrirNecesidad(n, fecha) {
   $('#dlgNec').showModal();
 }
 
+/* El contador MIENTRAS SE ESCRIBE, en los dos diálogos.
+
+   Es donde más falta hace: al teclear las horas uno quiere saber cuánto le
+   está dando a alguien ANTES de guardar, no después de mirar la malla. */
+function pintarDuracion(idEntra, idSale, idDonde) {
+  var e = $(idEntra), x = $(idSale), d = $(idDonde);
+  if (!e || !x || !d) return;
+  if (!e.value || !x.value) { d.textContent = ''; return; }
+  d.textContent = durTexto(e.value, x.value);
+}
 function pintarMedia() {
   $('#nMedia').hidden = !($('#nSale').value && $('#nEntra').value
                           && $('#nSale').value <= $('#nEntra').value);
+  pintarDuracion('#nEntra', '#nSale', '#nDur');
 }
-$('#nEntra').addEventListener('change', pintarMedia);
-$('#nSale').addEventListener('change', pintarMedia);
+['#nEntra', '#nSale'].forEach(function (sel) {
+  // `input` y no solo `change`: con el reloj del navegador, `change` llega
+  // tarde y el contador se queda atrás de lo que se está escribiendo.
+  $(sel).addEventListener('input', pintarMedia);
+  $(sel).addEventListener('change', pintarMedia);
+});
+['#aEntra', '#aSale'].forEach(function (sel) {
+  var f = function () { pintarDuracion('#aEntra', '#aSale', '#aDur'); };
+  $(sel).addEventListener('input', f);
+  $(sel).addEventListener('change', f);
+});
 
 // Copiar de un horario guardado: trae las horas y nada más. El horario no es
 // dueño de esta necesidad; si mañana lo borran, esto sigue igual.
@@ -1450,7 +1498,7 @@ function abrirAsignacion(a, necesidadId, fecha) {
 
   $('#aTit').textContent = a ? 'Quién lo cubre' : 'Quién lo cubre';
   $('#aDe').innerHTML = n
-    ? esc(nombreCargo(n.cargo_id)) + ' · ' + hhmm(n.hora_inicio) + '–' + hhmm(n.hora_fin)
+    ? esc(nombreCargo(n.cargo_id)) + ' · ' + rangoTxt(n.hora_inicio, n.hora_fin)
       + ' · ' + nombreDia(n.fecha) + ' ' + diaMes(n.fecha)
     : '<b>Turno suelto</b> — sin nada planificado detrás. Va a salir marcado como «sin planificar».';
 
@@ -1468,6 +1516,7 @@ function abrirAsignacion(a, necesidadId, fecha) {
   $('#aQuien').value = a && a.trabajador_id ? a.trabajador_id : '';
   $('#aEntra').value = a ? hhmm(a.hora_inicio) : (n ? hhmm(n.hora_inicio) : '09:00');
   $('#aSale').value  = a ? hhmm(a.hora_fin)    : (n ? hhmm(n.hora_fin)    : '17:00');
+  pintarDuracion('#aEntra', '#aSale', '#aDur');
   $('#aBorrar').hidden = !a;
   aviso('#aMsg', '');
   pintarOjo();
@@ -1828,7 +1877,7 @@ function tarjetaLocal(loc) {
         ? '<div class="tramos">' + atajosDe(loc.id).map(function (h) {
             return '<div class="tramo" data-tramo="' + h.id + '">'
                  + '<b>' + esc(h.nombre) + '</b>'
-                 + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
+                 + '<span class="sub">' + rangoHtml(h.hora_inicio, h.hora_fin) + '</span>'
                  + '<span class="espacio"></span>'
                  + '<button class="plano" data-abrirt="' + h.id + '">Editar</button>'
                  + '<button class="plano" data-borrart="' + h.id + '">Borrar</button></div>';
@@ -1890,7 +1939,7 @@ function pintarConfig() {
           + '<div class="tramos">'
           + sueltos.map(function (h) {
               return '<div class="tramo"><b>' + esc(h.nombre) + '</b>'
-                   + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
+                   + '<span class="sub">' + rangoHtml(h.hora_inicio, h.hora_fin) + '</span>'
                    + '<span class="espacio"></span>'
                    + '<button class="plano" data-abrirt="' + h.id + '">Darle local</button>'
                    + '<button class="plano" data-borrart="' + h.id + '">Borrar</button></div>';
@@ -1957,7 +2006,7 @@ function cuandoTexto(iso) {
 }
 
 function rangoDe(o) {
-  return o && o.hora_inicio ? hhmm(o.hora_inicio) + '–' + hhmm(o.hora_fin) : '';
+  return o && o.hora_inicio ? rangoTxt(o.hora_inicio, o.hora_fin) : '';
 }
 
 /* De un evento a una frase. Devuelve {que, detalle, tipo}.
@@ -2108,7 +2157,7 @@ function pintarMios() {
     caja.innerHTML = ts.length
       ? ts.map(function (t) {
           return '<div class="item"><b>' + nombreDia(t.fecha) + ' ' + diaMes(t.fecha) + '</b>'
-               + '<span class="sub">' + hhmm(t.hora_inicio) + '–' + hhmm(t.hora_fin)
+               + '<span class="sub">' + rangoHtml(t.hora_inicio, t.hora_fin)
                + ' · ' + esc(nombreCargo(t.cargo_id)) + '</span></div>';
         }).join('')
       : '<p class="vacio">No tienes turnos publicados en las próximas semanas.</p>';

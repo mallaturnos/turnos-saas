@@ -443,3 +443,14 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
                 font-family:inherit; }
 .chip[data-f][aria-selected="true"] { background:var(--tinta); color:#fff; border-color:var(--tinta); }
 #btnMasActividad { max-width:52rem; margin-top:.6rem; }
+
+/* ---------- el contador de horas ---------- */
+/* Va más apagado que el horario: es consecuencia, no dato que se teclee.
+   `tabular-nums` para que no bailen las cifras al cambiar de 9:00 a 10:00. */
+.dur { color:var(--gris); font-size:.78em; font-variant-numeric:tabular-nums;
+       margin-left:.3rem; white-space:nowrap; }
+.lbarra .dur, .gente.bloques .blq .dur { color:rgba(255,255,255,.72); }
+.lbarra.sinnadie .dur { color:var(--gris); }
+.fld.corto { flex:0 0 5.5rem; }
+.cuenta { border:1px solid transparent; padding:.45rem .1rem; font-size:1rem;
+          font-variant-numeric:tabular-nums; color:var(--tinta); font-weight:600; }

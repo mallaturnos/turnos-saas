@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v53</span></p>
+      <span style="float:right;opacity:.55" id="ver">v54</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -62,7 +62,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v53</span>
+    <span class="hint" id="ver2" title="Versión publicada">v54</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -183,6 +183,7 @@
     <div class="fldrow">
       <div class="fld"><label for="nEntra">Entra</label><input type="time" id="nEntra" value="09:00"></div>
       <div class="fld"><label for="nSale">Sale</label><input type="time" id="nSale" value="17:00"></div>
+      <div class="fld corto"><label>Son</label><div class="cuenta" id="nDur"></div></div>
       <div class="fld corta"><label for="nCuantos">Personas</label>
         <input type="number" id="nCuantos" min="1" max="50" value="1"></div>
     </div>
@@ -207,6 +208,7 @@
     <div class="fldrow">
       <div class="fld"><label for="aEntra">Entra</label><input type="time" id="aEntra"></div>
       <div class="fld"><label for="aSale">Sale</label><input type="time" id="aSale"></div>
+      <div class="fld corto"><label>Son</label><div class="cuenta" id="aDur"></div></div>
     </div>
     <p class="hint">Puedes cubrir <b>solo un trozo</b>: deja las horas que de
     verdad va a trabajar esa persona.</p>

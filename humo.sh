@@ -86,7 +86,17 @@ mira "se puede dejar a alguien PENDIENTE y se ve como tal" \
          ? 'pendiente' : 'sale como '+l.textContent;})()" "pendiente"
 mira "se puede cubrir SOLO UN TROZO del horario" \
      "(function(){var l=document.querySelector('[data-asigid=\"a3\"]');
-       return l? l.querySelector('.hs').textContent : 'no está';})()" "17:00–20:00"
+       return l? l.querySelector('.hs').textContent.replace(/\\s+/g,' ').trim() : 'no está';})()" \
+     "17:00–20:00 3:00"
+# El contador de horas lo pidio Pedro el 09-10 («si un trabajador parte a las
+# 8:00 a las 12:00 deberia aparecer 4:00»). Se comprueba aqui y no solo con la
+# vista: es el unico sitio que falla si alguien pinta un par de horas a mano en
+# vez de usar rangoHtml(), que es justo lo que hay que impedir.
+mira "las horas vienen con su contador" \
+     "(function(){var l=document.querySelector('[data-asigid=\"a1\"]');
+       var t=l?l.querySelector('.hs').textContent.replace(/\\s+/g,' ').trim():'no está';
+       return /\\d{2}:\\d{2}–\\d{2}:\\d{2} \\d+:\\d{2}/.test(t)? 'con contador' : 'SIN contador: '+t;})()" \
+     "con contador"
 mira "un turno sin nada planificado sale marcado «sin planificar»" \
      "(function(){var s=document.querySelectorAll('.nec.suelta .cobertura');
        return s.length? s[0].textContent : 'no hay sueltas';})()" "sin planificar"
