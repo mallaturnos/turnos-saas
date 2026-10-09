@@ -346,3 +346,7 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 .avisito { background:#fbf3df; color:#8a6d1f; font-size:.72rem;
            padding:.05rem .5rem; border-radius:20px; }
 .lista.media { max-width:34rem; }
+/* De qué local es un atajo. Va discreto: es una etiqueta, no un dato que se
+   lea primero. */
+.item .chip { background:#f0ede7; border-radius:20px; padding:.08rem .55rem;
+              font-size:.72rem; margin-right:.4rem; white-space:nowrap; }

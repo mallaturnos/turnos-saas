@@ -225,8 +225,19 @@
     },
   };
 
+  /* ¿Está pegada la migración de los atajos por local? Mismo cuidado que con
+     el horario del local: leer es seguro, escribir no. */
+  var hayHorarioPorLocal = null;
+  function probarHorarioPorLocal() {
+    if (hayHorarioPorLocal !== null) return Promise.resolve(hayHorarioPorLocal);
+    return rest('horarios?select=sucursal_id&limit=1', null, 'ver los atajos por local')
+      .then(function () { hayHorarioPorLocal = true;  return true; })
+      .catch(function () { hayHorarioPorLocal = false; return false; });
+  }
+
   var horarios = {
     listar: function () { return rest('horarios?select=*&order=hora_inicio', null, 'leer los horarios'); },
+    hayPorLocal: probarHorarioPorLocal,
     crear:  function (e, d) { return crear('horarios', Object.assign({ empresa_id: e }, d), 'crear el horario'); },
     borrar: function (id) { return quitar('horarios', 'id=eq.' + id, 'borrar el horario'); },
   };

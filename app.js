@@ -373,6 +373,11 @@ function cargarTodo(mia) {
         if (S.hayHorarioLocal !== hay) { S.hayHorarioLocal = hay; pintarConfig(); }
       });
     }
+    if (DATOS.horarios.hayPorLocal) {
+      DATOS.horarios.hayPorLocal().then(function (hay) {
+        if (S.hayAtajoPorLocal !== hay) { S.hayAtajoPorLocal = hay; pintarConfig(); }
+      });
+    }
     S.yoTrabajador = S.trabajadores.filter(function (p) { return p.usuario_id === S.yo.id; })[0] || null;
     $('#hEmpresa').textContent = 'Turnos';
     $('#hQuien').textContent = S.yo.email;
@@ -1029,7 +1034,7 @@ function abrirNecesidad(n, fecha) {
     return '<option value="' + q.id + '">' + esc(q.nombre) + '</option>';
   }).join('');
   $('#nHorario').innerHTML = '<option value="">— escribir las horas —</option>'
-    + S.horarios.map(function (h) {
+    + atajosDe(S.sucursal).map(function (h) {
         return '<option value="' + h.id + '">' + esc(h.nombre) + ' · '
              + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</option>';
       }).join('');
@@ -1319,7 +1324,20 @@ function abrirFicha(tipo, dato) {
            + '<div class="fldrow">'
            + campo('time', 'fEntra', 'Entra', dato ? hhmm(dato.hora_inicio) : '09:00')
            + campo('time', 'fSale', 'Sale', dato ? hhmm(dato.hora_fin) : '17:00')
-           + '</div>';
+           + '</div>'
+           + (S.hayAtajoPorLocal === false
+               ? '<p class="hint">Por ahora sirve para todos los locales. Para separarlos '
+                 + 'por local falta pegar <code>arreglo-horarios-por-local.sql</code>.</p>'
+               : '<label for="fSucH">¿Dónde sirve?</label>'
+                 + '<select id="fSucH" class="fld">'
+                 + '<option value="">En todos los locales</option>'
+                 + S.sucursales.map(function (x) {
+                     var m = dato && dato.sucursal_id === x.id ? ' selected' : '';
+                     return '<option value="' + x.id + '"' + m + '>Solo en ' + esc(x.nombre) + '</option>';
+                   }).join('')
+                 + '</select>'
+                 + '<p class="hint">Un local que abre de noche no necesita los tramos del '
+                 + 'que abre de día.</p>');
   }
   $('#fCampos').innerHTML = campos;
   aviso('#fMsg', '');
@@ -1372,6 +1390,8 @@ $('#fGuardar').addEventListener('click', function () {
     p = d ? DATOS.sucursales.guardar(d.id, s) : DATOS.sucursales.crear(emp, s);
   } else if (t === 'horario') {
     var h = { nombre: nombre, hora_inicio: $('#fEntra').value, hora_fin: $('#fSale').value };
+    // Igual que siempre: sin la columna, no se manda.
+    if (S.hayAtajoPorLocal) h.sucursal_id = ($('#fSucH') || {}).value || null;
     p = d ? Promise.resolve(d) : DATOS.horarios.crear(emp, h);
   } else {
     var w = { nombre: nombre, valor_hora: Number($('#fValor').value) || null };
@@ -1414,6 +1434,22 @@ function pintarEquipo() {
         return '<div class="item" data-tipo="cargo" data-id="' + q.id + '"><b>' + esc(q.nombre) + '</b></div>';
       }).join('')
     : '<p class="vacio">Sin cargos no se puede decir qué hace falta. Crea el primero.</p>';
+}
+
+/* Los atajos que valen en un local: los suyos MAS los compartidos.
+
+   `sucursal_id` nulo significa «sirve para todos», que es lo que son hoy todos
+   los que ya existen: se crearon cuando el local no era un concepto. Por eso la
+   columna va nula y no NOT NULL — con NOT NULL habria que inventarle un local
+   a cada atajo viejo. Pedro lo pidio en el msg 5284: «si los dos tienen
+   horarios distintos, tambien pueden tener necesidades de horarios distintos».
+
+   Si la migracion no esta pegada, `sucursal_id` no existe en las filas y todos
+   quedan como compartidos — o sea, exactamente el comportamiento de antes. */
+function atajosDe(sucursalId) {
+  return S.horarios.filter(function (h) {
+    return !h.sucursal_id || h.sucursal_id === sucursalId;
+  });
 }
 
 /* UNA TARJETA POR LOCAL  (opcion C, Pedro msg 5277)
@@ -1483,9 +1519,16 @@ function pintarConfig() {
 
   $('#listaHorarios').innerHTML = S.horarios.length
     ? S.horarios.map(function (h) {
+        // De qué local es. Sin esto, con dos locales no se sabe por qué un
+        // atajo aparece al planificar en uno y no en el otro.
+        var suc = h.sucursal_id
+          ? (S.sucursales.filter(function (x) { return x.id === h.sucursal_id; })[0] || {}).nombre
+          : 'todos los locales';
         return '<div class="item" data-tipo="horario" data-id="' + h.id + '"><b>' + esc(h.nombre) + '</b>'
              + '<span class="sub">' + hhmm(h.hora_inicio) + '–' + hhmm(h.hora_fin) + '</span>'
-             + '<span class="espacio"></span><button class="plano" data-borrarh="' + h.id + '">Borrar</button></div>';
+             + '<span class="espacio"></span>'
+             + '<span class="sub chip">' + esc(suc || '—') + '</span>'
+             + '<button class="plano" data-borrarh="' + h.id + '">Borrar</button></div>';
       }).join('')
     : '<p class="vacio">Ninguno todavía. Son opcionales.</p>';
 }
