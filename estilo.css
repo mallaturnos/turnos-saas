@@ -461,3 +461,18 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
                 border-radius:6px; padding:.35rem .6rem; font-size:.88rem; cursor:pointer; }
 .opciones .op input { width:auto; margin:0; }
 .opciones .op:hover { background:var(--verde-claro); }
+
+/* ---------- borrar una necesidad desde su bloque ---------- */
+/* Separada del contador por un margen: pegada, se aprieta queriendo leer
+   «Falta 2». Y con su propio recuadro, para que se lea como boton y no como
+   un adorno del chip de al lado. */
+.nec .cab .borrar-nec {
+  margin-left:.45rem; width:1.35rem; height:1.35rem; line-height:1; padding:0;
+  border:1px solid var(--borde); border-radius:5px; background:var(--blanco);
+  color:var(--gris); font-size:1rem; font-family:inherit; cursor:pointer; flex:0 0 auto;
+}
+.nec .cab .borrar-nec:hover { background:#f6ecec; color:#8a3f3f; border-color:#e3cfcf; }
+/* La cabecera PARECE apretable. No lo parecia, y por eso Pedro no encontraba
+   la ficha donde ya estaba el borrar. */
+.nec .cab[data-nec] { cursor:pointer; }
+.nec .cab[data-nec]:hover { filter:brightness(.97); }

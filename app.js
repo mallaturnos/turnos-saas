@@ -1193,6 +1193,10 @@ function pintarNecesidad(n) {
       + '<span class="horas">' + rangoHtml(n.hora_inicio, n.hora_fin) + '</span>'
       + '<span class="espacio"></span>'
       + '<span class="cobertura ' + clase + '">' + texto + '</span>'
+      /* La × va FUERA de la cabecera apretable, como su propio botón: si
+         estuviera dentro, apretarla abriría también la ficha. */
+      + '<button class="borrar-nec" data-borrarnec="' + n.id + '"'
+      + ' title="Borrar lo que hace falta">×</button>'
     + '</div>'
     + '<ul class="gente">'
       + mias.map(pintarAsignacion).join('')
@@ -1402,6 +1406,13 @@ $('#nav').addEventListener('click', function (ev) {
 // enganchar uno por uno es como se queda un botón muerto sin que nadie lo note.
 $('#malla').addEventListener('click', function (ev) {
   var t = ev.target;
+  /* La × antes que nada, y cortando el clic: vive DENTRO de la cabecera, que
+     también es apretable, así que sin esto borrar abriría además la ficha. */
+  if (t.dataset.borrarnec) {
+    ev.stopPropagation();
+    return borrarNecesidad(S.necesidades.filter(function (n) {
+      return n.id === t.dataset.borrarnec; })[0]);
+  }
   if (t.dataset.nueva)  return abrirNecesidad(null, t.dataset.nueva);
   if (t.dataset.suelta) return abrirAsignacion(null, null, t.dataset.suelta);
   if (t.dataset.asig)   return abrirAsignacion(null, t.dataset.asig, null);
@@ -1504,19 +1515,26 @@ $('#nGuardar').addEventListener('click', function () {
   }).catch(function (e) { aviso('#nMsg', e.message, 'bad'); });
 });
 
-$('#nBorrar').addEventListener('click', function () {
-  if (!necActual) return;
-  var cuantas = S.asignaciones.filter(function (a) { return a.necesidad_id === necActual.id; }).length;
+/* BORRAR UNA NECESIDAD. Una sola función para los dos caminos — la ficha y la
+   × del bloque— porque son el mismo borrado. Si fueran dos, el día que se
+   mejore el aviso habría que acordarse de mejorarlo dos veces, y es justo el
+   error que me ha perseguido todo el día. */
+function borrarNecesidad(n, dondeElError) {
+  if (!n) return;
+  var cuantas = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; }).length;
   // Decir cuánta gente queda suelta ANTES de borrar. Lo que no se avisa se
-  // descubre cuando ya pasó.
+  // descubre cuando ya pasó. Y se dice QUÉ se borra, con nombre y hora: desde
+  // la × del bloque uno puede haberle apuntado al de al lado.
+  var que = '¿Borrar lo que hace falta en «' + nombreCargo(n.cargo_id) + '», '
+          + rangoTxt(n.hora_inicio, n.hora_fin) + '?';
   var m = cuantas
-    ? 'Esta necesidad tiene ' + cuantas + ' persona(s) asignada(s). Si la borras, '
-      + 'esas asignaciones quedan como «sin planificar», no se borran. ¿Sigo?'
-    : '¿Borrar lo que hace falta ese día?';
+    ? que + '\n\nTiene ' + cuantas + ' persona(s) asignada(s). Esas quedan como '
+      + '«sin planificar», no se borran.'
+    : que;
   if (!confirm(m)) return;
-  var copia = JSON.parse(JSON.stringify(necActual));
-  DATOS.necesidades.borrar(necActual.id).then(function () {
-    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', necActual.id, 'borrar', necActual, null);
+  var copia = JSON.parse(JSON.stringify(n));
+  return DATOS.necesidades.borrar(n.id).then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', n.id, 'borrar', copia, null);
     recordar('borrar ' + nombreCargo(copia.cargo_id), function () {
       return DATOS.necesidades.crear({
         empresa_id: copia.empresa_id, sucursal_id: copia.sucursal_id, fecha: copia.fecha,
@@ -1524,7 +1542,13 @@ $('#nBorrar').addEventListener('click', function () {
         personas_requeridas: copia.personas_requeridas });
     });
     $('#dlgNec').close(); return recargarSemana();
-  }).catch(function (e) { aviso('#nMsg', e.message, 'bad'); });
+  }).catch(function (e) {
+    if (dondeElError) aviso(dondeElError, e.message, 'bad'); else alert(e.message);
+  });
+}
+
+$('#nBorrar').addEventListener('click', function () {
+  borrarNecesidad(necActual, '#nMsg');
 });
 
 // ====================================================================
