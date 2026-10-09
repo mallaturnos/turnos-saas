@@ -454,3 +454,10 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 .fld.corto { flex:0 0 5.5rem; }
 .cuenta { border:1px solid transparent; padding:.45rem .1rem; font-size:1rem;
           font-variant-numeric:tabular-nums; color:var(--tinta); font-weight:600; }
+
+/* ---------- plantillas ---------- */
+.opciones { display:flex; flex-direction:column; gap:.3rem; }
+.opciones .op { display:flex; align-items:center; gap:.45rem; border:1px solid var(--borde);
+                border-radius:6px; padding:.35rem .6rem; font-size:.88rem; cursor:pointer; }
+.opciones .op input { width:auto; margin:0; }
+.opciones .op:hover { background:var(--verde-claro); }

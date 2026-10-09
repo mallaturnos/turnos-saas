@@ -429,6 +429,7 @@ function cargarTodo(mia) {
         if (S.hayHorarioLocal !== hay) { S.hayHorarioLocal = hay; pintarConfig(); }
       });
     }
+    cargarPlantillas();
     if (DATOS.horarios.hayPorLocal) {
       DATOS.horarios.hayPorLocal().then(function (hay) {
         if (S.hayAtajoPorLocal !== hay) { S.hayAtajoPorLocal = hay; pintarConfig(); }
@@ -1956,6 +1957,213 @@ function pintarConfig() {
     abrirFicha(it.dataset.tipo, dato);
   });
 });
+
+// ====================================================================
+// PLANTILLAS — guardar una semana como modelo y volver a aplicarla
+//
+// Las tres decisiones se cerraron con Pedro en el chat:
+//   1. La plantilla guarda la forma Y la gente. Al aplicar se elige si se
+//      pegan las personas. («Igual tiene sentido que deje a la misma gente»:
+//      en un local con equipo estable la semana se repite con la misma gente,
+//      y repartir todo de nuevo cada semana es el trabajo que esto ahorra.)
+//   2. Se aplica a varias semanas.
+//   3. Si la semana destino ya tiene cosas SE PREGUNTA, pero solo entonces y
+//      no como un paso más del formulario. Verificado: es lo que hace Skello.
+//
+// La plantilla guarda `dow` y no fechas: una semana SIN fecha es lo que
+// permite aplicarla a cualquier otra.
+// ====================================================================
+var S_PL = { lista: [], hay: false };
+
+function diaDeSemana(fecha) {
+  // 0 = lunes, igual que en el resto del sistema.
+  var p = fecha.split('-').map(Number);
+  return (new Date(p[0], p[1] - 1, p[2]).getDay() + 6) % 7;
+}
+
+/* Lo que hay en la semana que se está mirando, convertido a líneas de modelo.
+   Se queda SOLO con lo de esta sucursal: una plantilla de un local no tiene
+   por qué arrastrar los turnos de otro. */
+function lineasDeLaSemana() {
+  var dias = [];
+  for (var i = 0; i < 7; i++) dias.push(masDias(S.lunes, i));
+  var dentro = function (f) { return dias.indexOf(f) >= 0; };
+  var lineas = [];
+  S.necesidades.forEach(function (n) {
+    if (!dentro(n.fecha)) return;
+    lineas.push({ tipo: 'necesidad', dow: diaDeSemana(n.fecha), cargo_id: n.cargo_id,
+                  hora_inicio: n.hora_inicio, hora_fin: n.hora_fin,
+                  personas_requeridas: n.personas_requeridas });
+  });
+  S.asignaciones.forEach(function (a) {
+    if (!dentro(a.fecha)) return;
+    lineas.push({ tipo: 'turno', dow: diaDeSemana(a.fecha), cargo_id: a.cargo_id,
+                  hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+                  trabajador_id: a.trabajador_id || null });
+  });
+  return lineas;
+}
+
+function guardarModelo() {
+  var lineas = lineasDeLaSemana();
+  if (!lineas.length) return alert('Esta semana está vacía: no hay nada que guardar.');
+  var nom = prompt('¿Cómo se llama este modelo?', 'Semana tipo');
+  if (!nom || !nom.trim()) return;
+  DATOS.plantillas.crear(S.yo.empresa_id, { nombre: nom.trim(), sucursal_id: S.sucursal })
+    .then(function (pl) {
+      return DATOS.plantillas.ponerLineas(S.yo.empresa_id, pl.id, lineas).then(function () {
+        DATOS.anotar(S.yo.empresa_id, S.yo.id, 'plantilla', pl.id, 'crear', null,
+                     { nombre: pl.nombre, lineas: lineas.length });
+        avisoPlan('Guardado como <b>' + esc(pl.nombre) + '</b> — '
+                  + lineas.length + ' líneas.');
+        return cargarPlantillas();
+      });
+    })
+    .catch(function (e) { alert('No se pudo guardar: ' + e.message); });
+}
+
+function cargarPlantillas() {
+  if (!DATOS.plantillas) return Promise.resolve();
+  return DATOS.plantillas.hay().then(function (hay) {
+    S_PL.hay = hay;
+    var b1 = $('#btnGuardarModelo'), b2 = $('#btnAplicarModelo');
+    if (b1) b1.hidden = !hay;
+    if (b2) b2.hidden = !hay;
+    if (!hay) return;
+    return DATOS.plantillas.listar().then(function (r) { S_PL.lista = r || []; });
+  });
+}
+
+/* APLICAR. Devuelve lo que SE VA A CREAR sin crear nada todavía: así se puede
+   contar, avisar del choque y recién entonces escribir. Calcular y escribir en
+   el mismo paso es lo que hace imposible preguntar antes. */
+function planDeAplicar(lineas, lunes, traer) {
+  var necs = [], asigs = [];
+  lineas.forEach(function (l) {
+    var fecha = masDias(lunes, l.dow);
+    if (l.tipo === 'necesidad') {
+      if (traer === 'solo-turnos') return;
+      necs.push({ empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal, fecha: fecha,
+                  cargo_id: l.cargo_id, hora_inicio: l.hora_inicio, hora_fin: l.hora_fin,
+                  personas_requeridas: l.personas_requeridas || 1 });
+    } else {
+      if (traer === 'solo-necesidades') return;
+      // Si se pidió «con la gente» pero esa persona ya no está, el turno NO se
+      // pierde: entra sin dueño y se cuenta aparte para poder decirlo.
+      var sigue = l.trabajador_id
+        && S.trabajadores.some(function (t) { return t.id === l.trabajador_id; });
+      asigs.push({ empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal, fecha: fecha,
+                   cargo_id: l.cargo_id, hora_inicio: l.hora_inicio, hora_fin: l.hora_fin,
+                   trabajador_id: (traer === 'con-gente' && sigue) ? l.trabajador_id : null,
+                   origen: 'plantilla', necesidad_id: null,
+                   __perdida: traer === 'con-gente' && l.trabajador_id && !sigue });
+    }
+  });
+  return { necs: necs, asigs: asigs };
+}
+
+function abrirAplicar() {
+  if (!S_PL.lista.length) {
+    return alert('Todavía no has guardado ningún modelo.\n\n'
+      + 'Arma una semana como te guste y aprieta «Guardar como modelo».');
+  }
+  $('#plModelo').innerHTML = S_PL.lista.map(function (p) {
+    return '<option value="' + p.id + '">' + esc(p.nombre) + '</option>';
+  }).join('');
+  // Las semanas se ofrecen desde la que se está mirando, hacia adelante: nadie
+  // aplica una plantilla al pasado.
+  $('#plSemanas').innerHTML = [0, 1, 2, 3].map(function (i) {
+    var l = masDias(S.lunes, i * 7);
+    return '<label class="op"><input type="checkbox" value="' + l + '"'
+         + (i === 0 ? ' checked' : '') + '> Semana del <b>' + diaMes(l) + '</b></label>';
+  }).join('');
+  aviso('#plMsg', '');
+  $('#dlgPlantilla').showModal();
+}
+
+$('#plAplicar').addEventListener('click', function () {
+  var pid = $('#plModelo').value;
+  var traer = ($$('[name="plTraer"]').filter(function (r) { return r.checked; })[0] || {}).value
+            || 'con-gente';
+  var semanas = $$('#plSemanas input:checked').map(function (c) { return c.value; });
+  if (!pid || !semanas.length) return aviso('#plMsg', 'Elige al menos una semana.', 'bad');
+
+  aviso('#plMsg', 'Mirando…');
+  DATOS.plantillas.lineas(pid).then(function (lineas) {
+    if (!lineas.length) return aviso('#plMsg', 'Ese modelo está vacío.', 'bad');
+
+    /* EL CHOQUE SE MIRA ANTES DE ESCRIBIR, y solo se pregunta si lo hay.
+       Es lo que hace Skello (verificado en su manual) y resuelve la objeción
+       de Pedro: no estorba cuando la semana está vacía, que es casi siempre.
+
+       SE LE PREGUNTA A LA BASE, no a `S.asignaciones`. La primera versión
+       miraba la memoria — y la memoria solo tiene LA SEMANA QUE ESTÁS VIENDO,
+       no la semana destino. Resultado: nunca encontraba choque y duplicaba en
+       silencio. Lo cazó la prueba de aplicar dos veces seguidas: quedaron 10
+       turnos donde debían quedar 5 y un aviso. */
+    var mirarSemana = function (l) {
+      var hasta = masDias(l, 6);
+      return Promise.all([
+        DATOS.asignaciones.listar(S.sucursal, l, hasta),
+        DATOS.necesidades.listar(S.sucursal, l, hasta),
+      ]).then(function (r) {
+        return ((r[0] || []).length + (r[1] || []).length) ? l : null;
+      });
+    };
+
+    var seguir = function () {
+      var todas = { necs: [], asigs: [], perdidas: 0 };
+      semanas.forEach(function (l) {
+        var p = planDeAplicar(lineas, l, traer);
+        todas.necs = todas.necs.concat(p.necs);
+        todas.asigs = todas.asigs.concat(p.asigs);
+        todas.perdidas += p.asigs.filter(function (a) { return a.__perdida; }).length;
+      });
+      todas.asigs.forEach(function (a) { delete a.__perdida; });
+      aviso('#plMsg', 'Aplicando…');
+      // Nada de llamar con una lista vacía: no se pide a la base que no haga
+      // nada, se simplemente no se le pide.
+      return Promise.resolve()
+        .then(function () { return todas.necs.length
+          ? DATOS.necesidades.crear(todas.necs) : null; })
+        .then(function () { return todas.asigs.length
+          ? DATOS.asignaciones.crear(todas.asigs) : null; })
+        .then(function () {
+          DATOS.anotar(S.yo.empresa_id, S.yo.id, 'plantilla', pid, 'aplicar', null,
+            { semanas: semanas.length, necesidades: todas.necs.length,
+              turnos: todas.asigs.length });
+          $('#dlgPlantilla').close();
+          avisoPlan('Modelo aplicado: <b>' + todas.necs.length + '</b> necesidades y <b>'
+            + todas.asigs.length + '</b> turnos en <b>' + semanas.length + '</b> '
+            + (semanas.length === 1 ? 'semana' : 'semanas') + '.'
+            + (todas.perdidas ? ' <b>' + todas.perdidas + '</b> quedaron sin asignar porque '
+               + 'esa persona ya no está.' : ''));
+          return recargarSemana();
+        })
+        .catch(function (e) { aviso('#plMsg', 'No se pudo: ' + e.message, 'bad'); });
+    };
+
+    return Promise.all(semanas.map(mirarSemana)).then(function (r) {
+      var ocupadas = r.filter(Boolean);
+      if (!ocupadas.length) return seguir();
+      // Hay choque: se dice CUÁNTAS semanas y se deja decidir. No se borra
+      // nada nunca — lo que entra se suma, y eso se dice con todas sus letras.
+      var ok = confirm(ocupadas.length === 1
+        ? 'La semana del ' + diaMes(ocupadas[0]) + ' ya tiene cosas puestas.\n\n'
+          + 'Lo del modelo se SUMA a lo que ya hay: no se borra nada, pero '
+          + 'pueden quedar turnos repetidos.\n\n¿Sigo?'
+        : ocupadas.length + ' de las semanas elegidas ya tienen cosas puestas.\n\n'
+          + 'Lo del modelo se SUMA a lo que ya hay: no se borra nada, pero '
+          + 'pueden quedar turnos repetidos.\n\n¿Sigo?');
+      if (ok) return seguir();
+      aviso('#plMsg', '');
+    });
+  }).catch(function (e) { aviso('#plMsg', 'No se pudo leer el modelo: ' + e.message, 'bad'); });
+});
+
+$('#plCancelar').addEventListener('click', function () { $('#dlgPlantilla').close(); });
+$('#btnGuardarModelo').addEventListener('click', guardarModelo);
+$('#btnAplicarModelo').addEventListener('click', abrirAplicar);
 
 // ====================================================================
 // ACTIVIDAD — la bitácora a la vista  (opción A, Pedro msg 5353)

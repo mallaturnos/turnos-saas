@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v54</span></p>
+      <span style="float:right;opacity:.55" id="ver">v55</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -62,7 +62,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v54</span>
+    <span class="hint" id="ver2" title="Versión publicada">v55</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -91,7 +91,9 @@
       <button class="plano" id="btnDeshacer" disabled title="No hay nada que deshacer">↶ Deshacer</button>
       <span class="espacio"></span>
       <span class="hint" id="cEstado"></span>
-      <button class="primario" id="btnPublicar">Publicar</button>
+<button class="plano" id="btnGuardarModelo" hidden>Guardar como modelo</button>
+      <button class="plano" id="btnAplicarModelo" hidden>Aplicar un modelo</button>
+            <button class="primario" id="btnPublicar">Publicar</button>
     </div>
 
     <p class="aviso" id="avisoPlan" hidden></p>
@@ -171,6 +173,34 @@
 </div>
 
 <!-- DIALOGOS ----------------------------------------------------------- -->
+
+<!-- Aplicar un modelo. Tres pasos y nada mas: el choque se pregunta DESPUES,
+     y solo si lo hay. -->
+<dialog id="dlgPlantilla" class="dlg">
+  <form method="dialog">
+    <h3>Aplicar un modelo</h3>
+    <div class="fld"><label for="plModelo">¿Cuál?</label>
+      <select id="plModelo"></select></div>
+    <label>¿Qué traigo?</label>
+    <div class="fld opciones">
+      <label class="op"><input type="radio" name="plTraer" value="con-gente" checked>
+        Todo, <b>con las personas</b></label>
+      <label class="op"><input type="radio" name="plTraer" value="sin-gente">
+        Todo, pero los turnos <b>sin dueño</b></label>
+      <label class="op"><input type="radio" name="plTraer" value="solo-necesidades">
+        Solo <b>lo que hace falta</b></label>
+    </div>
+    <label>¿A qué semanas?</label>
+    <div class="fld opciones" id="plSemanas"></div>
+    <p class="hint">Si alguna ya tiene turnos te aviso antes de seguir. <b>Nunca se borra
+    nada</b>: lo del modelo se suma.</p>
+    <p class="msg" id="plMsg"></p>
+    <div class="botonera">
+      <button type="button" class="primario" id="plAplicar">Aplicar</button>
+      <button type="button" id="plCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- Necesidad: qué hace falta, sin nombres todavía. -->
 <dialog id="dlgNec" class="dlg">

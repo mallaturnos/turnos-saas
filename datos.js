@@ -313,9 +313,40 @@
     },
   };
 
+  /* PLANTILLAS. Mismo cuidado que con las otras migraciones: se pregunta si
+     las tablas existen antes de usarlas, y si no están la app no muestra los
+     botones en vez de reventar. */
+  var hayPlantillas = null;
+  var plantillas = {
+    hay: function () {
+      if (hayPlantillas !== null) return Promise.resolve(hayPlantillas);
+      return rest('plantillas?select=id&limit=1', null, 'ver las plantillas')
+        .then(function () { hayPlantillas = true;  return true; })
+        .catch(function () { hayPlantillas = false; return false; });
+    },
+    listar: function () {
+      return rest('plantillas?select=*&order=nombre', null, 'leer las plantillas');
+    },
+    lineas: function (id) {
+      return rest('plantilla_lineas?select=*&plantilla_id=eq.' + id + '&order=dow',
+                  null, 'leer la plantilla');
+    },
+    crear: function (e, d) {
+      return crear('plantillas', Object.assign({ empresa_id: e }, d), 'guardar el modelo');
+    },
+    ponerLineas: function (e, pid, lineas) {
+      if (!lineas.length) return Promise.resolve([]);
+      return rest('plantilla_lineas', { method: 'POST', body: lineas.map(function (l) {
+        return Object.assign({ empresa_id: e, plantilla_id: pid }, l);
+      }) }, 'guardar las líneas del modelo');
+    },
+    borrar: function (id) { return quitar('plantillas', 'id=eq.' + id, 'borrar el modelo'); },
+  };
+
   window.DATOS = {
     auth: cuenta, yo: yo, primeraVez: primeraVez,
     sucursales: sucursales, cargos: cargos, trabajadores: trabajadores, eventos: eventos,
+    plantillas: plantillas,
     horarios: horarios, necesidades: necesidades, asignaciones: asignaciones,
     turnos: turnos, anotar: anotar,
   };
