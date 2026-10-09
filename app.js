@@ -747,15 +747,24 @@ function pintarDia() {
     }
     f.suyas.forEach(function (x, k) {
       var i = a2h(x.hora_inicio), ff = a2h(x.hora_fin); if (ff <= i) ff += 24;
+      /* La barra dice la OTRA cara del turno, no la de la fila.
+
+         Agrupado por persona, la fila ya es «Ana»: repetir «Ana» en la barra
+         gasta el único lugar donde cabía el dato que falta —en qué está—.
+         Es la misma regla del bloque de la semana (A1). Lo preguntó Pedro
+         viendo la vista en vivo: «¿acá debería poder saber si Ana está en
+         cocina u otra cosa?». */
       var quien = x.trabajador_id ? nombreTrab(x.trabajador_id) : 'pendiente';
+      var rotulo = S.agrupar === 'persona' ? nombreCargo(x.cargo_id) : quien;
       // El nombre del grupo solo en la primera línea, si no hay fila de pedido.
       var rot = (!f.pide || !f.pide.length) && k === 0 ? esc(f.nombre) : '';
       html += '<div class="lfila"><span class="lrot chico">' + rot + '</span><div class="lpista">'
             + '<span class="lbarra ' + colorCargo(x.cargo_id) + (x.trabajador_id ? '' : ' sinnadie')
             + '" data-asigid="' + x.id + '"'
             + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
-            + ' title="' + esc(quien) + ' · ' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
-            + '<b>' + esc(quien) + '</b> <i>' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '</i>'
+            + ' title="' + esc(quien) + ' · ' + esc(nombreCargo(x.cargo_id)) + ' · '
+            + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '">'
+            + '<b>' + esc(rotulo) + '</b> <i>' + hhmm(x.hora_inicio) + '–' + hhmm(x.hora_fin) + '</i>'
             + '</span></div></div>';
     });
   });
@@ -1344,7 +1353,23 @@ $('#fGuardar').addEventListener('click', function () {
   var p;
 
   if (t === 'cargo') {
-    p = d ? DATOS.cargos.guardar(d.id, { nombre: nombre }) : DATOS.cargos.crear(emp, { nombre: nombre });
+    /* EL COLOR SE ELIGE AL CREAR, y no se deja en el valor por defecto.
+
+       La columna `color` existe desde el primer día con `default 1`, y nadie la
+       escribía nunca: todos los cargos reales de Pedro quedaron en 1, así que
+       «el color sale del cargo» no distinguía NADA en su pantalla. En la demo
+       se veía bien porque ahí los colores están puestos a mano — una prueba
+       que pasa por un dato que la realidad no tiene.
+
+       Se reparte el menos usado de los cuatro, para que dos cargos nuevos no
+       salgan iguales mientras queden colores libres. */
+    var usados = S.cargos.map(function (q) { return q.color || 1; });
+    var libre = [1, 2, 3, 4].sort(function (x, y) {
+      return usados.filter(function (u) { return u === x; }).length
+           - usados.filter(function (u) { return u === y; }).length;
+    })[0];
+    p = d ? DATOS.cargos.guardar(d.id, { nombre: nombre })
+          : DATOS.cargos.crear(emp, { nombre: nombre, color: libre });
   } else if (t === 'sucursal') {
     var s = { nombre: nombre, zona_horaria: ($('#fZona').value || 'America/Santiago').trim() };
 
@@ -1414,8 +1439,22 @@ function pintarEstablecimiento() {
     return;
   }
   var falta = S.hayHorarioLocal === false;
+  /* SU PROPIO SELECTOR, y no «el local elegido arriba».
+
+     Lo de arriba vive en la pantalla Planificar, que está OCULTA cuando se
+     está en Configuración: esta sección editaba un local que no se podía ni
+     ver ni cambiar desde aquí, y con dos locales se podía escribirle el
+     horario de uno al otro sin que nada avisara. Lo cazó Pedro el 09-10
+     (msg 5266) y es un defecto que mi prueba no vio porque probé el
+     MECANISMO —repintar al cambiar— y no el RECORRIDO: cambié el selector
+     desde la consola, que es justo lo que el usuario no puede hacer. */
   caja.innerHTML = '<div class="controles"><h2>Establecimiento</h2>'
-    + '<span class="sub">' + esc(loc.nombre) + '</span><span class="espacio"></span>'
+    + '<select id="eLocal" aria-label="Qué local estás configurando">'
+    + S.sucursales.map(function (x) {
+        return '<option value="' + x.id + '"' + (x.id === loc.id ? ' selected' : '') + '>'
+             + esc(x.nombre) + '</option>';
+      }).join('')
+    + '</select><span class="espacio"></span>'
     + '<button class="primario" id="btnGuardarEst"' + (falta ? ' disabled' : '') + '>Guardar</button></div>'
     + '<div class="fldrow">'
       + campo('text', 'eZona', 'Zona horaria', loc.zona_horaria || 'America/Santiago')
@@ -1431,6 +1470,19 @@ function pintarEstablecimiento() {
           + 'hora igual: <code>20:00</code> a <code>04:00</code> se entiende. '
           + 'Un turno fuera del horario <b>no se recorta</b>.</p>');
 }
+
+document.addEventListener('change', function (ev) {
+  if (ev.target.id !== 'eLocal') return;
+  // El local es uno solo en toda la app: cambiarlo aquí cambia también lo que
+  // se planifica. Es lo mismo que hace Skello —primero eliges establecimiento
+  // y todo lo demás habla de ese— y evita tener dos nociones de «local actual»
+  // que algún día no coincidan.
+  S.sucursal = ev.target.value;
+  pintarEstablecimiento();
+  pintarSelectores();
+  pintarConfig();
+  recargarSemana();
+});
 
 document.addEventListener('click', function (ev) {
   if (ev.target.id !== 'btnGuardarEst') return;
@@ -1453,8 +1505,17 @@ function pintarConfig() {
   pintarEstablecimiento();
   $('#listaSucursales').innerHTML = S.sucursales.length
     ? S.sucursales.map(function (s) {
-        return '<div class="item" data-tipo="sucursal" data-id="' + s.id + '"><b>' + esc(s.nombre) + '</b>'
-             + '<span class="sub">' + esc(s.zona_horaria) + '</span></div>';
+        /* El horario de CADA local, a la vista. Pedro: «si tengo dos locales
+           con horarios distintos no se logran diferenciar». Tenía razón: la
+           lista mostraba solo el nombre y la zona horaria, que son iguales en
+           los dos, así que no había forma de compararlos sin ir entrando. */
+        var hor = (s.abre && s.cierra) ? (hhmm(s.abre) + '–' + hhmm(s.cierra))
+                : (S.hayHorarioLocal === false ? '' : 'sin horario');
+        return '<div class="item' + (s.id === S.sucursal ? ' elegido' : '')
+             + '" data-tipo="sucursal" data-id="' + s.id + '"><b>' + esc(s.nombre) + '</b>'
+             + '<span class="sub">' + esc(s.zona_horaria) + '</span>'
+             + (hor ? '<span class="espacio"></span><span class="sub horario">' + hor + '</span>' : '')
+             + '</div>';
       }).join('')
     : '<p class="vacio">Crea tu primer local para poder planificar.</p>';
 
