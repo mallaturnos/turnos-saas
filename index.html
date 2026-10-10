@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=33">
+<link rel="stylesheet" href="estilo.css?v=34">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v59</span></p>
+      <span style="float:right;opacity:.55" id="ver">v60</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -62,7 +62,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v59</span>
+    <span class="hint" id="ver2" title="Versión publicada">v60</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -301,6 +301,7 @@
       <div class="fld"><label for="usEntra">Desde las</label><input type="time" id="usEntra"></div>
       <div class="fld"><label for="usSale">Hasta las</label><input type="time" id="usSale"></div>
     </div>
+    <p class="hint" id="usMedioHint" hidden></p>
     <div class="fld" id="usFolioCaja" hidden>
       <label for="usFolio">Folio del documento</label><input type="text" id="usFolio">
     </div>
@@ -391,6 +392,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=16"></script>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>

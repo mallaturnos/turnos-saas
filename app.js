@@ -2650,6 +2650,8 @@ function abrirAusencia(a, fecha, trabajadorId) {
   $('#usHasta').value = a ? a.hasta : f;
   $('#usEntra').value = a && a.hora_inicio ? hhmm(a.hora_inicio) : '09:00';
   $('#usSale').value  = a && a.hora_fin    ? hhmm(a.hora_fin)    : '13:00';
+  delete $('#usEntra').dataset.tocado;
+  delete $('#usSale').dataset.tocado;
   $('#usFolio').value = (a && a.documento_ref) || '';
   $('#usNota').value  = (a && a.nota) || '';
   $('#usAnular').hidden = !a;
@@ -2680,7 +2682,24 @@ function pintarFormaAusencia() {
   // que poder hacerlo y que te lo rechacen al guardar.
   $('#usHastaCaja').hidden = !porDia;
   if (!porDia) $('#usHasta').value = $('#usDesde').value;
-  $('#usHorasCaja').hidden = unidad !== 'horas';
+  /* EL MEDIO DIA TAMBIEN PIDE LAS HORAS.
+
+     Lo encontro Pedro usandolo de verdad (msg 5536): «¿aca se debe especificar
+     si es medio dia de mañana o de tarde?». Tenia razon y era un defecto mio —
+     las habia escondido a proposito. Sin las horas, LA MALLA NO SABE si el
+     turno de la tarde queda cubierto, que es justo lo que las ausencias vienen
+     a arreglar.
+
+     NO se funden «medio dia» y «horas», y la diferencia importa: medio dia es
+     CUANTO CORRESPONDE —media jornada, que es lo que dice el art. 66 bis— y las
+     horas son CUANDO PASO. Si se juntaran, el dia que haya saldos media jornada
+     y «cuatro horas» dejarian de distinguirse, y en un turno de nueve horas no
+     es lo mismo.
+
+     Para las horas, obligatorias solo en 'horas'; en medio dia son el detalle
+     de cuando. */
+  $('#usHorasCaja').hidden = (unidad === 'dia');
+  if (unidad === 'medio_dia') sugerirMediaJornada();
   $('#usFolioCaja').hidden = !t.pide_documento;
   $('#usNotaEt').textContent = t.pide_nota ? 'Motivo (obligatorio)' : 'Motivo (opcional)';
 
@@ -2692,11 +2711,13 @@ function pintarFormaAusencia() {
   if (t.base_legal) {
     txt = esc(t.base_legal);
     // 'habiles' se guarda sin acento porque es un codigo con un `check`
-    // detras; el acento se le pone aqui, que es donde alguien lo lee.
-    if (t.dias_legales) txt += ' · <b>' + t.dias_legales + ' días '
-      + esc(t.dias_base === 'habiles' ? 'hábiles' : t.dias_base) + '</b>';
+    // detras; el acento —y el singular— se le ponen aqui, que es donde se lee.
+    if (t.dias_legales) txt += ' · <b>' + esc(diasTexto(t.dias_legales, t.dias_base)) + '</b>';
   } else {
     txt = 'No viene de la ley: es un acuerdo o un beneficio del local.';
+    // Un tipo del local puede tener su propio numero de dias, y hay que decirlo
+    // igual: el que lo escribio lo escribio para que se viera.
+    if (t.dias_legales) txt += ' Das <b>' + esc(diasTexto(t.dias_legales, t.dias_base)) + '</b>.';
   }
   if (t.exento_bloqueos) txt += ' · <b>no la detienen los días bloqueados</b>';
   ley.hidden = false;
@@ -2713,6 +2734,52 @@ function pintarFormaAusencia() {
 
   pintarOjoAusencia();
 }
+
+/* Las horas del medio dia, ya puestas: se parte el turno de esa persona ese dia
+   por la mitad y se ofrece LA PRIMERA MITAD, que es el caso corriente.
+
+   Si no tiene turno ese dia no hay de donde sacarlas, y se dice. Inventar un
+   09:00 que no significa nada es peor que dejarlo vacio: el encargado lo daria
+   por bueno sin mirar. */
+function sugerirMediaJornada() {
+  var pid = $('#usQuien').value, f = $('#usDesde').value;
+  var hint = $('#usMedioHint');
+  var turnos = S.asignaciones.filter(function (a) {
+    return a.trabajador_id === pid && a.fecha === f;
+  });
+  if (!turnos.length) {
+    if (hint) { hint.hidden = false;
+      hint.innerHTML = 'Esa persona <b>no tiene turno ese día</b>, así que no puedo '
+        + 'deducir las horas. Ponlas tú si las sabes.'; }
+    return;
+  }
+  /* Con TURNO PARTIDO —cuatro horas en la mañana y cuatro en la tarde— hay dos
+     turnos ese dia. Se parte EL PRIMERO, y el aviso dice cual se uso para que
+     se vea y se pueda corregir. Tomar «el que venga primero en la lista» daba
+     el de la tarde segun como volvieran de la base: lo pillo la comprobacion,
+     que esperaba 09:00 y recibio 17:00. */
+  turnos.sort(function (x, y) { return a2h(hhmm(x.hora_inicio)) - a2h(hhmm(y.hora_inicio)); });
+  var t = turnos[0];
+  var ini = hhmm(t.hora_inicio), fin = hhmm(t.hora_fin);
+  var mitad = a2h(ini) + horasDe(ini, fin) / 2;
+  var hh = Math.floor(mitad), mm = Math.round((mitad - hh) * 60);
+  if (mm === 60) { hh += 1; mm = 0; }
+  // Al cuarto de hora: «13:07» no es una hora que nadie escriba.
+  mm = Math.round(mm / 15) * 15;
+  if (mm === 60) { hh += 1; mm = 0; }
+  var corte = String(hh % 24).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  // Solo se sugiere si el usuario no escribio nada todavia.
+  if (!$('#usEntra').dataset.tocado) {
+    $('#usEntra').value = ini;
+    $('#usSale').value  = corte;
+  }
+  if (hint) { hint.hidden = false;
+    hint.innerHTML = 'Es la <b>primera mitad</b> de su turno de ' + esc(ini) + '–' + esc(fin)
+      + '. Si es la otra mitad, cámbialas por <b>' + esc(corte) + '–' + esc(fin) + '</b>.'; }
+}
+['#usEntra', '#usSale'].forEach(function (id) {
+  $(id).addEventListener('input', function () { this.dataset.tocado = '1'; });
+});
 
 /* El aviso de la ausencia: choca con turnos que esa persona ya tiene. AVISA.
    Si los turnos ya estan publicados, se dice — porque entonces ademas hay que
@@ -2850,8 +2917,8 @@ function guardarAusencia(que) {
   var d = {
     trabajador_id: pid, tipo_id: t.id, desde: desde, hasta: hasta,
     unidad: (abierto && unidad !== t.unidad) ? unidad : null,
-    hora_inicio: unidad === 'horas' ? $('#usEntra').value : null,
-    hora_fin:    unidad === 'horas' ? $('#usSale').value  : null,
+    hora_inicio: unidad === 'dia' ? null : ($('#usEntra').value || null),
+    hora_fin:    unidad === 'dia' ? null : ($('#usSale').value  || null),
     estado: estado,
     nota: $('#usNota').value.trim() || null,
     documento_ref: t.pide_documento ? ($('#usFolio').value.trim() || null) : null,
@@ -2932,6 +2999,16 @@ var AYUDA_TRATO = {
 };
 var UNIDADES = { dia:'días completos', medio_dia:'medio día', horas:'horas' };
 
+/* «1 días corridos» no lo escribe nadie. Lo vio Pedro llenando un permiso de
+   cumpleaños con un dia: el singular hay que decirlo, y la clase tambien
+   cambia —un dia HABIL, no un dia habiles—. */
+function diasTexto(n, clase) {
+  var uno = Number(n) === 1;
+  var c = clase === 'habiles' ? (uno ? 'hábil' : 'hábiles')
+                              : (uno ? 'corrido' : 'corridos');
+  return n + (uno ? ' día ' : ' días ') + c;
+}
+
 function cargarCatalogo() {
   if (!S.hayAusencias) return Promise.resolve([]);
   return DATOS.ausencias.tiposTodos().then(function (f) {
@@ -2955,10 +3032,8 @@ function pintarCatalogo() {
       // La base legal a la vista, y «del local» cuando no la tiene: decir que
       // algo es ley sin serlo es peor que no decir nada.
       var base = t.base_legal
-        ? esc(t.base_legal) + (t.dias_legales
-            ? ' · ' + t.dias_legales + ' ' + esc(t.dias_base === 'habiles' ? 'hábiles' : t.dias_base)
-            : '')
-        : 'del local';
+        ? esc(t.base_legal) + (t.dias_legales ? ' · ' + esc(diasTexto(t.dias_legales, t.dias_base)) : '')
+        : 'del local' + (t.dias_legales ? ' · ' + esc(diasTexto(t.dias_legales, t.dias_base)) : '');
       var marcas = [];
       if (t.pide_documento)  marcas.push('documento');
       if (t.pide_nota)       marcas.push('motivo');

@@ -533,3 +533,10 @@ label.chk input:disabled + span, label.chk:has(input:disabled) { color:#7d8a8e; 
   padding:0 .35rem; font-size:.66rem; margin-left:.4rem; vertical-align:1px;
   letter-spacing:.02em;
 }
+
+/* «Permisos y ausencias» quedaba pegado a la tarjeta del último local y se leía
+   como si fuera parte de ella. Lo vio Pedro en su pantalla, no yo en el código:
+   en la demo hay un solo local y el problema no aparecía. */
+#ctrlTipos {
+  margin-top:2.2rem; padding-top:1.4rem; border-top:1px solid var(--borde);
+}
