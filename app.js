@@ -563,6 +563,41 @@ function avisoPlan(html) {
 // ====================================================================
 // LA MALLA
 // ====================================================================
+/* ---------- choques de turnos de una misma persona ----------
+
+   Lo pidio Pedro viendo a Ana con 14:00-22:00 y 09:00-17:00 el mismo lunes
+   (msg 5549), y hay que separar DOS cosas que parecen una:
+
+     · SE PISAN  -> imposible. Nadie esta en dos sitios a la misma hora, y eso
+       NO es un criterio del encargado: es aritmetica. Por eso aca si se
+       bloquea, y no contradice el principio de «avisa, no bloquea» — ese
+       principio protege sus CRITERIOS, no las imposibilidades.
+     · PEGADOS O SEPARADOS el mismo dia -> legitimo. El turno partido existe y
+       el esquema lo defiende a proposito. Se avisa y se deja guardar.
+
+   LAS HORAS SE COMPARAN EN TIEMPO REAL, NO EN LA CARA DEL RELOJ. Un turno de
+   22:00 a 06:00 termina AL DIA SIGUIENTE: mirando solo «22:00» y «06:00»
+   pareceria que no choca con uno de 05:00 a 09:00 del dia siguiente, y choca.
+   Por eso todo se pasa a minutos absolutos contados desde una fecha. */
+function diaNum(fecha) {
+  var p = fecha.split('-').map(Number);
+  return Date.UTC(p[0], p[1] - 1, p[2]) / 86400000;
+}
+function tramoAbs(a) {
+  var ini = diaNum(a.fecha) * 1440 + a2h(hhmm(a.hora_inicio)) * 60;
+  return { ini: ini, fin: ini + horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin)) * 60 };
+}
+/* Cuanto se pisan dos turnos, en minutos. 0 = no se pisan.
+   Pegados NO se pisan: terminar a las 16:00 y entrar a las 16:00 es legitimo. */
+function minutosQueSePisan(a, b) {
+  var x = tramoAbs(a), y = tramoAbs(b);
+  return Math.max(0, Math.min(x.fin, y.fin) - Math.max(x.ini, y.ini));
+}
+function minTexto(m) {
+  var h = Math.floor(m / 60), mm = Math.round(m % 60);
+  return (h ? h + ' h ' : '') + (mm ? mm + ' min' : (h ? '' : '0 min'));
+}
+
 /* ---------- ausencias: lo que la malla necesita saber ----------
 
    EL CHOQUE SE MIDE POR DIA DE CALENDARIO, NO POR HORAS. Es la decision que
@@ -1749,6 +1784,21 @@ function pintarOjo() {
       + esc(nombreCargo(cargoId)) + '». Puedes asignarlo igual.');
   }
 
+  /* Dos turnos el mismo dia SIN pisarse — 08:00-16:00 y 16:00-23:00. Es
+     legitimo (el turno partido existe y el esquema lo defiende), asi que se
+     avisa y no se impide. Lo que SI se impide es que se pisen, y eso se revisa
+     al guardar, contra la base: aqui solo esta la semana visible. */
+  var mismoDia = S.asignaciones.filter(function (a) {
+    return a.trabajador_id === pid && a.fecha === asigFecha
+        && !(asigActual && a.id === asigActual.id);
+  });
+  if (mismoDia.length) {
+    avisos.push('⚠️ <b>' + quien + '</b> ya tiene <b>' + mismoDia.length + ' turno'
+      + (mismoDia.length === 1 ? '' : 's') + '</b> ese día ('
+      + esc(mismoDia.map(function (a) { return hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin); }).join(', '))
+      + '). Van a ser <b>dos turnos en el mismo día</b>.');
+  }
+
   // El choque por DIA de calendario: no se comparan horas a proposito.
   ausenciasDe(pid, asigFecha).forEach(function (a) {
     avisos.push('⚠️ <b>' + quien + '</b> tiene <b>' + esc(nombreTipoAusencia(a.tipo_id))
@@ -1777,6 +1827,42 @@ $('#aGuardar').addEventListener('click', function () {
   };
   if (!d.cargo_id) return aviso('#aMsg', 'Primero crea un cargo en Equipo.', 'bad');
   if (!d.hora_inicio || !d.hora_fin) return aviso('#aMsg', 'Faltan las horas.', 'bad');
+
+  aviso('#aMsg', 'Revisando…');
+  revisarChoque(d).then(function (choque) {
+    if (choque) return aviso('#aMsg', choque, 'bad');
+    return guardarAsignacion(d);
+  }).catch(function (e) { aviso('#aMsg', e.message, 'bad'); });
+});
+
+/* ¿Se pisa con otro turno de esa misma persona? Devuelve el mensaje, o null.
+
+   Se pregunta a la BASE y no a la pantalla: la pantalla tiene solo la semana
+   visible —y un turno del domingo anterior que cruza la medianoche entra en el
+   lunes— y ademas la pantalla es de UN local, y nadie puede estar en dos
+   locales a la misma hora.
+
+   AL EDITAR, el turno no puede chocar consigo mismo: se saca de la lista. Sin
+   eso, mover el turno de Ana de las 14:00 a las 15:00 se bloquearia solo. */
+function revisarChoque(d) {
+  if (!d.trabajador_id) return Promise.resolve(null);
+  var ayer = masDias(d.fecha, -1), manana = masDias(d.fecha, 1);
+  return DATOS.asignaciones.deLaPersona(d.trabajador_id, ayer, manana).then(function (otros) {
+    var pisa = null, min = 0;
+    otros.forEach(function (o) {
+      if (asigActual && o.id === asigActual.id) return;
+      var m = minutosQueSePisan(d, o);
+      if (m > min) { min = m; pisa = o; }
+    });
+    if (!pisa) return null;
+    return '<b>No puede estar en dos turnos a la vez.</b> Se pisa <b>' + minTexto(min)
+      + '</b> con su turno de ' + esc(rangoTxt(pisa.hora_inicio, pisa.hora_fin))
+      + ' del ' + esc(nombreDia(pisa.fecha)) + ' ' + esc(diaMes(pisa.fecha))
+      + '. Cambia las horas o mueve el otro.';
+  });
+}
+
+function guardarAsignacion(d) {
   aviso('#aMsg', 'Guardando…');
   var p = asigActual ? DATOS.asignaciones.guardar(asigActual.id, d) : DATOS.asignaciones.crear(d);
   var antesA = asigActual && JSON.parse(JSON.stringify(asigActual));
@@ -1797,7 +1883,7 @@ $('#aGuardar').addEventListener('click', function () {
       return aviso('#aMsg', 'Esa persona ya tiene un turno que empieza a esa hora ese día.', 'bad');
     aviso('#aMsg', e.message, 'bad');
   });
-});
+}
 
 $('#aBorrar').addEventListener('click', function () {
   if (!asigActual) return;

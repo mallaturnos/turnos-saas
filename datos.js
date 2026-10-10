@@ -262,6 +262,23 @@
 
   var asignaciones = {
     listar: function (s, a, b) { return delRango('asignaciones', s, a, b, 'leer las asignaciones'); },
+    /* LOS TURNOS DE UNA PERSONA EN UNAS FECHAS, EN TODOS LOS LOCALES.
+
+       Para saber si un turno nuevo se pisa con otro que ya tiene. Va a la base
+       y no a lo que hay en pantalla por dos razones:
+         · la pantalla solo tiene la semana visible, y un turno del DOMINGO
+           ANTERIOR que cruza la medianoche se mete en el lunes;
+         · y sobre todo, NO FILTRA POR LOCAL: nadie puede estar en el Centro y
+           en el Norte a la misma hora, y si solo mirara el local de la pantalla
+           ese choque pasaria sin que nadie lo vea.
+
+       Las anuladas no cuentan: dejaron de ocupar a nadie. */
+    deLaPersona: function (trabajadorId, desde, hasta) {
+      return rest('asignaciones?select=*&trabajador_id=eq.' + trabajadorId
+                  + '&estado=neq.anulada'
+                  + '&fecha=gte.' + desde + '&fecha=lte.' + hasta
+                  + '&order=fecha&order=hora_inicio', null, 'ver los turnos de esa persona');
+    },
     crear:  function (d) { return crear('asignaciones', d, 'guardar la asignación'); },
     guardar:function (id, d) { return editar('asignaciones', id, d, 'guardar la asignación'); },
     borrar: function (id) { return quitar('asignaciones', 'id=eq.' + id, 'quitar la asignación'); },
