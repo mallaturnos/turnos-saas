@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=32">
+<link rel="stylesheet" href="estilo.css?v=33">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v58</span></p>
+      <span style="float:right;opacity:.55" id="ver">v59</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -62,7 +62,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v58</span>
+    <span class="hint" id="ver2" title="Versión publicada">v59</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -139,6 +139,22 @@
       <button class="primario" id="btnSucursal">+ Nuevo local</button>
     </div>
     <div id="listaSucursales" class="tarjetas-local"></div>
+
+
+    <!-- EL CATALOGO DE PERMISOS Y AUSENCIAS.
+
+         Vive en Configuracion y no en Equipo porque no es gente: es como se
+         comporta el sistema. Y existe para que Pedro pueda mantener las reglas
+         SOLO: la regulacion cambia, y un producto donde haya que llamar al
+         programador para subir un permiso de 10 a 20 dias no se puede vender. -->
+    <div class="controles" id="ctrlTipos" hidden>
+      <h2>Permisos y ausencias</h2><span class="espacio"></span>
+      <button class="primario" id="btnTipo">+ Nuevo tipo</button>
+    </div>
+    <p class="hint" id="hintTipos" hidden>Cada fila dice cómo se comporta su tipo.
+      <b>El trato</b> es quién decide: lo que se acuerda se puede rechazar, lo que
+      la ley no deja negar no tiene ese botón.</p>
+    <div id="listaTipos" class="lista"></div>
 
     <!-- La seccion «Horarios guardados» ya no existe: sus tramos viven dentro
          de la tarjeta de su local (opcion C, Pedro msg 5292). Eso saca de la
@@ -254,6 +270,114 @@
 <!-- Uno solo para trabajador / cargo / local / horario: son formularios de
      dos o tres campos y cuatro diálogos casi iguales es cuatro sitios donde
      arreglar el mismo defecto. -->
+<!-- La ausencia. UN solo dialogo para los 17 tipos: la fila del tipo decide
+     que campos se ven y que botones hay. Dos pantallas distintas serian dos
+     sitios donde arreglar el mismo defecto, y ademas el catalogo es editable:
+     con tipos nuevos no puede hacer falta una pantalla nueva. -->
+<dialog id="dlgAus" class="dlg">
+  <form method="dialog">
+    <h3 id="usTit">Ausencia</h3>
+    <div class="fldrow">
+      <div class="fld"><label for="usQuien">Persona</label><select id="usQuien"></select></div>
+      <div class="fld"><label for="usTipo">Tipo</label><select id="usTipo"></select></div>
+    </div>
+    <p class="hint" id="usLey" hidden></p>
+    <!-- Solo aparece cuando el tipo deja elegir. Donde la unidad la fija la ley
+         no se muestra: un desplegable con una sola opcion posible invita a
+         preguntarse cual es la otra. -->
+    <div class="fld" id="usUnidadCaja" hidden>
+      <label for="usUnidad">Cuánto</label>
+      <select id="usUnidad">
+        <option value="dia">Día completo</option>
+        <option value="medio_dia">Medio día</option>
+        <option value="horas">Unas horas</option>
+      </select>
+    </div>
+    <div class="fldrow">
+      <div class="fld"><label for="usDesde">Desde</label><input type="date" id="usDesde"></div>
+      <div class="fld" id="usHastaCaja"><label for="usHasta">Hasta</label><input type="date" id="usHasta"></div>
+    </div>
+    <div class="fldrow" id="usHorasCaja" hidden>
+      <div class="fld"><label for="usEntra">Desde las</label><input type="time" id="usEntra"></div>
+      <div class="fld"><label for="usSale">Hasta las</label><input type="time" id="usSale"></div>
+    </div>
+    <div class="fld" id="usFolioCaja" hidden>
+      <label for="usFolio">Folio del documento</label><input type="text" id="usFolio">
+    </div>
+    <div class="fld"><label for="usNota" id="usNotaEt">Motivo</label><input type="text" id="usNota"></div>
+    <p class="hint" id="usOjo" hidden></p>
+    <p class="msg" id="usMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="usGuardar">Guardar</button>
+      <button type="button" class="plano" id="usRechazar" hidden>Rechazar</button>
+      <button type="button" class="plano" id="usAnular" hidden>Anular</button>
+      <button type="button" class="plano" id="usCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Editar un tipo del catálogo. Es la pantalla que hace que las reglas se
+     puedan mantener sin tocar la base ni esperar una versión nueva. -->
+<dialog id="dlgTipo" class="dlg">
+  <form method="dialog">
+    <h3 id="tpTit">Tipo de permiso o ausencia</h3>
+    <div class="fld"><label for="tpNombre">Nombre</label><input type="text" id="tpNombre"></div>
+    <div class="fldrow">
+      <div class="fld"><label for="tpTrato">Quién decide</label><select id="tpTrato">
+        <option value="acuerdo">Se acuerda entre los dos</option>
+        <option value="aviso">Se avisa — no se puede negar</option>
+        <option value="documento">Llega con documento</option>
+        <option value="registro">Se registra después</option>
+      </select></div>
+      <div class="fld"><label for="tpUnidad">Se mide en</label><select id="tpUnidad">
+        <option value="dia">Días completos</option>
+        <option value="medio_dia">Medio día</option>
+        <option value="horas">Horas</option>
+      </select></div>
+    </div>
+    <p class="hint" id="tpTratoHint"></p>
+    <div class="fld"><label class="chk"><input type="checkbox" id="tpUnidadLibre">
+      Dejar elegir la medida al registrar</label></div>
+    <div class="fldrow">
+      <div class="fld"><label class="chk"><input type="checkbox" id="tpDoc"> Pide documento</label></div>
+      <div class="fld"><label class="chk"><input type="checkbox" id="tpNota"> Pide motivo escrito</label></div>
+    </div>
+    <div class="fldrow">
+      <div class="fld"><label class="chk"><input type="checkbox" id="tpExento">
+        No la detienen los días bloqueados</label></div>
+      <div class="fld"><label class="chk"><input type="checkbox" id="tpGoce"> Con goce de sueldo</label></div>
+    </div>
+    <div class="fld"><label class="chk"><input type="checkbox" id="tpConteo">
+      Suma al conteo de faltas del mes</label></div>
+    <div class="fld"><label for="tpBase">Norma que lo respalda</label>
+      <input type="text" id="tpBase" placeholder="Código del Trabajo art. 66 — déjalo vacío si es del local"></div>
+    <div class="fldrow">
+      <div class="fld corto"><label for="tpDias">Días</label><input type="number" id="tpDias" min="0"></div>
+      <div class="fld"><label for="tpDiasBase">De qué clase</label><select id="tpDiasBase">
+        <option value="">— sin número fijado —</option>
+        <option value="corridos">Corridos</option>
+        <option value="habiles">Hábiles</option>
+      </select></div>
+      <div class="fld corto"><label for="tpOrden">Orden</label><input type="number" id="tpOrden" min="0"></div>
+    </div>
+    <p class="hint">Guardar «10 días» sin decir de qué clase son no sirve: <b>10 por
+      muerte de un hijo son corridos y 4 por un hermano son hábiles</b>.</p>
+    <div class="fld"><label class="chk"><input type="checkbox" id="tpActivo"> Activo</label></div>
+    <p class="hint" id="tpSistemaHint" hidden><b>Este tipo lo trae la plataforma.</b>
+      Lo que dice la ley —el trato, la medida, el pago, la norma y los días— no se
+      edita acá: se actualiza solo cuando cambia la ley. Sí puedes
+      <b>renombrarlo, apagarlo y pedir más papeles</b>. Si necesitas otra cosa,
+      crea un tipo tuyo.</p>
+    <p class="hint" id="tpBajaHint" hidden>Un tipo que ya se usó <b>no se borra</b>: se
+      desactiva. Así deja de ofrecerse y lo registrado sigue siendo legible.</p>
+    <p class="msg" id="tpMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="tpGuardar">Guardar</button>
+      <button type="button" class="plano" id="tpCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlgFicha" class="dlg">
   <form method="dialog">
     <h3 id="fTit">—</h3>
@@ -266,7 +390,7 @@
   </form>
 </dialog>
 <script src="config.js?v=5"></script>
-<script src="datos.js?v=15"></script>
-<script src="app.js?v=27"></script>
+<script src="datos.js?v=16"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

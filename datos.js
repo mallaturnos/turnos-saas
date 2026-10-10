@@ -343,10 +343,101 @@
     borrar: function (id) { return quitar('plantillas', 'id=eq.' + id, 'borrar el modelo'); },
   };
 
+  /* ---------- ausencias ----------
+
+     MISMO RESGUARDO QUE LAS PLANTILLAS: si la migracion no esta pegada, la app
+     esconde los botones en vez de reventar. `hay()` lo pregunta una sola vez.
+
+     POR QUE LOS TIPOS SE PIDEN APARTE y no incrustados en la consulta de
+     ausencias: la clave foranea a `tipos_ausencia` es COMPUESTA
+     (empresa_id, tipo_id), y PostgREST no la resuelve sola para incrustar.
+     Pedirlos por separado y cruzarlos aca es mas corto que pelear con eso, y
+     ademas el catalogo se usa en varias pantallas: una sola lectura sirve a
+     todas. */
+  var hayAusencias = null;
+  var cacheTipos = null;
+
+  var ausencias = {
+    hay: function () {
+      if (hayAusencias !== null) return Promise.resolve(hayAusencias);
+      return rest('tipos_ausencia?select=id&limit=1', null, 'ver las ausencias')
+        .then(function () { hayAusencias = true;  return true; })
+        .catch(function () { hayAusencias = false; return false; });
+    },
+
+    tipos: function (recargar) {
+      if (cacheTipos && !recargar) return Promise.resolve(cacheTipos);
+      return rest('tipos_ausencia?select=*&activo=eq.true&order=orden',
+                  null, 'leer los tipos de ausencia')
+        .then(function (f) { cacheTipos = f; return f; });
+    },
+
+    /* LO QUE SE PISA CON LA SEMANA, no lo que empieza dentro de ella.
+
+       Una licencia del 28 de marzo al 4 de abril TIENE que salir en la semana
+       del 1 de abril aunque no empiece ahi. Preguntar por `desde` dentro del
+       rango —que es lo que uno escribe sin pensar— la dejaria fuera justo
+       cuando mas importa, y la malla volveria a mentir.
+
+       Las anuladas no vienen: dejaron de existir para la malla, pero se
+       guardan para la bitacora. */
+    listar: function (desde, hasta) {
+      return rest('ausencias?select=*&estado=neq.anulada'
+                  + '&desde=lte.' + hasta + '&hasta=gte.' + desde + '&order=desde',
+                  null, 'leer las ausencias');
+    },
+
+    /* El catalogo se edita desde la pantalla, no desde la base: es lo que
+       permite que Pedro mantenga las reglas solo cuando cambie la ley.
+       `recargar` fuerza a releerlo, porque el catalogo esta en cache. */
+    crearTipo: function (e, d) {
+      cacheTipos = null;
+      return crear('tipos_ausencia', Object.assign({ empresa_id: e }, d), 'crear el tipo');
+    },
+    guardarTipo: function (id, d) {
+      cacheTipos = null;
+      return editar('tipos_ausencia', id, d, 'guardar el tipo');
+    },
+    /* TODOS los tipos, incluidos los desactivados: la pantalla del catalogo
+       tiene que poder volver a encender uno. `tipos()` sigue devolviendo solo
+       los activos, que es lo que corresponde al registrar. */
+    tiposTodos: function () {
+      return rest('tipos_ausencia?select=*&order=orden', null, 'leer el catálogo');
+    },
+
+    crear: function (e, d) {
+      return crear('ausencias', Object.assign({ empresa_id: e }, d), 'guardar la ausencia');
+    },
+    guardar: function (id, d) { return editar('ausencias', id, d, 'guardar la ausencia'); },
+
+    /* Anular NO borra: la ausencia sigue en la base y en la bitacora. Borrarla
+       dejaria un turno marcado para revisar sin nada que explique por que. */
+    anular: function (id) {
+      return editar('ausencias', id, { estado: 'anulada' }, 'anular la ausencia');
+    },
+
+    /* El detalle por dia. Se escribe DE UNA VEZ al resolver, y es una
+       fotografia: no se recalcula despues aunque la malla cambie. Por eso se
+       borra y se repone en bloque en vez de ir parcheando filas sueltas. */
+    ponerDias: function (e, ausenciaId, filas) {
+      return quitar('ausencia_dias', 'ausencia_id=eq.' + ausenciaId, 'rehacer el detalle')
+        .then(function () {
+          if (!filas.length) return [];
+          return rest('ausencia_dias', { method: 'POST', body: filas.map(function (f) {
+            return Object.assign({ empresa_id: e, ausencia_id: ausenciaId }, f);
+          }) }, 'guardar el detalle por dia');
+        });
+    },
+    dias: function (ausenciaId) {
+      return rest('ausencia_dias?select=*&ausencia_id=eq.' + ausenciaId + '&order=fecha',
+                  null, 'leer el detalle por dia');
+    },
+  };
+
   window.DATOS = {
     auth: cuenta, yo: yo, primeraVez: primeraVez,
     sucursales: sucursales, cargos: cargos, trabajadores: trabajadores, eventos: eventos,
-    plantillas: plantillas,
+    plantillas: plantillas, ausencias: ausencias,
     horarios: horarios, necesidades: necesidades, asignaciones: asignaciones,
     turnos: turnos, anotar: anotar,
   };

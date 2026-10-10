@@ -476,3 +476,60 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
    la ficha donde ya estaba el borrar. */
 .nec .cab[data-nec] { cursor:pointer; }
 .nec .cab[data-nec]:hover { filter:brightness(.97); }
+
+/* ---------- ausencias ----------
+   La banda va ARRIBA del cuerpo del día, antes que los turnos: se reparte
+   gente mirando la parte de arriba de la tarjeta, y un aviso que hay que ir a
+   buscar llega tarde.
+   Color de aviso (ámbar), NO rojo: una ausencia no es un error de nadie — es
+   un dato que hay que tener en cuenta. El rojo de esta app es para lo que está
+   mal. */
+.ausdia { display:flex; flex-direction:column; gap:.25rem; margin-bottom:.15rem; }
+.aus {
+  background:var(--amar); border:1px solid var(--amar-borde); border-radius:6px;
+  padding:.2rem .45rem; font-size:.78rem; line-height:1.35; color:#7a5e18;
+  cursor:pointer;
+}
+.aus:hover { border-color:#c9a94a; }
+/* Rayado para lo que NO es el día entero: medio día u horas. Se distingue de
+   un vistazo sin tener que leer el texto entre paréntesis. */
+.aus.parcial {
+  background:repeating-linear-gradient(45deg,var(--amar),var(--amar) 5px,#f4ead3 5px,#f4ead3 10px);
+}
+/* El turno que choca con una ausencia. Marca, no impedimento: se puede abrir y
+   se puede dejar igual — lo que no puede es pasar desapercibido. */
+.gente li.choca { background:var(--amar); border-radius:5px; }
+.gente li .choque {
+  background:#7a5e18; color:#fff; border-radius:4px; padding:0 .3rem;
+  font-size:.68rem; margin-left:.35rem; letter-spacing:.02em;
+}
+/* Media jornada no es lo mismo que no venir: se marca más suave. */
+.gente li .choque.parte { background:#b08a2e; }
+
+/* El catálogo de permisos y ausencias. */
+.grupoTipo { margin:.9rem 0 .3rem; font-size:.82rem; color:var(--verde); }
+.lista .item.apagado { opacity:.5; }
+.lista .item.apagado b { text-decoration:line-through; }
+/* La casilla, bien puesta.
+
+   `input { width:100% }` de mas arriba tambien alcanzaba a los checkbox, asi
+   que la casilla se estiraba a todo el ancho y el texto se partia en dos
+   lineas al lado. Se vio en la foto del dialogo, no leyendo el CSS. */
+label.chk {
+  display:flex; align-items:flex-start; gap:.45rem; font-weight:400;
+  cursor:pointer; line-height:1.35; margin-top:.55rem;
+}
+label.chk input[type="checkbox"] {
+  width:auto; flex:0 0 auto; margin:.12rem 0 0; padding:0;
+}
+/* Un campo bloqueado se lee, pero se ve que no se toca. */
+input:disabled, select:disabled {
+  background:#f4f2ee; color:#7d8a8e; cursor:not-allowed;
+}
+label.chk input:disabled + span, label.chk:has(input:disabled) { color:#7d8a8e; }
+/* Sello de «lo trae la plataforma»: se ve que no es del local sin abrirlo. */
+.sello {
+  background:var(--verde-claro); color:var(--verde); border-radius:4px;
+  padding:0 .35rem; font-size:.66rem; margin-left:.4rem; vertical-align:1px;
+  letter-spacing:.02em;
+}

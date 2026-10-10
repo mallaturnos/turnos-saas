@@ -65,6 +65,10 @@ var S = {
   sucursales:[], cargos:[], trabajadores:[], horarios:[],
   sucursal:null, lunes:null, vista:'semana', dia:null, agrupar:'dia', cargoGraf:null,
   necesidades:[], asignaciones:[], turnos:[],
+  // Ausencias de la vista y el catalogo de tipos. `hayAusencias` en null
+  // significa «todavia no pregunte»: con la migracion sin pegar queda false y
+  // la pantalla sigue funcionando sin ellas.
+  ausencias:[], tiposAusencia:[], hayAusencias:null,
   yoTrabajador:null,
 };
 
@@ -505,12 +509,27 @@ function recargarSemana() {
 
   var r = rangoVista();
   var desde = r.desde, hasta = r.hasta;
-  return Promise.all([
-    DATOS.necesidades.listar(S.sucursal, desde, hasta),
-    DATOS.asignaciones.listar(S.sucursal, desde, hasta),
-    DATOS.turnos.listar(S.sucursal, desde, hasta),
-  ]).then(function (r) {
+  /* Las ausencias viajan con la semana, no aparte.
+
+     Si se pidieran en otro momento, habria un instante —corto, pero real— en
+     que la malla ya esta pintada y todavia no sabe quien no esta. Y una malla
+     que por medio segundo dice que alguien viene es exactamente lo que las
+     ausencias vienen a arreglar.
+
+     `hay()` nunca falla: si la migracion no esta pegada devuelve false y la
+     semana se carga igual, sin ausencias. */
+  return DATOS.ausencias.hay().then(function (hay) {
+    S.hayAusencias = hay;
+    return Promise.all([
+      DATOS.necesidades.listar(S.sucursal, desde, hasta),
+      DATOS.asignaciones.listar(S.sucursal, desde, hasta),
+      DATOS.turnos.listar(S.sucursal, desde, hasta),
+      hay ? DATOS.ausencias.listar(desde, hasta) : Promise.resolve([]),
+      hay ? DATOS.ausencias.tipos() : Promise.resolve([]),
+    ]);
+  }).then(function (r) {
     S.necesidades = r[0]; S.asignaciones = r[1]; S.turnos = r[2];
+    S.ausencias = r[3]; S.tiposAusencia = r[4];
     pintarMalla();
   }).catch(function (e) { avisoPlan('No pude cargar la semana: ' + esc(e.message)); });
 }
@@ -544,6 +563,47 @@ function avisoPlan(html) {
 // ====================================================================
 // LA MALLA
 // ====================================================================
+/* ---------- ausencias: lo que la malla necesita saber ----------
+
+   EL CHOQUE SE MIDE POR DIA DE CALENDARIO, NO POR HORAS. Es la decision que
+   sale de mirar otros productos y la que Pedro aprobo: si alguien tiene el dia
+   libre y se le pone un turno, se avisa AUNQUE LAS HORAS NO SE PISEN. Pilla
+   mas casos y, sobre todo, se puede explicar en una frase. Comparar horas
+   dejaria pasar el turno de la tarde sobre una licencia de la mañana, que es
+   justo el caso que molesta.
+
+   Una ausencia cubre un RANGO, asi que la comparacion es de texto entre
+   'AAAA-MM-DD': ordenan igual que las fechas y no hay que fabricar objetos
+   Date, que es donde aparecen los dias corridos en uno. */
+function tipoAusencia(id) {
+  for (var i = 0; i < S.tiposAusencia.length; i++)
+    if (S.tiposAusencia[i].id === id) return S.tiposAusencia[i];
+  return null;
+}
+function nombreTipoAusencia(id) {
+  var t = tipoAusencia(id);
+  return t ? t.nombre : 'Ausencia';
+}
+/* La unidad EFECTIVA de una ausencia: la que eligio, si eligio, y si no la de
+   su tipo. Vive en una sola funcion porque se pregunta desde cuatro sitios —la
+   banda, la marca del turno, el dialogo y el desglose— y cuatro copias de la
+   misma regla es como se cuela que una quede vieja. */
+function unidadDe(a) {
+  if (a && a.unidad) return a.unidad;
+  var t = a && tipoAusencia(a.tipo_id);
+  return t ? t.unidad : 'dia';
+}
+
+function ausenciasDe(trabajadorId, fecha) {
+  if (!trabajadorId) return [];
+  return S.ausencias.filter(function (a) {
+    return a.trabajador_id === trabajadorId && a.desde <= fecha && a.hasta >= fecha;
+  });
+}
+function ausenciasDelDia(fecha) {
+  return S.ausencias.filter(function (a) { return a.desde <= fecha && a.hasta >= fecha; });
+}
+
 function pintarMalla() {
   agrupacionValida();
   // Agrupar por persona o por cargo da vuelta la tabla: las filas dejan de ser
@@ -588,12 +648,38 @@ function celdaDia(f, hoy, compacta) {
   var html = '<div class="dia' + (f === hoy ? ' hoy' : '') + (compacta ? ' chico' : '') + '">'
     + '<header><b>' + (compacta ? f.split('-')[2] : nombreDia(f)) + '</b>'
     + '<span class="num">' + (compacta ? '' : diaMes(f)) + '</span></header>'
-    + '<div class="cuerpo">';
+    + '<div class="cuerpo">'
+    /* QUIEN NO ESTA, ARRIBA DE TODO y antes que los turnos.
+
+       Abajo no sirve: se reparte gente mirando la parte de arriba de la
+       tarjeta, y un aviso que hay que ir a buscar llega tarde. Es el mismo
+       criterio del aviso dentro del dialogo — avisar MIENTRAS decides. */
+    + bandaAusencias(f);
   necs.forEach(function (n) { html += pintarNecesidad(n); });
   sueltas.forEach(function (a) { html += pintarSuelta(a); });
   html += '<button class="mas" data-nueva="' + f + '">+ qué hace falta</button>';
   if (!compacta) html += '<button class="mas" data-suelta="' + f + '">+ turno suelto</button>';
+  if (!compacta && S.hayAusencias)
+    html += '<button class="mas" data-ausencia="' + f + '">+ ausencia / permiso</button>';
   return html + '</div></div>';
+}
+
+
+/* La banda de ausencias del dia. Vacia si no hay: una franja que dice «nadie
+   falta» ocupa sitio todos los dias para no decir nada. */
+function bandaAusencias(f) {
+  var hoy = ausenciasDelDia(f);
+  if (!hoy.length) return '';
+  return '<div class="ausdia">' + hoy.map(function (a) {
+    var u = unidadDe(a);
+    var medio = u !== 'dia';
+    return '<span class="aus' + (medio ? ' parcial' : '') + '" data-ausid="' + a.id + '" title="'
+      + esc(nombreTipoAusencia(a.tipo_id)) + (a.nota ? ' — ' + esc(a.nota) : '') + '">'
+      + esc(nombreTrab(a.trabajador_id) || 'alguien') + ' · '
+      + esc(nombreTipoAusencia(a.tipo_id))
+      + (medio ? ' (' + esc(u === 'medio_dia' ? 'medio día' : 'horas') + ')' : '')
+      + '</span>';
+  }).join('') + '</div>';
 }
 
 function pintarSemana() {
@@ -1209,9 +1295,39 @@ function pintarAsignacion(a) {
     return t.asignacion_id === a.id && t.estado === 'publicado';
   });
   var quien = a.trabajador_id ? esc(nombreTrab(a.trabajador_id)) : 'pendiente';
+
+  /* EL TURNO QUE CHOCA CON UNA AUSENCIA SE MARCA EN LA MALLA.
+
+     Sin esto, el aviso solo aparecia al asignar — y el caso corriente es el
+     contrario: el turno ya estaba y la licencia llega despues. Se veia en la
+     pantalla de la demo, no en el codigo: la banda decia «Benja · Licencia
+     medica» y justo debajo seguia su turno de 12 a 16 como si nada.
+
+     Es una marca, no un impedimento: el turno sigue ahi, se puede abrir y se
+     puede dejar igual. Lo que no puede es pasar desapercibido. */
+  var choca = a.trabajador_id && ausenciasDe(a.trabajador_id, a.fecha).length > 0;
+  var ausTxt = choca
+    ? ausenciasDe(a.trabajador_id, a.fecha).map(function (x) {
+        return nombreTipoAusencia(x.tipo_id); }).join(', ')
+    : '';
+  /* «No está» SOLO si la ausencia es de dia completo.
+
+     El medio dia de examenes del art. 66 bis y las horas de un atraso dejan a
+     la persona trabajando el resto de la jornada: decir «no está» ahi es
+     falso, y el encargado podria salir a buscar reemplazo para un turno que si
+     se va a cubrir. Se vio en la pantalla, no leyendo el codigo: la demo decia
+     «Caro · no está» cuando Caro solo tenia medio dia de examenes. */
+  var entero = choca && ausenciasDe(a.trabajador_id, a.fecha).some(function (x) {
+    return unidadDe(x) === 'dia';
+  });
+  var titulo = choca ? ' title="' + esc(quien + ' tiene ' + ausTxt + ' ese día') + '"' : '';
+  var marca  = choca ? '<span class="choque' + (entero ? '' : ' parte') + '">'
+                     + (entero ? 'no está' : 'parte del día') + '</span>' : '';
   return '<li class="' + (a.trabajador_id ? (publicado ? 'publicado' : 'borrador') : 'pendiente')
-       + '" data-asigid="' + a.id + '">'
-       + quien + '<span class="hs">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span></li>';
+       + (choca ? ' choca' : '')
+       + '" data-asigid="' + a.id + '"' + titulo + '>'
+       + quien + marca
+       + '<span class="hs">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span></li>';
 }
 
 function pintarSuelta(a) {
@@ -1400,6 +1516,15 @@ $('#nav').addEventListener('click', function (ev) {
   // Se pide al entrar, no al arrancar: la bitácora puede ser larga y no
   // tiene por qué retrasar la pantalla que de verdad se usa.
   if (b.dataset.p === 'actividad') cargarActividad(false);
+  /* El catalogo se lee AL ENTRAR a Configuracion, y tiene que estar aqui.
+
+     Lo puse primero dentro de `pintarConfig()`, que parecia el sitio natural —
+     y `pintarConfig()` NO se llama al cambiar de pestaña: corre una sola vez al
+     arrancar, cuando todavia no se sabe si hay ausencias. Resultado: la
+     pantalla salia vacia, sin un solo error en la consola. Es el mismo defecto
+     contra el que avisa el comentario de aqui arriba, y lo encontro la prueba
+     de humo, no yo. */
+  if (b.dataset.p === 'config') cargarCatalogo();
 });
 
 // Un solo oyente para toda la malla: los botones se repintan constantemente y
@@ -1415,6 +1540,12 @@ $('#malla').addEventListener('click', function (ev) {
   }
   if (t.dataset.nueva)  return abrirNecesidad(null, t.dataset.nueva);
   if (t.dataset.suelta) return abrirAsignacion(null, null, t.dataset.suelta);
+  if (t.dataset.ausencia) return abrirAusencia(null, t.dataset.ausencia, null);
+  var chip = t.closest && t.closest('.aus[data-ausid]');
+  if (chip) {
+    var ya = S.ausencias.filter(function (x) { return x.id === chip.dataset.ausid; })[0];
+    if (ya) return abrirAusencia(ya, null, null);
+  }
   if (t.dataset.asig)   return abrirAsignacion(null, t.dataset.asig, null);
   var cab = t.closest('[data-nec]');
   if (cab) return abrirNecesidad(S.necesidades.filter(function (n) { return n.id === cab.dataset.nec; })[0]);
@@ -1591,17 +1722,43 @@ function opcion(p) { return '<option value="' + p.id + '">' + esc(p.nombre) + '<
 
 /* El aviso cuando la persona no tiene ese cargo. AVISA, NO BLOQUEA: Pedro fue
    explícito —«igual un cajero podría tomar el trabajo de un mesero»—. */
+/* Los avisos del dialogo. Son VARIOS y se juntan en una lista.
+
+   Antes esto miraba una sola cosa —el cargo— y arrancaba con
+   `if (!pid || !cargoId) return`. Ese retorno temprano tenia un efecto que no
+   se ve leyendolo: en un TURNO SUELTO no hay necesidad detras, asi que no hay
+   cargo, asi que la funcion se iba antes de mirar nada mas. El aviso de
+   ausencia puesto despues de esa linea no se habria mostrado nunca justo en el
+   caso mas probable de meter la pata.
+
+   Ninguno impide guardar. Pedro fijo que la app avisa y no bloquea: el sabe
+   cosas que la app no sabe. */
 function pintarOjo() {
   var pid = $('#aQuien').value;
   var n = asigNecesidad ? S.necesidades.filter(function (x) { return x.id === asigNecesidad; })[0] : null;
   var cargoId = n ? n.cargo_id : null;
   var e = $('#aOjo');
-  if (!pid || !cargoId) { e.hidden = true; return; }
+  if (!pid) { e.hidden = true; return; }
   var p = S.trabajadores.filter(function (x) { return x.id === pid; })[0];
-  var tiene = (p && (p.trabajador_cargos || []).some(function (x) { return x.cargo_id === cargoId; }));
-  e.hidden = tiene;
-  if (!tiene) e.innerHTML = '⚠️ <b>' + esc(p ? p.nombre : '') + '</b> no tiene marcado «'
-    + esc(nombreCargo(cargoId)) + '». Puedes asignarlo igual.';
+  var quien = esc(p ? p.nombre : '');
+  var avisos = [];
+
+  if (cargoId) {
+    var tiene = (p && (p.trabajador_cargos || []).some(function (x) { return x.cargo_id === cargoId; }));
+    if (!tiene) avisos.push('⚠️ <b>' + quien + '</b> no tiene marcado «'
+      + esc(nombreCargo(cargoId)) + '». Puedes asignarlo igual.');
+  }
+
+  // El choque por DIA de calendario: no se comparan horas a proposito.
+  ausenciasDe(pid, asigFecha).forEach(function (a) {
+    avisos.push('⚠️ <b>' + quien + '</b> tiene <b>' + esc(nombreTipoAusencia(a.tipo_id))
+      + '</b> ' + (a.desde === a.hasta ? 'ese día' : 'del ' + esc(diaMes(a.desde)) + ' al ' + esc(diaMes(a.hasta)))
+      + (unidadDe(a) !== 'dia' ? ' <i>(no es el día entero)</i>' : '')
+      + '. Puedes ponerle el turno igual, y queda registrado que fuiste tú.');
+  });
+
+  e.hidden = !avisos.length;
+  e.innerHTML = avisos.join('<br>');
 }
 $('#aQuien').addEventListener('change', pintarOjo);
 
@@ -2436,6 +2593,501 @@ function pintarMios() {
   }).catch(function (e) { caja.innerHTML = '<p class="vacio">' + esc(e.message) + '</p>'; });
 }
 
+// ====================================================================
+// AUSENCIAS
+//
+// UN dialogo para los 17 tipos. Lo que cambia entre una licencia medica y unas
+// vacaciones NO esta en el codigo: esta en la fila del tipo. Esa es toda la
+// idea del catalogo, y si alguna vez aparece aqui un `if (nombre === 'Licencia
+// medica')`, el catalogo dejo de mandar y hay que volver atras.
+// ====================================================================
+var ausActual = null;
+// Que tipo estaba elegido la vez anterior, para saber si el tipo CAMBIO y hay
+// que volver la unidad a la suya.
+var unidadPrevia = null;
+
+function abrirAusencia(a, fecha, trabajadorId) {
+  if (!S.hayAusencias)
+    return alert('Falta pegar la migración de ausencias en la base.');
+  if (!S.tiposAusencia.length)
+    return alert('No hay tipos de ausencia cargados todavía.');
+  if (!S.trabajadores.length)
+    return alert('Primero crea a alguien en Equipo.');
+
+  ausActual = a || null;
+  /* «Ausencia / permiso», como lo pidio Pedro (msg 5512).
+
+     Nadie dice «ausencia» en un local: se dice permiso, licencia, vacaciones o
+     falta segun el caso. Las dos palabras juntas son el paraguas que se
+     entiende sin explicar, y evita el error de llamarle «permiso» a una
+     licencia medica —que nadie concede— o a una falta. */
+  $('#usTit').textContent = a ? 'Ausencia / permiso' : 'Registrar una ausencia / permiso';
+
+  $('#usQuien').innerHTML = S.trabajadores.map(opcion).join('');
+  $('#usQuien').value = a ? a.trabajador_id : (trabajadorId || S.trabajadores[0].id);
+
+  /* Los tipos salen AGRUPADOS POR TRATO y con el trato escrito en el titulo
+     del grupo. No es decoracion: es lo unico que explica, en el momento de
+     elegir, por que a este tipo se le puede decir que no y a aquel no. */
+  var grupos = [
+    ['acuerdo',   'Se acuerda entre los dos'],
+    ['aviso',     'Se avisa — no se puede negar'],
+    ['documento', 'Llega con documento'],
+    ['registro',  'Se registra después'],
+  ];
+  $('#usTipo').innerHTML = grupos.map(function (g) {
+    var ts = S.tiposAusencia.filter(function (t) { return t.trato === g[0]; });
+    if (!ts.length) return '';
+    return '<optgroup label="' + g[1] + '">' + ts.map(function (t) {
+      return '<option value="' + t.id + '">' + esc(t.nombre) + '</option>';
+    }).join('') + '</optgroup>';
+  }).join('');
+  $('#usTipo').value = a ? a.tipo_id : S.tiposAusencia[0].id;
+  $('#usUnidad').value = (a && a.unidad) || (tipoAusencia($('#usTipo').value) || {}).unidad || 'dia';
+
+  var f = a ? a.desde : (fecha || hoyTexto());
+  $('#usDesde').value = f;
+  $('#usHasta').value = a ? a.hasta : f;
+  $('#usEntra').value = a && a.hora_inicio ? hhmm(a.hora_inicio) : '09:00';
+  $('#usSale').value  = a && a.hora_fin    ? hhmm(a.hora_fin)    : '13:00';
+  $('#usFolio').value = (a && a.documento_ref) || '';
+  $('#usNota').value  = (a && a.nota) || '';
+  $('#usAnular').hidden = !a;
+  aviso('#usMsg', '');
+  pintarFormaAusencia();
+  $('#dlgAus').showModal();
+}
+
+/* El formulario SE ARMA con la fila del tipo. Aqui se ve en una funcion lo que
+   en la base son columnas: `unidad`, `pide_documento`, `pide_nota` y `trato`. */
+function pintarFormaAusencia() {
+  var t = tipoAusencia($('#usTipo').value);
+  if (!t) return;
+
+  /* La unidad sale del tipo, salvo que el tipo deje elegir. Al CAMBIAR de tipo
+     el desplegable vuelve a la unidad de ese tipo: si se quedara con lo
+     anterior, elegir «medio día» en un permiso y despues cambiar a licencia
+     medica dejaria media licencia sin que nadie lo pidiera. */
+  var abierto = t.unidad_fija === false;
+  $('#usUnidadCaja').hidden = !abierto;
+  if (!abierto || unidadPrevia !== t.id) $('#usUnidad').value = t.unidad;
+  unidadPrevia = t.id;
+  var unidad = abierto ? $('#usUnidad').value : t.unidad;
+  var porDia = unidad === 'dia';
+
+  // Medio dia y horas son de UN dia: el disparador de la base lo rechaza, asi
+  // que la pantalla ni siquiera ofrece poner un rango. Mejor no poder hacerlo
+  // que poder hacerlo y que te lo rechacen al guardar.
+  $('#usHastaCaja').hidden = !porDia;
+  if (!porDia) $('#usHasta').value = $('#usDesde').value;
+  $('#usHorasCaja').hidden = unidad !== 'horas';
+  $('#usFolioCaja').hidden = !t.pide_documento;
+  $('#usNotaEt').textContent = t.pide_nota ? 'Motivo (obligatorio)' : 'Motivo (opcional)';
+
+  // Lo que la ley dice de este tipo, en el momento de elegirlo. Si el tipo no
+  // tiene base legal se dice que es del local: prometer una regla legal que no
+  // existe es peor que no decir nada.
+  var ley = $('#usLey');
+  var txt = '';
+  if (t.base_legal) {
+    txt = esc(t.base_legal);
+    // 'habiles' se guarda sin acento porque es un codigo con un `check`
+    // detras; el acento se le pone aqui, que es donde alguien lo lee.
+    if (t.dias_legales) txt += ' · <b>' + t.dias_legales + ' días '
+      + esc(t.dias_base === 'habiles' ? 'hábiles' : t.dias_base) + '</b>';
+  } else {
+    txt = 'No viene de la ley: es un acuerdo o un beneficio del local.';
+  }
+  if (t.exento_bloqueos) txt += ' · <b>no la detienen los días bloqueados</b>';
+  ley.hidden = false;
+  ley.innerHTML = txt;
+
+  /* EL BOTON DE RECHAZAR NO EXISTE cuando el trato es 'aviso'.
+
+     No esta desactivado: no esta. Un boton apagado invita a preguntarse como
+     se enciende, y aca la respuesta es que no se enciende nunca — rechazar un
+     permiso del art. 66 seria ilegal. La base ademas lo impide, asi que un
+     boton visible solo serviria para llevarse un error en la cara. */
+  $('#usRechazar').hidden = (t.trato !== 'acuerdo');
+  $('#usGuardar').textContent = t.trato === 'acuerdo' ? 'Aprobar' : 'Registrar';
+
+  pintarOjoAusencia();
+}
+
+/* El aviso de la ausencia: choca con turnos que esa persona ya tiene. AVISA.
+   Si los turnos ya estan publicados, se dice — porque entonces ademas hay que
+   volver a hablar con la persona, y eso no lo arregla la app. */
+function pintarOjoAusencia() {
+  var e = $('#usOjo');
+  var pid = $('#usQuien').value;
+  var d = $('#usDesde').value, h = $('#usHastaCaja').hidden ? d : ($('#usHasta').value || d);
+  if (!pid || !d) { e.hidden = true; return; }
+
+  var choca = S.asignaciones.filter(function (a) {
+    return a.trabajador_id === pid && a.fecha >= d && a.fecha <= h;
+  });
+  if (!choca.length) { e.hidden = true; return; }
+
+  var publicados = choca.filter(function (a) {
+    return S.turnos.some(function (t) {
+      return t.asignacion_id === a.id && t.estado === 'publicado';
+    });
+  }).length;
+
+  e.hidden = false;
+  e.innerHTML = '⚠️ Esa persona tiene <b>' + choca.length + '</b> turno'
+    + (choca.length === 1 ? '' : 's') + ' en esas fechas'
+    + (publicados ? ', y <b>' + publicados + '</b> ya está'
+       + (publicados === 1 ? '' : 'n') + ' publicado' + (publicados === 1 ? '' : 's')
+       + ' — se quedan ahí, <b>marcados para revisar</b>' : '')
+    + '. Se guarda igual.';
+}
+
+['#usTipo', '#usUnidad'].forEach(function (id) {
+  $(id).addEventListener('change', pintarFormaAusencia);
+});
+['#usQuien', '#usDesde', '#usHasta'].forEach(function (id) {
+  $(id).addEventListener('change', pintarOjoAusencia);
+});
+$('#usCancelar').addEventListener('click', function () { $('#dlgAus').close(); });
+
+/* El detalle por dia, calculado CON LA MALLA DEL MOMENTO.
+
+   Es la razon de ser de la tabla: dentro de seis meses la malla cambio y esto
+   ya no se podria reconstruir. Lo que no se sabe NO SE INVENTA — los feriados
+   legales no los tiene la app todavia, asi que un dia sin turno se guarda como
+   'no trabajaba', que es lo unico que consta. */
+function desgloseAusencia(trabajadorId, desde, hasta, unidad, entra, sale) {
+  var filas = [], f = desde, tope = 0;
+  while (f <= hasta && tope++ < 400) {
+    var turnos = S.asignaciones.filter(function (a) {
+      return a.trabajador_id === trabajadorId && a.fecha === f;
+    });
+    var horas = 0;
+    turnos.forEach(function (a) { horas += horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin)); });
+    if (unidad === 'horas' && entra && sale) horas = horasDe(entra, sale);
+    else if (unidad === 'medio_dia') horas = horas / 2;
+
+    var trabajaba = turnos.length > 0;
+    var cuenta = trabajaba && horas > 0;
+    filas.push({
+      fecha: f, trabajaba: trabajaba,
+      hora_inicio: turnos.length ? hhmm(turnos[0].hora_inicio) : null,
+      hora_fin:    turnos.length ? hhmm(turnos[0].hora_fin)    : null,
+      horas: Math.round(horas * 100) / 100,
+      cuenta: cuenta,
+      motivo_no_cuenta: cuenta ? null : 'no trabajaba',
+    });
+    f = masDias(f, 1);
+  }
+  return filas;
+}
+
+/* LOS TURNOS YA PUBLICADOS QUEDAN MARCADOS, NO BORRADOS.
+
+   Es lo que el dialogo promete al avisar «se quedan ahí, marcados para
+   revisar», y durante unas horas fue solo eso: una promesa. Las columnas
+   estaban en la base, el aviso estaba en la pantalla, y nadie las rellenaba.
+   Una promesa a medias es peor que no hacerla: el encargado confia en que la
+   app se acuerda, y no se acordaba.
+
+   POR QUE NO SE BORRAN: el turno publicado es LO QUE SE LE COMUNICO A LA
+   PERSONA. Borrarlo deja sin prueba lo que esa persona vio, que es justo lo
+   que se discute cuando se discute un sueldo.
+
+   Solo se marcan los PUBLICADOS: un borrador todavia no se le dijo a nadie, y
+   para ese la malla ya avisa sola.
+
+   Si falla el marcado NO se cae todo: la ausencia ya quedo guardada, que es lo
+   importante. Se avisa por consola y la malla igual pinta el choque. */
+function marcarTurnosParaRevisar(ausencia, trabajadorId, desde, hasta) {
+  var tocados = S.turnos.filter(function (t) {
+    return t.trabajador_id === trabajadorId && t.estado === 'publicado'
+        && t.fecha >= desde && t.fecha <= hasta && !t.revisar;
+  });
+  if (!tocados.length) return Promise.resolve([]);
+  return Promise.all(tocados.map(function (t) {
+    return DATOS.turnos.guardar(t.id, {
+      revisar: true, revisar_motivo: 'ausencia', revisar_ausencia_id: ausencia.id,
+    }).then(function (nuevo) {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'turno', t.id, 'editar', t, nuevo);
+      return nuevo;
+    });
+  })).catch(function (e) {
+    console.warn('no pude marcar los turnos para revisar:', e.message);
+    return [];
+  });
+}
+
+$('#usGuardar').addEventListener('click', function () { guardarAusencia('ok'); });
+$('#usRechazar').addEventListener('click', function () { guardarAusencia('rechazada'); });
+
+function guardarAusencia(que) {
+  var t = tipoAusencia($('#usTipo').value);
+  if (!t) return;
+  var pid = $('#usQuien').value;
+  var desde = $('#usDesde').value;
+  var hasta = $('#usHastaCaja').hidden ? desde : ($('#usHasta').value || desde);
+  if (!pid || !desde) return aviso('#usMsg', 'Falta la persona o la fecha.', 'bad');
+  if (hasta < desde) return aviso('#usMsg', 'La fecha de término es anterior a la de inicio.', 'bad');
+  if (t.pide_nota && !$('#usNota').value.trim())
+    return aviso('#usMsg', 'Este tipo necesita que escribas el motivo.', 'bad');
+
+  /* El estado sale del TRATO, no de un desplegable.
+
+     Lo que se acuerda se aprueba o se rechaza; lo demas se REGISTRA, porque
+     nadie lo aprobo — una licencia la decide el medico. Ofrecer «aprobada»
+     para una licencia seria dejar escrito en la base algo que no paso. */
+  var estado = que === 'rechazada' ? 'rechazada'
+             : (t.trato === 'acuerdo' ? 'aprobada' : 'registrada');
+  var resuelta = (estado === 'aprobada' || estado === 'rechazada');
+
+  // Solo se guarda la unidad cuando se ELIGIO una distinta: si fuera siempre,
+  // un tipo que cambie de unidad manaña no alcanzaria a las ausencias viejas y
+  // nadie sabria si eso fue una eleccion o el valor de entonces.
+  var abierto = t.unidad_fija === false;
+  var unidad = abierto ? $('#usUnidad').value : t.unidad;
+  var d = {
+    trabajador_id: pid, tipo_id: t.id, desde: desde, hasta: hasta,
+    unidad: (abierto && unidad !== t.unidad) ? unidad : null,
+    hora_inicio: unidad === 'horas' ? $('#usEntra').value : null,
+    hora_fin:    unidad === 'horas' ? $('#usSale').value  : null,
+    estado: estado,
+    nota: $('#usNota').value.trim() || null,
+    documento_ref: t.pide_documento ? ($('#usFolio').value.trim() || null) : null,
+    /* La cifra que rige HOY, copiada a esta ausencia. Si manaña Pedro edita el
+       tipo —la ley cambia—, esta ausencia sigue diciendo lo que regia cuando se
+       registro. Misma fotografia que `ausencia_dias`. */
+    dias_legales_entonces: t.dias_legales || null,
+    dias_base_entonces: t.dias_legales ? t.dias_base : null,
+    pedida_por: S.yo.id,
+    resuelta_por: resuelta ? S.yo.id : null,
+    resuelta_en: resuelta ? new Date().toISOString() : null,
+  };
+
+  aviso('#usMsg', 'Guardando…');
+  var antes = ausActual && JSON.parse(JSON.stringify(ausActual));
+  var p = ausActual ? DATOS.ausencias.guardar(ausActual.id, d)
+                    : DATOS.ausencias.crear(S.yo.empresa_id, d);
+  p.then(function (fila) {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'ausencia', fila.id,
+                 ausActual ? 'editar' : 'crear', antes, fila);
+    // El detalle solo tiene sentido cuando la ausencia de verdad ocurre.
+    if (estado === 'rechazada') return fila;
+    var filas = desgloseAusencia(pid, desde, hasta, unidad,
+                                 $('#usEntra').value, $('#usSale').value);
+    return DATOS.ausencias.ponerDias(S.yo.empresa_id, fila.id, filas)
+      .then(function () { return marcarTurnosParaRevisar(fila, pid, desde, hasta); })
+      .then(function () { return fila; });
+  }).then(function () {
+    $('#dlgAus').close();
+    return recargarSemana();
+  }).catch(function (e) {
+    // Los mensajes del disparador salen en castellano y ya se entienden; los
+    // del indice unico, no.
+    if (/ausencias_sin_repetir/.test(e.message))
+      return aviso('#usMsg', 'Esa persona ya tiene registrada esa misma ausencia ese día.', 'bad');
+    aviso('#usMsg', e.message, 'bad');
+  });
+}
+
+$('#usAnular').addEventListener('click', function () {
+  if (!ausActual) return;
+  if (!confirm('¿Anular esta ausencia? No se borra: queda en la bitácora.')) return;
+  DATOS.ausencias.anular(ausActual.id).then(function (fila) {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'ausencia', ausActual.id, 'editar', ausActual, fila);
+    $('#dlgAus').close();
+    return recargarSemana();
+  }).catch(function (e) { aviso('#usMsg', e.message, 'bad'); });
+});
+
+// ====================================================================
+// EL CATALOGO DE PERMISOS Y AUSENCIAS
+//
+// Existe por una razon que Pedro dijo con todas sus letras: «la regulacion
+// cambia constantemente». Un producto donde haya que llamar al programador para
+// subir un permiso de 10 a 20 dias no se puede vender. Con esta pantalla las
+// reglas las mantiene el.
+//
+// LO QUE ESTA PANTALLA NO RESUELVE, y esta dicho para que nadie lo descubra
+// tarde: no hay FECHA DE VIGENCIA. Editar la fila cambia el numero tambien
+// hacia atras. Hoy no duele porque el numero solo se muestra; el dia que haya
+// saldos de vacaciones habra que agregar `vigente_desde` — que es agregar una
+// columna, no rehacer esto.
+// ====================================================================
+var tipoActual = null;
+var catalogo = [];
+
+var TRATOS = {
+  acuerdo:   'Se acuerda entre los dos',
+  aviso:     'Se avisa — no se puede negar',
+  documento: 'Llega con documento',
+  registro:  'Se registra después',
+};
+var AYUDA_TRATO = {
+  acuerdo:   'Se puede aprobar y rechazar, y aquí sí aplican los días bloqueados.',
+  aviso:     'La app <b>no ofrecerá el botón de rechazar</b>: negarlo sería ilegal.',
+  documento: 'Llega como hecho y es retroactiva: puede tapar un turno ya publicado.',
+  registro:  'Nadie lo pidió, pasó. Se anota después.',
+};
+var UNIDADES = { dia:'días completos', medio_dia:'medio día', horas:'horas' };
+
+function cargarCatalogo() {
+  if (!S.hayAusencias) return Promise.resolve([]);
+  return DATOS.ausencias.tiposTodos().then(function (f) {
+    catalogo = f; pintarCatalogo(); return f;
+  }).catch(function (e) {
+    $('#listaTipos').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
+  });
+}
+
+function pintarCatalogo() {
+  $('#ctrlTipos').hidden = !S.hayAusencias;
+  $('#hintTipos').hidden = !S.hayAusencias;
+  if (!S.hayAusencias) { $('#listaTipos').innerHTML = ''; return; }
+
+  var html = '';
+  Object.keys(TRATOS).forEach(function (tr) {
+    var ts = catalogo.filter(function (t) { return t.trato === tr; });
+    if (!ts.length) return;
+    html += '<p class="grupoTipo"><b>' + esc(TRATOS[tr]) + '</b></p>';
+    ts.forEach(function (t) {
+      // La base legal a la vista, y «del local» cuando no la tiene: decir que
+      // algo es ley sin serlo es peor que no decir nada.
+      var base = t.base_legal
+        ? esc(t.base_legal) + (t.dias_legales
+            ? ' · ' + t.dias_legales + ' ' + esc(t.dias_base === 'habiles' ? 'hábiles' : t.dias_base)
+            : '')
+        : 'del local';
+      var marcas = [];
+      if (t.pide_documento)  marcas.push('documento');
+      if (t.pide_nota)       marcas.push('motivo');
+      if (t.exento_bloqueos) marcas.push('no la frenan los bloqueos');
+      if (!t.con_goce)       marcas.push('sin goce');
+      if (t.suma_conteo_mes) marcas.push('suma al conteo');
+      html += '<div class="item' + (t.activo ? '' : ' apagado') + '" data-tipoid="' + t.id + '">'
+        + '<b>' + esc(t.nombre) + '</b>'
+        + (t.de_sistema ? '<span class="sello">del sistema</span>' : '')
+        + '<span class="sub">' + esc(UNIDADES[t.unidad] || t.unidad)
+        + (t.unidad_fija === false ? ' <i>(se elige)</i>' : '') + ' · ' + base
+        + (marcas.length ? ' · ' + esc(marcas.join(' · ')) : '')
+        + (t.activo ? '' : ' · <b>desactivado</b>') + '</span></div>';
+    });
+  });
+  $('#listaTipos').innerHTML = html || '<p class="vacio">No hay tipos todavía.</p>';
+}
+
+$('#listaTipos').addEventListener('click', function (ev) {
+  var it = ev.target.closest('.item'); if (!it) return;
+  abrirTipo(catalogo.filter(function (t) { return t.id === it.dataset.tipoid; })[0]);
+});
+$('#btnTipo').addEventListener('click', function () { abrirTipo(null); });
+
+function abrirTipo(t) {
+  tipoActual = t || null;
+  $('#tpTit').textContent = t ? 'Tipo de permiso o ausencia' : 'Nuevo tipo';
+  $('#tpNombre').value = t ? t.nombre : '';
+  $('#tpTrato').value  = t ? t.trato : 'acuerdo';
+  $('#tpUnidad').value = t ? t.unidad : 'dia';
+  $('#tpUnidadLibre').checked = t ? (t.unidad_fija === false) : false;
+  $('#tpDoc').checked    = !!(t && t.pide_documento);
+  $('#tpNota').checked   = !!(t && t.pide_nota);
+  $('#tpExento').checked = !!(t && t.exento_bloqueos);
+  $('#tpGoce').checked   = t ? !!t.con_goce : true;
+  $('#tpConteo').checked = !!(t && t.suma_conteo_mes);
+  $('#tpBase').value     = (t && t.base_legal) || '';
+  $('#tpDias').value     = (t && t.dias_legales) || '';
+  $('#tpDiasBase').value = (t && t.dias_base) || '';
+  $('#tpOrden').value    = t ? t.orden : 100;
+  $('#tpActivo').checked = t ? !!t.activo : true;
+  $('#tpBajaHint').hidden = !t;
+
+  /* EN UN TIPO DEL SISTEMA, LO LEGAL NO SE EDITA.
+
+     Lo que queda abierto es lo que es decision del local: el nombre —cada uno
+     le dice como quiere—, si esta activo, el orden, y pedir MAS papeles. Lo que
+     se bloquea es lo que dice la ley: el trato, la unidad, el pago, la norma y
+     los dias.
+
+     No se esconde, se deshabilita: el encargado tiene que PODER VER que el
+     duelo son 10 dias corridos del art. 66. Esconderlo haria que la pantalla
+     parezca incompleta y que nadie sepa que la regla existe. */
+  var sis = !!(t && t.de_sistema);
+  ['#tpTrato','#tpUnidad','#tpUnidadLibre','#tpExento','#tpGoce','#tpConteo',
+   '#tpBase','#tpDias','#tpDiasBase'].forEach(function (id) {
+    $(id).disabled = sis;
+  });
+  $('#tpSistemaHint').hidden = !sis;
+
+  pintarAyudaTrato();
+  aviso('#tpMsg', '');
+  $('#dlgTipo').showModal();
+}
+
+/* Qué significa el trato elegido, EN EL MOMENTO de elegirlo. Es el campo que
+   más consecuencias tiene y el único cuyo nombre no se explica solo. */
+function pintarAyudaTrato() {
+  $('#tpTratoHint').innerHTML = AYUDA_TRATO[$('#tpTrato').value] || '';
+}
+$('#tpTrato').addEventListener('change', pintarAyudaTrato);
+$('#tpCancelar').addEventListener('click', function () { $('#dlgTipo').close(); });
+
+$('#tpGuardar').addEventListener('click', function () {
+  var nombre = $('#tpNombre').value.trim();
+  if (!nombre) return aviso('#tpMsg', 'Falta el nombre.', 'bad');
+
+  var dias = $('#tpDias').value === '' ? null : Number($('#tpDias').value);
+  var clase = $('#tpDiasBase').value || null;
+  // El mismo `check` que tiene la tabla, dicho aquí en castellano: un número de
+  // días sin decir de qué clase es un dato a medias, y al revés también.
+  if ((dias === null) !== (clase === null))
+    return aviso('#tpMsg', 'Si pones los días, di si son corridos o hábiles. Y al revés.', 'bad');
+
+  var d = {
+    nombre: nombre,
+    trato: $('#tpTrato').value,
+    unidad: $('#tpUnidad').value,
+    unidad_fija: !$('#tpUnidadLibre').checked,
+    pide_documento: $('#tpDoc').checked,
+    pide_nota: $('#tpNota').checked,
+    exento_bloqueos: $('#tpExento').checked,
+    con_goce: $('#tpGoce').checked,
+    suma_conteo_mes: $('#tpConteo').checked,
+    base_legal: $('#tpBase').value.trim() || null,
+    dias_legales: dias, dias_base: clase,
+    orden: Number($('#tpOrden').value) || 100,
+    activo: $('#tpActivo').checked,
+  };
+
+  /* Lo que se crea desde la pantalla es SIEMPRE del local: la plataforma no se
+     amplia desde la pantalla de un cliente. Y al editar uno del sistema solo
+     viajan los campos abiertos — si mandara los bloqueados, un `disabled` en el
+     navegador seria toda la defensa, y eso no es una defensa. */
+  if (tipoActual && tipoActual.de_sistema) {
+    d = { nombre: d.nombre, activo: d.activo, orden: d.orden,
+          pide_documento: d.pide_documento, pide_nota: d.pide_nota };
+  } else {
+    d.de_sistema = false;
+    d.clave = null;
+  }
+
+  aviso('#tpMsg', 'Guardando…');
+  var p = tipoActual ? DATOS.ausencias.guardarTipo(tipoActual.id, d)
+                     : DATOS.ausencias.crearTipo(S.yo.empresa_id, d);
+  p.then(function (fila) {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'tipo_ausencia', fila.id,
+                 tipoActual ? 'editar' : 'crear', tipoActual, fila);
+    $('#dlgTipo').close();
+    // El catálogo cambió: la semana tiene que releerlo, o la malla seguiría
+    // pintando con los tipos viejos hasta que alguien recargue la página.
+    return cargarCatalogo().then(recargarSemana);
+  }).catch(function (e) {
+    if (/tipos_ausencia_unicos/.test(e.message))
+      return aviso('#tpMsg', 'Ya tienes un tipo con ese nombre.', 'bad');
+    aviso('#tpMsg', e.message, 'bad');
+  });
+});
+
 /* Un asa para las pruebas, y se declara como lo que es.
 
    Sin esto, la prueba de humo tendria que llegar a todo por la pantalla, y hay
@@ -2450,6 +3102,11 @@ window.__app = {
   abrirNecesidad: abrirNecesidad,
   abrirAsignacion: abrirAsignacion,
   abrirFicha: abrirFicha,
+  abrirAusencia: abrirAusencia,
+  abrirTipo: abrirTipo,
+  cargarCatalogo: cargarCatalogo,
+  desgloseAusencia: desgloseAusencia,
+  marcarTurnosParaRevisar: marcarTurnosParaRevisar,
   recargarSemana: recargarSemana,
 };
 
