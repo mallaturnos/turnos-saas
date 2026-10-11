@@ -313,7 +313,7 @@ button:disabled { opacity:.5; cursor:default; }
 
    El `min-width` sube a 58rem para que, cuando la pantalla obligue a
    desplazar, cada día siga teniendo donde escribir «16:45–00:45» sin partirlo. */
-table.girada { border-collapse:separate; border-spacing:0; width:100%; min-width:58rem;
+table.girada { border-collapse:separate; border-spacing:0; width:100%; min-width:63rem;
                table-layout:fixed;
                background:var(--blanco); border:1px solid var(--borde); border-radius:var(--radio); }
 table.girada th, table.girada td { border-bottom:1px solid var(--borde); padding:.35rem .4rem;
@@ -336,6 +336,19 @@ th.rot { position:sticky; left:0; z-index:3; background:var(--blanco);
          text-align:left; font-size:.88rem; }
 thead th.rot { z-index:3; background:#f0ede7; }
 table.girada td.hoy, table.girada th.hoy { background:var(--verde-claro); }
+
+/* ---------- las horas de cada fila, al costado ----------
+   La pidió Pedro el 11-10: el pie dice qué día está flojo, esta columna dice
+   cuánto lleva cada uno. Va separada por una línea más marcada para que se lea
+   como un total y no como un día más. */
+table.girada .tot {
+  width:5.2rem; text-align:right; background:var(--papel);
+  border-left:2px solid var(--borde); font-size:.85rem; vertical-align:middle;
+}
+table.girada thead th.tot { background:#ebe7e0; text-align:right; font-size:.8rem; }
+table.girada tfoot td.tot { background:#e4ded3; }
+table.girada tfoot td.tot span { display:block; font-weight:600; font-size:.7rem;
+                                 color:var(--gris); }
 
 /* ---------- las horas, DENTRO de la tabla ----------
    Van como <tfoot> y no como una banda aparte para que cada número caiga en

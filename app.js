@@ -1504,9 +1504,23 @@ function pintarGirada() {
     + dias.map(function (f) {
         return '<th' + (f === hoy ? ' class="hoy"' : '') + '><b>' + nombreDia(f) + '</b>'
              + '<span>' + diaMes(f) + '</span></th>';
-      }).join('') + '</tr></thead><tbody>';
+      }).join('')
+    /* LAS HORAS TAMBIEN HACIA EL LADO, no solo hacia abajo.
+
+       Lo pidio Pedro el 11-10: «falta el conteo de horas hacia al lado... solo
+       esta hacia abajo». Tiene razon y son dos preguntas distintas: la fila de
+       abajo dice QUE DIA esta flojo, y esta columna dice CUANTO LLEVA CADA UNO
+       — que es la que decide si a alguien se le esta pasando la semana.
+
+       Cuenta con LA MISMA REGLA que el pie, y eso no es un detalle: si una
+       sumara los turnos sin dueño y la otra no, la suma de las filas no daria
+       la suma de las columnas. Dos totales que no cuadran entre si no se
+       discuten: se dejan de mirar los dos. */
+    + '<th class="tot">Horas</th>'
+    + '</tr></thead><tbody>';
 
   filas.forEach(function (fila) {
+    var suma = 0;
     html += '<tr' + (fila.suelto ? ' class="suelto"' : '') + '><th class="rot">'
           + esc(fila.nombre) + '</th>';
     dias.forEach(function (f) {
@@ -1519,6 +1533,10 @@ function pintarGirada() {
       /* La casilla se identifica por FILA Y FECHA, no por su posición ni por
          el elemento: la tabla se repinta entera a cada cambio y una referencia
          a un `<td>` se queda apuntando a algo que ya no está en la página. */
+      // Solo lo que tiene persona, igual que `horasDeDia()`.
+      suyas.forEach(function (a) {
+        if (a.trabajador_id) suma += horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin));
+      });
       html += '<td class="cel' + (f === hoy ? ' hoy' : '') + '"'
         + ' data-fila="' + esc(String(fila.id || '')) + '" data-fecha="' + f + '">'
         + (suyas.length
@@ -1528,7 +1546,11 @@ function pintarGirada() {
             : '<span class="nada">·</span>')
         + '</td>';
     });
-    html += '</tr>';
+    /* La fila «Sin asignar» marca raya y no cero: esos turnos existen, pero
+       no son horas de nadie todavia. Un 0 ahi se leeria como «no hay nada». */
+    html += '<td class="tot">'
+          + (suma ? '<b>' + numero(suma) + ' h</b>' : '<span class="cero">—</span>')
+          + '</td></tr>';
   });
 
   /* LAS HORAS VAN DENTRO DE LA TABLA, no en una banda debajo.
@@ -1552,13 +1574,18 @@ function pintarGirada() {
   var pieDentro = '';
   if (S.vista === 'semana') {
     var r = horasSemana();
-    pieDentro = '<tfoot><tr><th class="rot">Horas repartidas'
-      + '<span>Semana ' + numero(r.total) + ' h</span></th>'
+    /* El total de la semana se va a la ESQUINA de abajo a la derecha, donde
+       se cruzan la fila de totales y la columna de totales. Es el sitio que
+       le corresponde en cualquier planilla, y ademas deja el encabezado de la
+       fila libre para decir simplemente que es. */
+    pieDentro = '<tfoot><tr><th class="rot">Horas repartidas</th>'
       + r.dias.map(function (d) {
           return '<td' + (d.fecha === hoy ? ' class="hoy"' : '') + '>'
                + (d.horas ? '<b>' + numero(d.horas) + ' h</b>'
                           : '<span class="cero">—</span>') + '</td>';
         }).join('')
+      + '<td class="tot"><b>' + numero(r.total) + ' h</b>'
+      + '<span>la semana</span></td>'
       + '</tr></tfoot>';
   }
 
