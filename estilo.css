@@ -396,6 +396,27 @@ table.girada .gente { padding:0; }
 .gente.bloques .blq::before { content:none; }
 .gente.bloques .blq.publicado b::after { content:" ●"; color:var(--verde); font-size:.55rem; }
 .gente.bloques .blq.borrador  b::after { content:" ○"; color:var(--gris);  font-size:.55rem; }
+/* ---------- el + para agregar en una casilla de la tabla ----------
+   Pedido por Pedro el 11-10: marcó una casilla por Cargos y no tenía cómo
+   agregar nada. Antes ahí iba un punto gris decorativo.
+
+   SE VE SIEMPRE, atenuado, por el mismo motivo que la ×: escondido tras el
+   hover queda inalcanzable en un tablet. En una casilla vacía ocupa el ancho
+   y hace de «hueco que se puede llenar»; en una con turnos se encoge a un
+   botón pequeño debajo, para no competir con lo que ya está. */
+.agregar-cel {
+  display:block; width:100%; margin-top:.15rem; padding:.2rem;
+  border:1px dashed var(--borde); border-radius:5px; background:transparent;
+  color:#b9b3a6; font-size:.9rem; font-family:inherit; line-height:1; cursor:pointer;
+}
+.agregar-cel:hover, .agregar-cel:focus-visible {
+  border-color:var(--verde); color:var(--verde); background:var(--verde-claro);
+  outline:none;
+}
+/* Con turnos dentro, el botón se hace discreto: lo que importa es el turno. */
+.gente.bloques + .agregar-cel { border-style:dashed; opacity:.55; }
+.gente.bloques + .agregar-cel:hover { opacity:1; }
+
 /* ---------- la × de quitar un turno ----------
    Pedida por Pedro el 11-10: «un pequeño botón quitar para no tener que
    ingresar». Pequeño es el encargo, pero no invisible.
@@ -716,7 +737,7 @@ table.girada td.cel { user-select:none; }
 
   /* Fuera todo lo que se aprieta: no se puede apretar una hoja. */
   header, #nav, .controles, .nada, #selAviso,
-  .quitar-asig, .borrar-nec, .mas, .agregar-tramo,
+  .quitar-asig, .agregar-cel, .borrar-nec, .mas, .agregar-tramo,
   #avisoPlan, dialog { display:none !important; }
 
   body { background:#fff; }

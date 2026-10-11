@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v68</span></p>
+      <span style="float:right;opacity:.55" id="ver">v69</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v68</span>
+    <span class="hint" id="ver2" title="Versión publicada">v69</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -289,6 +289,14 @@
   <form method="dialog">
     <h3 id="aTit">Quién lo cubre</h3>
     <p class="hint" id="aDe"></p>
+    <!-- EL CARGO SOLO SE PREGUNTA CUANDO NO HAY NADA PLANIFICADO DETRAS.
+         Si el turno nace de una necesidad, el cargo lo manda ella y preguntarlo
+         seria invitar a contradecirla. En un turno suelto no habia forma de
+         elegirlo: se tomaba el PRIMERO del catalogo sin avisar, asi que un
+         turno agregado desde la fila «Cocina» podia nacer de «Caja». -->
+    <div class="fld" id="aCargoCaja" hidden>
+      <label for="aCargo">Cargo</label><select id="aCargo"></select>
+    </div>
     <div class="fld"><label for="aQuien">Persona</label><select id="aQuien"></select></div>
     <p class="hint" id="aOjo" hidden></p>
     <div class="fldrow">

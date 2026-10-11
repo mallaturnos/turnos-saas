@@ -1543,7 +1543,22 @@ function pintarGirada() {
             ? '<ul class="gente bloques">'
               + suyas.map(function (a) { return pintarBloqueSemana(a, abajo); }).join('')
               + '</ul>'
-            : '<span class="nada">·</span>')
+            : '')
+        /* LA CASILLA VACÍA ES UN BOTÓN.
+
+           Lo encontró Pedro el 11-10 usándolo: marcó una casilla en la tabla
+           por Cargos y preguntó «¿cómo agrego algo acá? No puedo desde esta
+           vista». Tenía razón — desde esta tabla solo se podían ABRIR los
+           turnos que ya estaban. Agregar obligaba a irse a «Por día».
+
+           Es además lo que hace Skello, y estaba anotado desde el 03-10 en el
+           registro de sus capturas: *«la casilla vacía es un botón Ajouter un
+           shift, no un desplegable»*. Lo tenía escrito y no lo había hecho.
+
+           Antes aquí iba un punto gris que no hacía nada. Un hueco que se
+           puede llenar debería parecer que se puede llenar. */
+        + '<button class="agregar-cel" data-agregar="1"'
+        + ' title="Agregar un turno aquí" aria-label="Agregar un turno aquí">+</button>'
         + '</td>';
     });
     /* La fila «Sin asignar» marca raya y no cero: esos turnos existen, pero
@@ -1751,6 +1766,16 @@ $('#malla').addEventListener('click', function (ev) {
     return quitarTurno(S.asignaciones.filter(function (x) {
       return x.id === t.dataset.quitar; })[0]);
   }
+  /* El + de una casilla de la tabla. La fila dice QUÉ se preselecciona, y
+     depende de cómo esté agrupado: filas de personas → la persona; filas de
+     cargos → el cargo. Es la misma casilla, pero no significa lo mismo. */
+  if (t.dataset.agregar) {
+    ev.stopPropagation();
+    var cel = t.closest('td.cel'); if (!cel) return;
+    var quien = cel.dataset.fila || null;
+    return abrirAsignacion(null, null, cel.dataset.fecha,
+      S.agrupar === 'persona' ? { trabajadorId: quien } : { cargoId: quien });
+  }
   if (t.dataset.nueva)  return abrirNecesidad(null, t.dataset.nueva);
   if (t.dataset.suelta) return abrirAsignacion(null, null, t.dataset.suelta);
   if (t.dataset.ausencia) return abrirAusencia(null, t.dataset.ausencia, null);
@@ -1898,10 +1923,15 @@ $('#nBorrar').addEventListener('click', function () {
 // ====================================================================
 // ASIGNACIÓN
 // ====================================================================
+var asigPreset = null;
 var asigActual = null, asigNecesidad = null, asigFecha = null;
-function abrirAsignacion(a, necesidadId, fecha) {
+/* `preset` lo manda la tabla por Personas o Cargos: dice de qué fila salió el
+   clic, para que el turno nazca con la persona —o el cargo— de esa fila ya
+   puesta. Sin esto, agregar desde la fila «Cocina» abría un turno de «Caja». */
+function abrirAsignacion(a, necesidadId, fecha, preset) {
   asigActual = a || null;
   asigNecesidad = necesidadId || null;
+  asigPreset = preset || null;
   var n = necesidadId ? S.necesidades.filter(function (x) { return x.id === necesidadId; })[0] : null;
   asigFecha = fecha || (n ? n.fecha : hoyTexto());
 
@@ -1909,10 +1939,19 @@ function abrirAsignacion(a, necesidadId, fecha) {
   $('#aDe').innerHTML = n
     ? esc(nombreCargo(n.cargo_id)) + ' · ' + rangoTxt(n.hora_inicio, n.hora_fin)
       + ' · ' + nombreDia(n.fecha) + ' ' + diaMes(n.fecha)
-    : '<b>Turno suelto</b> — sin nada planificado detrás. Va a salir marcado como «sin planificar».';
+    : '<b>Turno suelto</b> — sin nada planificado detrás. Va a salir marcado como «sin planificar»'
+      + (fecha ? ', el <b>' + nombreDia(fecha) + ' ' + diaMes(fecha) + '</b>' : '') + '.';
 
-  // Los cargos SUGIEREN: el que lo tiene marcado sale primero, pero están todos.
-  var cargoId = n ? n.cargo_id : (S.cargos[0] || {}).id;
+  /* El cargo: lo manda la necesidad si la hay; si no, se PREGUNTA. Antes se
+     tomaba el primero del catálogo en silencio. */
+  var cargoId = n ? n.cargo_id
+              : (a ? a.cargo_id
+                   : ((preset && preset.cargoId) || (S.cargos[0] || {}).id));
+  $('#aCargoCaja').hidden = !!n;
+  $('#aCargo').innerHTML = S.cargos.map(function (q) {
+    return '<option value="' + q.id + '">' + esc(q.nombre) + '</option>';
+  }).join('');
+  if (cargoId) $('#aCargo').value = cargoId;
   var sabe = [], resto = [];
   S.trabajadores.forEach(function (p) {
     var tiene = (p.trabajador_cargos || []).some(function (x) { return x.cargo_id === cargoId; });
@@ -1922,7 +1961,8 @@ function abrirAsignacion(a, necesidadId, fecha) {
     + (sabe.length ? '<optgroup label="Hacen este cargo">' + sabe.map(opcion).join('') + '</optgroup>' : '')
     + (resto.length ? '<optgroup label="Los demás">' + resto.map(opcion).join('') + '</optgroup>' : '');
 
-  $('#aQuien').value = a && a.trabajador_id ? a.trabajador_id : '';
+  $('#aQuien').value = a && a.trabajador_id ? a.trabajador_id
+                     : ((preset && preset.trabajadorId) || '');
   $('#aEntra').value = a ? hhmm(a.hora_inicio) : (n ? hhmm(n.hora_inicio) : '09:00');
   $('#aSale').value  = a ? hhmm(a.hora_fin)    : (n ? hhmm(n.hora_fin)    : '17:00');
   pintarDuracion('#aEntra', '#aSale', '#aDur');
@@ -1999,7 +2039,9 @@ $('#aGuardar').addEventListener('click', function () {
     trabajador_id: $('#aQuien').value || null,
     fecha: asigFecha,
     hora_inicio: $('#aEntra').value, hora_fin: $('#aSale').value,
-    cargo_id: n ? n.cargo_id : (asigActual ? asigActual.cargo_id : (S.cargos[0] || {}).id),
+    // Sin necesidad detrás, el cargo es el que eligió la persona en el
+    // desplegable — no el primero del catálogo, que era lo de antes.
+    cargo_id: n ? n.cargo_id : ($('#aCargo').value || (S.cargos[0] || {}).id),
     // Lo puso una persona: ningún generador automático lo va a pisar.
     origen: 'mano', tocado_a_mano: true, estado: 'confirmada',
   };
@@ -2473,7 +2515,7 @@ function borrarSeleccion(callado) {
 $('#malla').addEventListener('mousedown', function (ev) {
   if (!esPlanilla()) return;
   // La × hace lo suyo y no toca la marca: quitar un turno no es marcarlo.
-  if (ev.target.dataset && ev.target.dataset.quitar) return;
+  if (ev.target.dataset && (ev.target.dataset.quitar || ev.target.dataset.agregar)) return;
   var td = ev.target.closest && ev.target.closest('td.cel');
   if (!td) return;
   var k = claveCel(td);
