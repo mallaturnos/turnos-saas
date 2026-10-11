@@ -1944,9 +1944,17 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
 
   /* El cargo: lo manda la necesidad si la hay; si no, se PREGUNTA. Antes se
      tomaba el primero del catálogo en silencio. */
+  /* Si sabemos PARA QUIEN es, el cargo por omisión sale de lo que esa persona
+     hace. Antes salía «Caja» —el primero del catálogo— aunque el turno fuera
+     para alguien que nunca ha estado en caja: lo vio Pedro al apretar el + en
+     la fila de Catalina. Es la misma cortesía que ya hace la lista de
+     personas, que pone arriba a los que tienen el cargo. Sugiere, no obliga:
+     el desplegable sigue teniendo todos. */
   var cargoId = n ? n.cargo_id
               : (a ? a.cargo_id
-                   : ((preset && preset.cargoId) || (S.cargos[0] || {}).id));
+                   : ((preset && preset.cargoId)
+                      || cargoQueHace(preset && preset.trabajadorId)
+                      || (S.cargos[0] || {}).id));
   $('#aCargoCaja').hidden = !!n;
   $('#aCargo').innerHTML = S.cargos.map(function (q) {
     return '<option value="' + q.id + '">' + esc(q.nombre) + '</option>';
@@ -1973,6 +1981,14 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
 }
 function opcion(p) { return '<option value="' + p.id + '">' + esc(p.nombre) + '</option>'; }
 
+// El primer cargo que esa persona tiene marcado, o nada si no tiene ninguno.
+function cargoQueHace(trabajadorId) {
+  if (!trabajadorId) return null;
+  var p = S.trabajadores.filter(function (x) { return x.id === trabajadorId; })[0];
+  var suyos = (p && p.trabajador_cargos) || [];
+  return suyos.length ? suyos[0].cargo_id : null;
+}
+
 /* El aviso cuando la persona no tiene ese cargo. AVISA, NO BLOQUEA: Pedro fue
    explícito —«igual un cajero podría tomar el trabajo de un mesero»—. */
 /* Los avisos del dialogo. Son VARIOS y se juntan en una lista.
@@ -1989,7 +2005,11 @@ function opcion(p) { return '<option value="' + p.id + '">' + esc(p.nombre) + '<
 function pintarOjo() {
   var pid = $('#aQuien').value;
   var n = asigNecesidad ? S.necesidades.filter(function (x) { return x.id === asigNecesidad; })[0] : null;
-  var cargoId = n ? n.cargo_id : null;
+  /* Sin necesidad detrás esto era `null`, así que el aviso de «no tiene ese
+     cargo» NO SE MOSTRABA NUNCA en un turno suelto — justo donde es más fácil
+     equivocarse, porque ahí nadie eligió el cargo por ti. Ahora mira el que
+     está puesto en el desplegable. */
+  var cargoId = n ? n.cargo_id : ($('#aCargo').value || null);
   var e = $('#aOjo');
   if (!pid) { e.hidden = true; return; }
   var p = S.trabajadores.filter(function (x) { return x.id === pid; })[0];
@@ -2029,6 +2049,8 @@ function pintarOjo() {
   e.innerHTML = avisos.join('<br>');
 }
 $('#aQuien').addEventListener('change', pintarOjo);
+// Cambiar el cargo también: el aviso depende de los dos, no solo de la persona.
+$('#aCargo').addEventListener('change', pintarOjo);
 
 $('#aCancelar').addEventListener('click', function () { $('#dlgAsig').close(); });
 $('#aGuardar').addEventListener('click', function () {
