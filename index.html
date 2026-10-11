@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v66</span></p>
+      <span style="float:right;opacity:.55" id="ver">v67</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -48,23 +48,37 @@
 
 <!-- LA APP ------------------------------------------------------------- -->
 <div id="app" hidden>
+  <!-- EL MENU VA AL COSTADO, con el nombre bajo cada icono.
+
+       Lo eligio Pedro el 11-10 (opcion A de `propuesta_barra_lateral.png`)
+       despues de mandar una captura de 7shifts. Con el NOMBRE y no solo el
+       icono, y la razon no es de gusto: el icono pelado le funciona a 7shifts
+       porque su gente entra todos los dias; el encargado que arma una malla
+       entra una vez por semana, y a esa persona «Actividad» y «Mi calendario»
+       en iconos le parecen el mismo dibujo.
+
+       Lo que se gana es ALTO, que es lo que le falta a la malla. Lo que se
+       paga es ancho, y por eso el riel es angosto. -->
+  <div class="marco">
   <header class="barra">
     <strong id="hEmpresa">—</strong>
     <nav class="pestanas" id="nav">
-      <button class="tab" data-p="plan" aria-selected="true">Planificar</button>
-      <button class="tab" data-p="equipo">Equipo</button>
-      <button class="tab" data-p="actividad">Actividad</button>
-      <button class="tab" data-p="config">Configuración</button>
-      <button class="tab" data-p="mio">Mi calendario</button>
+        <button class="tab" data-p="plan" aria-selected="true"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12.5" rx="2"/><path d="M3 8h14M6.5 2.5v3M13.5 2.5v3"/></svg><span>Planificar</span></button>
+        <button class="tab" data-p="equipo" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2.8"/><path d="M2.5 16.5c0-2.6 2-4.2 4.5-4.2s4.5 1.6 4.5 4.2"/><circle cx="14" cy="8" r="2.2"/><path d="M13 12.5c2.3 0 4 1.4 4 4"/></svg><span>Equipo</span></button>
+        <button class="tab" data-p="actividad" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.2"/><path d="M10 5.5V10l3 2"/></svg><span>Actividad</span></button>
+        <button class="tab" data-p="config" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.6v2.2M10 15.2v2.2M17.4 10h-2.2M4.8 10H2.6M15.2 4.8l-1.6 1.6M6.4 13.6l-1.6 1.6M15.2 15.2l-1.6-1.6M6.4 6.4L4.8 4.8"/></svg><span>Configuración</span></button>
+        <button class="tab" data-p="mio" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.8 17c0-3.4 2.8-5.4 6.2-5.4s6.2 2 6.2 5.4"/></svg><span>Mi calendario</span></button>
     </nav>
     <span class="espacio"></span>
     <span class="hint" id="hQuien"></span>
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v66</span>
+    <span class="hint" id="ver2" title="Versión publicada">v67</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
+
+  <div class="contenido">
 
   <!-- PLANIFICAR -->
   <section id="t-plan" class="panel">
@@ -209,6 +223,9 @@
     <p class="hint">Solo lo que ya está publicado.</p>
     <div id="listaMios" class="lista"></div>
   </section>
+
+  </div><!-- /contenido -->
+  </div><!-- /marco -->
 </div>
 
 <!-- DIALOGOS ----------------------------------------------------------- -->

@@ -64,16 +64,69 @@ button:disabled { opacity:.5; cursor:default; }
 .msg.bad { color:var(--rojo); font-weight:600; }
 .msg.ok  { color:var(--verde); font-weight:600; }
 
-/* ---------- barra ---------- */
+/* ---------- el menu al costado (opcion A, elegida por Pedro el 11-10) ----------
+
+   Lo que se gana es ALTO: la franja de arriba se comia una banda en todas las
+   pantallas, y la malla es lo que crece hacia abajo. Lo que se paga es ancho,
+   que en una semana de siete columnas es el recurso escaso — por eso el riel
+   mide 6.6rem y no los 12 o 14 que pediria un menu comodo.
+
+   El nombre va BAJO el icono, no escondido en el hover: quien arma la malla
+   entra una vez por semana y no se va a aprender cinco dibujos. */
+.marco { display:flex; align-items:stretch; min-height:100dvh; }
 .barra {
-  display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
-  padding:.6rem 1rem; background:var(--blanco); border-bottom:1px solid var(--borde);
-  position:sticky; top:0; z-index:5;
+  display:flex; flex-direction:column; align-items:stretch; gap:.5rem;
+  width:6.6rem; flex:0 0 6.6rem;
+  padding:.7rem .4rem; background:var(--blanco);
+  border-right:1px solid var(--borde);
+  position:sticky; top:0; align-self:flex-start; height:100dvh; z-index:5;
 }
-.pestanas { display:flex; gap:.25rem; flex-wrap:wrap; }
-.tab { background:transparent; border-color:transparent; color:var(--gris); font-weight:600; }
+/* El nombre de la empresa, cuando es largo, no puede empujar el riel: se
+   recorta y queda entero en el title. */
+.barra > #hEmpresa {
+  font-size:.82rem; line-height:1.2; text-align:center; padding:0 .1rem .2rem;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.pestanas { display:flex; flex-direction:column; gap:.15rem; }
+.tab {
+  background:transparent; border-color:transparent; color:var(--gris); font-weight:600;
+  display:flex; flex-direction:column; align-items:center; gap:.15rem;
+  padding:.45rem .2rem; font-size:.7rem; line-height:1.15; text-align:center;
+  border-radius:8px;
+}
+.tab svg { width:20px; height:20px; flex:0 0 auto; }
 .tab[aria-selected="true"] { background:var(--verde-claro); color:var(--verde); }
+/* Abajo del riel, lo de la sesion: pequeño y sin robarle sitio al menu. */
+.barra > #hQuien { font-size:.68rem; text-align:center; margin:0; overflow:hidden;
+                   text-overflow:ellipsis; white-space:nowrap; }
+.barra > #ver2 { font-size:.68rem; text-align:center; margin:0; }
+.barra > #btnSalir { font-size:.78rem; padding:.3rem; }
+
+.contenido { flex:1; min-width:0; }
 .panel { padding:1rem; max-width:1400px; margin:0 auto; }
+
+/* EN PANTALLA ANGOSTA EL RIEL VUELVE ARRIBA.
+
+   Un riel de 6.6rem al costado de una tabla de siete columnas, en un telefono,
+   deja la malla en una rendija. Ahi conviene lo contrario: el menu en una fila
+   que se desplaza y toda la pantalla para la semana. */
+@media (max-width:760px) {
+  .marco { display:block; min-height:0; }
+  .barra {
+    flex-direction:row; align-items:center; width:auto; flex:none; height:auto;
+    gap:.4rem; padding:.45rem .6rem; overflow-x:auto;
+    border-right:0; border-bottom:1px solid var(--borde);
+  }
+  /* `display:block` deshace el `-webkit-box` de dos líneas del riel: dejado
+     puesto, en la fila horizontal el nombre de la empresa desaparecía del
+     todo. Se vio en la captura a 420 px, no leyendo la regla. */
+  .barra > #hEmpresa { display:block; padding:0 .3rem 0 0; white-space:nowrap;
+                       flex:0 0 auto; }
+  .pestanas { flex-direction:row; }
+  .tab { flex-direction:row; gap:.3rem; font-size:.8rem; padding:.3rem .5rem;
+         white-space:nowrap; }
+  .barra > #hQuien { display:none; }   /* el correo no cabe y no hace falta */
+}
 
 .controles { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.9rem; }
 .controles .inline { margin:0; }
