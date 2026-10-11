@@ -1376,7 +1376,9 @@ function pintarAsignacion(a) {
   var titulo = choca ? ' title="' + esc(quien + ' tiene ' + ausTxt + ' ese día') + '"' : '';
   var marca  = choca ? '<span class="choque' + (entero ? '' : ' parte') + '">'
                      + (entero ? 'no está' : 'parte del día') + '</span>' : '';
-  var marcaPisa = pisa ? '<span class="choque pisa">se pisa</span>' : '';
+  // «Se cruzan», no «se pisan»: lo pidio Pedro (msg 5622) y es la palabra que
+  // se usa en un local.
+  var marcaPisa = pisa ? '<span class="choque pisa">se cruza</span>' : '';
   return '<li class="' + (a.trabajador_id ? (publicado ? 'publicado' : 'borrador') : 'pendiente')
        + (choca ? ' choca' : '') + (pisa ? ' sepisa' : '')
        + '" data-asigid="' + a.id + '"' + titulo + '>'
@@ -1874,7 +1876,7 @@ function revisarChoque(d) {
       if (m > min) { min = m; pisa = o; }
     });
     if (!pisa) return null;
-    return '<b>No puede estar en dos turnos a la vez.</b> Se pisa <b>' + minTexto(min)
+    return '<b>No puede estar en dos turnos a la vez.</b> Se cruza <b>' + minTexto(min)
       + '</b> con su turno de ' + esc(rangoTxt(pisa.hora_inicio, pisa.hora_fin))
       + ' del ' + esc(nombreDia(pisa.fecha)) + ' ' + esc(diaMes(pisa.fecha))
       + '. Cambia las horas o mueve el otro.';
