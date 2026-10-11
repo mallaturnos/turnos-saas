@@ -1936,11 +1936,6 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   asigFecha = fecha || (n ? n.fecha : hoyTexto());
 
   $('#aTit').textContent = a ? 'Quién lo cubre' : 'Quién lo cubre';
-  $('#aDe').innerHTML = n
-    ? esc(nombreCargo(n.cargo_id)) + ' · ' + rangoTxt(n.hora_inicio, n.hora_fin)
-      + ' · ' + nombreDia(n.fecha) + ' ' + diaMes(n.fecha)
-    : '<b>Turno suelto</b> — sin nada planificado detrás. Va a salir marcado como «sin planificar»'
-      + (fecha ? ', el <b>' + nombreDia(fecha) + ' ' + diaMes(fecha) + '</b>' : '') + '.';
 
   /* El cargo: lo manda la necesidad si la hay; si no, se PREGUNTA. Antes se
      tomaba el primero del catálogo en silencio. */
@@ -1976,8 +1971,37 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   pintarDuracion('#aEntra', '#aSale', '#aDur');
   $('#aBorrar').hidden = !a;
   aviso('#aMsg', '');
+  pintarDeQuien();
   pintarOjo();
   $('#dlgAsig').showModal();
+}
+
+/* EL SUBTÍTULO DICE DÓNDE VA A CAER EL TURNO, y se vuelve a escribir cada vez
+   que cambias la persona.
+
+   Pedro apretó el + en la fila de Ana, cambió la persona a Catalina y guardó:
+   el turno apareció en la fila de Catalina. Eso es lo correcto —el turno es de
+   quien lo hace, no de la fila donde apretaste—, pero él lo contó como una
+   sorpresa: *«me dio la opción pero no se guardó ahí»*. Y una sorpresa es un
+   defecto aunque el resultado sea el correcto.
+
+   La salida no es quitarle la libertad de cambiar la persona: es que VEA que
+   el turno se está moviendo, antes de guardar. */
+function pintarDeQuien() {
+  var n = asigNecesidad ? S.necesidades.filter(function (x) { return x.id === asigNecesidad; })[0] : null;
+  if (n) {
+    $('#aDe').innerHTML = esc(nombreCargo(n.cargo_id)) + ' · '
+      + rangoTxt(n.hora_inicio, n.hora_fin) + ' · '
+      + nombreDia(n.fecha) + ' ' + diaMes(n.fecha);
+    return;
+  }
+  var pid = $('#aQuien').value;
+  var cid = $('#aCargo').value;
+  $('#aDe').innerHTML = '<b>Turno suelto</b> — va a quedar en '
+    + (pid ? '<b>' + esc(nombreTrab(pid)) + '</b>' : '<b>Sin asignar</b>')
+    + (cid ? ' · ' + esc(nombreCargo(cid)) : '')
+    + (asigFecha ? ' · <b>' + nombreDia(asigFecha) + ' ' + diaMes(asigFecha) + '</b>' : '')
+    + '. Sin nada planificado detrás: sale marcado como «sin planificar».';
 }
 function opcion(p) { return '<option value="' + p.id + '">' + esc(p.nombre) + '</option>'; }
 
@@ -2048,9 +2072,10 @@ function pintarOjo() {
   e.hidden = !avisos.length;
   e.innerHTML = avisos.join('<br>');
 }
-$('#aQuien').addEventListener('change', pintarOjo);
+function alCambiarFicha() { pintarDeQuien(); pintarOjo(); }
+$('#aQuien').addEventListener('change', alCambiarFicha);
 // Cambiar el cargo también: el aviso depende de los dos, no solo de la persona.
-$('#aCargo').addEventListener('change', pintarOjo);
+$('#aCargo').addEventListener('change', alCambiarFicha);
 
 $('#aCancelar').addEventListener('click', function () { $('#dlgAsig').close(); });
 $('#aGuardar').addEventListener('click', function () {
