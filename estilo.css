@@ -264,6 +264,20 @@ th.rot { position:sticky; left:0; z-index:3; background:var(--blanco); min-width
          text-align:left; font-size:.88rem; }
 thead th.rot { z-index:3; background:#f0ede7; }
 table.girada td.hoy, table.girada th.hoy { background:var(--verde-claro); }
+
+/* ---------- las horas, DENTRO de la tabla ----------
+   Van como <tfoot> y no como una banda aparte para que cada número caiga en
+   SU columna: era el defecto que encontró Pedro el 11-10. El porqué está en
+   `pintarGirada()`, junto al código que arma la fila. */
+table.girada tfoot td, table.girada tfoot th {
+  border-top:2px solid var(--borde); border-bottom:none;
+  background:var(--papel); font-size:.85rem; vertical-align:middle;
+}
+table.girada tfoot th.rot { background:var(--papel); font-weight:700; }
+table.girada tfoot th.rot span { display:block; font-weight:600; font-size:.75rem;
+                                 color:var(--verde); }
+table.girada tfoot td b { font-weight:700; }
+table.girada tfoot td .cero { color:#c9c4b8; }
 table.girada tr.suelto th.rot { color:var(--gris); font-style:italic; }
 table.girada .gente { padding:0; }
 
@@ -294,6 +308,28 @@ table.girada .gente { padding:0; }
 .gente.bloques .blq::before { content:none; }
 .gente.bloques .blq.publicado b::after { content:" ●"; color:var(--verde); font-size:.55rem; }
 .gente.bloques .blq.borrador  b::after { content:" ○"; color:var(--gris);  font-size:.55rem; }
+/* ---------- la × de quitar un turno ----------
+   Pedida por Pedro el 11-10: «un pequeño botón quitar para no tener que
+   ingresar». Pequeño es el encargo, pero no invisible.
+
+   SE VE SIEMPRE, atenuada, y no solo al pasar el mouse. Esconderla hasta el
+   hover la deja inalcanzable en un tablet o un teléfono, que es justo donde
+   un encargado mira la malla; y una función que solo existe para quien
+   adivina dónde pasar el cursor es una función que casi nadie usa.
+
+   El área apretable es de 1.35rem y no el tamaño del aspa: una × fina es
+   fácil de dibujar y difícil de acertar. */
+.quitar-asig {
+  width:1.35rem; height:1.35rem; line-height:1; padding:0; flex:0 0 auto;
+  border:1px solid transparent; border-radius:5px; background:transparent;
+  color:#b9b3a6; font-size:.95rem; font-family:inherit; cursor:pointer;
+}
+.quitar-asig:hover, .quitar-asig:focus-visible {
+  background:#f6ecec; color:#8a3f3f; border-color:#e3cfcf; outline:none;
+}
+/* En el renglón va al final de la fila, después de las horas. En el bloque no
+   hay fila: se fija abajo a la derecha, en el hueco que `em` ya deja libre. */
+.gente.bloques .blq .quitar-asig { position:absolute; right:.2rem; bottom:.15rem; }
 .gente.bloques .blq.c1 { border-left-color:#0f6b63; }
 .gente.bloques .blq.c2 { border-left-color:#8a6d2f; }
 .gente.bloques .blq.c3 { border-left-color:#3a5a86; }
@@ -544,3 +580,100 @@ label.chk input:disabled + span, label.chk:has(input:disabled) { color:#7d8a8e; 
    es un dato a tener en cuenta como una ausencia — es algo que no puede ser. */
 .gente li.sepisa { background:var(--rojo-claro); border-radius:5px; }
 .gente li .choque.pisa { background:var(--rojo); }
+
+/* ---------- la malla como planilla: marcar, copiar, pegar ----------
+   El recuadro de lo marcado tiene que leerse SOBRE las celdas de color —hay
+   días con fondo verde porque son hoy, y filas a rayas— así que la marca es un
+   borde y un tinte, no un relleno que taparía lo que hay debajo.
+
+   `box-shadow` hacia adentro y no `border`: un borde de verdad cambia el ancho
+   de la celda y la tabla entera se mueve un pixel al marcar, que se ve como un
+   temblor. */
+table.girada td.cel.sel {
+  box-shadow: inset 0 0 0 2px var(--verde);
+  background-image: linear-gradient(rgba(15,107,99,.07), rgba(15,107,99,.07));
+}
+/* La casilla desde la que se empezó: se distingue de las demás porque es la
+   esquina que manda al pegar. */
+table.girada td.cel.ancla { box-shadow: inset 0 0 0 2px var(--verde), inset 0 0 0 6px rgba(15,107,99,.15); }
+table.girada td.cel { user-select:none; }
+
+.selaviso {
+  display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top:.6rem;
+  background:var(--verde-claro); border:1px solid var(--borde);
+  border-radius:var(--radio); padding:.45rem .7rem; font-size:.85rem;
+}
+.selaviso .teclas { color:var(--gris); font-size:.78rem; margin-left:.4rem; }
+.selaviso em { margin-left:auto; font-style:normal; font-size:.78rem; color:var(--verde); font-weight:600; }
+.selaviso .dice { font-weight:600; }
+
+
+/* ====================================================================
+   EL PAPEL
+   ====================================================================
+   Se imprime la malla que se está viendo, sin nada apretable alrededor. El
+   porqué de no armar una vista de impresión aparte está en `prepararImpresion()`.
+
+   Apaisado, porque son siete columnas: en vertical la semana sale espachurrada
+   y los nombres se parten en tres líneas. */
+.cabimpresa { display:none; }
+
+@media print {
+  @page { size: landscape; margin: 10mm; }
+
+  /* Fuera todo lo que se aprieta: no se puede apretar una hoja. */
+  header, #nav, .controles, .nada, #selAviso,
+  .quitar-asig, .borrar-nec, .mas, .agregar-tramo,
+  #avisoPlan, dialog { display:none !important; }
+
+  body { background:#fff; }
+  .envoltorio, .wrap, main { max-width:none; padding:0; margin:0; }
+
+  .cabimpresa { display:block; margin:0 0 6pt; }
+  .cabimpresa b { font-size:13pt; }
+  .cabimpresa .cuando { display:inline; margin-left:10pt; font-size:11pt; }
+  .cabimpresa .como { display:block; font-size:8pt; color:#555; margin-top:2pt; }
+  /* El número de semana viene en una píldora verde que en papel es una mancha. */
+  .cabimpresa .numsem { background:none !important; padding:0; color:#555; }
+
+  /* La tabla girada se desborda a lo ancho en pantalla y se recorta al
+     imprimir: ese scroll no existe en una hoja. */
+  .malla.girada { display:block; overflow:visible !important; }
+  table.girada { min-width:0 !important; width:100%; font-size:8.5pt; }
+  table.girada thead th { background:#eee !important; }
+
+  /* Una fila partida entre dos páginas deja a alguien con media semana. */
+  tr, .dia, .nec, .blq { break-inside:avoid; }
+
+  /* LOS COLORES SE IMPRIMEN. El color dice de qué cargo es cada turno —es
+     dato, no adorno—, y el navegador los bota por omisión para ahorrar tinta.
+     Lo mismo vale para la trama del turno sin dueño: en gris plano, un turno
+     que no tiene a nadie se ve idéntico a uno cubierto. */
+  * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+  /* Las horas repartidas SÍ van: es media razón para imprimirla. */
+  .piehoras { break-inside:avoid; }
+
+  /* Lo que quedó marcado en pantalla no es parte del horario: en el papel un
+     recuadro verde alrededor de tres casillas no significa nada y parece un
+     aviso. */
+  table.girada td.cel.sel, table.girada td.cel.ancla {
+    box-shadow:none !important; background-image:none !important;
+  }
+
+  /* UNA LÍNEA PARA FIRMAR, solo cuando las filas son personas.
+     Viene del proyecto anterior, donde Pedro la usaba para que cada uno
+     firmara su horario. Agrupado por cargo no significa nada: un cargo no
+     firma, así que ahí no se dibuja.
+
+     La fila «Sin asignar» también queda fuera: no es una persona y no la firma
+     nadie. Se vio en la hoja, no en el código — la línea estaba ahí, esperando
+     la firma de un turno que justamente todavía no tiene dueño. */
+  table.girada.porpersona tbody tr:not(.suelto) th.rot::after {
+    content:""; display:block; border-bottom:1px solid #999;
+    width:80%; margin-top:16pt;
+  }
+  table.girada.porpersona tbody tr:not(.suelto) th.rot {
+    padding-bottom:3pt; vertical-align:top;
+  }
+}

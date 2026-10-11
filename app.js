@@ -652,6 +652,13 @@ function pintarMalla() {
   // de pintarDia() —escrita desde el principio— no se ejecutaba nunca.
   // Verificado contra las capturas de Skello: su regla de horas vive solo en la
   // vista Día, y ahí las solapas Employés|Postes siguen mostrando barras.
+  /* Las casillas marcadas solo existen en la tabla de la semana. Al salir de
+     ahí se sueltan, y tiene que ser aquí y no en cada pintor: si quedaran
+     marcadas, un Ctrl+V desde la vista Día —donde no se ve ni una casilla—
+     escribiría turnos en una semana que la persona no está mirando. */
+  var tabla = S.vista === 'semana' && S.agrupar !== 'dia';
+  if (!tabla && SEL.claves.length) limpiarSeleccion();
+
   if (S.vista === 'dia') return pintarDia();
   if (S.vista === 'mes') return pintarMes();
   if (S.agrupar !== 'dia') return pintarGirada();
@@ -746,20 +753,37 @@ function horasDeDia(f) {
 function numero(h) {
   return (Math.round(h * 10) / 10).toString().replace('.', ',');
 }
-function pintarPie() {
-  var pie = $('#pieHoras');
-  if (!pie) return;
-  if (S.vista !== 'semana') { pie.hidden = true; return; }
-  var total = 0, celdas = '';
+/* Los siete días con sus horas, calculados UNA SOLA VEZ.
+
+   El pie se dibuja en dos sitios —la banda suelta y la fila de la tabla
+   girada— y si cada uno sumara por su cuenta, el día que cambie la regla de
+   qué cuenta como hora trabajada uno de los dos se queda con la vieja y nadie
+   lo nota, porque los dos siguen mostrando números creíbles. */
+function horasSemana() {
+  var dias = [], total = 0;
   for (var i = 0; i < 7; i++) {
     var f = masDias(S.lunes, i), h = horasDeDia(f);
     total += h;
-    celdas += '<span' + (h ? '' : ' class="cero"') + '><b>' + nombreDia(f).slice(0, 3) + '</b>'
-            + (h ? numero(h) + ' h' : '—') + '</span>';
+    dias.push({ fecha: f, horas: h });
   }
+  return { dias: dias, total: total };
+}
+
+/* `yaVaDentro` lo pasa la vista girada, que dibuja sus horas DENTRO de la
+   tabla. Sin esto se verían las dos y una contradiría a la otra en el ancho. */
+function pintarPie(yaVaDentro) {
+  var pie = $('#pieHoras');
+  if (!pie) return;
+  if (S.vista !== 'semana' || yaVaDentro) { pie.hidden = true; return; }
+  var r = horasSemana(), celdas = '';
+  r.dias.forEach(function (d) {
+    celdas += '<span' + (d.horas ? '' : ' class="cero"') + '><b>'
+            + nombreDia(d.fecha).slice(0, 3) + '</b>'
+            + (d.horas ? numero(d.horas) + ' h' : '—') + '</span>';
+  });
   pie.hidden = false;
   pie.innerHTML = '<span class="prot">Horas repartidas</span>' + celdas
-                + '<span class="ptot"><b>Semana</b>' + numero(total) + ' h</span>';
+                + '<span class="ptot"><b>Semana</b>' + numero(r.total) + ' h</span>';
 }
 
 /* EL DÍA ES UNA LÍNEA DE TIEMPO, no una lista.
@@ -1383,7 +1407,22 @@ function pintarAsignacion(a) {
        + (choca ? ' choca' : '') + (pisa ? ' sepisa' : '')
        + '" data-asigid="' + a.id + '"' + titulo + '>'
        + quien + marcaPisa + marca
-       + '<span class="hs">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span></li>';
+       + '<span class="hs">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span>'
+       + botonQuitar(a) + '</li>';
+}
+
+/* La × de quitar, pedida por Pedro el 11-10 (msg 5630): «falta un pequeño
+   botón quitar para no tener que ingresar…».
+
+   Va en todas las caras del turno —el renglón de la vista por día y el bloque
+   de la semana— porque el gesto tiene que ser el mismo en las dos: una función
+   que existe en una pantalla y no en la otra se siente rota, no incompleta.
+
+   Es un `<button>` de verdad y no un `<span>`: lo alcanza el tabulador y el
+   lector de pantalla lo anuncia como lo que es. */
+function botonQuitar(a) {
+  return '<button class="quitar-asig" data-quitar="' + a.id + '"'
+       + ' title="Quitar este turno" aria-label="Quitar este turno">×</button>';
 }
 
 function pintarSuelta(a) {
@@ -1424,7 +1463,7 @@ function pintarBloqueSemana(a, abajo) {
        // Mismo formato H:MM que en todo el resto: dos maneras de escribir lo
        // mismo obligan a traducir mentalmente, y eso ya es un costo.
        + '<span class="dur">' + durTexto(a.hora_inicio, a.hora_fin) + '</span>'
-       + '<em>' + esc(pie) + '</em></li>';
+       + '<em>' + esc(pie) + '</em>' + botonQuitar(a) + '</li>';
 }
 
 /* LA MALLA GIRADA: filas de gente (o de cargos) y columnas de días.
@@ -1453,7 +1492,10 @@ function pintarGirada() {
   }
 
   var hoy = hoyTexto();
-  var html = '<table class="girada"><thead><tr><th class="rot"></th>'
+  // `porpersona` la usa SOLO el papel: es la que decide si debajo de cada
+  // nombre va una línea para firmar. Un cargo no firma.
+  var html = '<table class="girada' + (S.agrupar === 'persona' ? ' porpersona' : '')
+    + '"><thead><tr><th class="rot"></th>'
     + dias.map(function (f) {
         return '<th' + (f === hoy ? ' class="hoy"' : '') + '><b>' + nombreDia(f) + '</b>'
              + '<span>' + diaMes(f) + '</span></th>';
@@ -1469,7 +1511,11 @@ function pintarGirada() {
       // La cara que NO es la fila: filas de personas → el puesto; filas de
       // cargos → quién lo hace.
       var abajo = S.agrupar === 'persona' ? 'cargo' : 'persona';
-      html += '<td' + (f === hoy ? ' class="hoy"' : '') + '>'
+      /* La casilla se identifica por FILA Y FECHA, no por su posición ni por
+         el elemento: la tabla se repinta entera a cada cambio y una referencia
+         a un `<td>` se queda apuntando a algo que ya no está en la página. */
+      html += '<td class="cel' + (f === hoy ? ' hoy' : '') + '"'
+        + ' data-fila="' + esc(String(fila.id || '')) + '" data-fecha="' + f + '">'
         + (suyas.length
             ? '<ul class="gente bloques">'
               + suyas.map(function (a) { return pintarBloqueSemana(a, abajo); }).join('')
@@ -1480,10 +1526,44 @@ function pintarGirada() {
     html += '</tr>';
   });
 
+  /* LAS HORAS VAN DENTRO DE LA TABLA, no en una banda debajo.
+
+     Lo encontró Pedro el 11-10 (msg 5629): «mira las horas abajo no calzan con
+     el día arriba». Los números estaban BIEN —los siete días y el total
+     cuadraban— y aun así la pantalla mentía, porque «Dom 16 h» caía debajo de
+     la columna del miércoles.
+
+     La causa: la banda es un `<div>` aparte, con celdas de ancho fijo
+     repartidas de izquierda a derecha, mientras que la tabla le da a cada día
+     el ancho que pide su contenido — un martes sin turnos queda angosto. Dos
+     repartos distintos del mismo eje no pueden coincidir, y cualquier arreglo
+     a punta de márgenes se rompe al primer día que se llene.
+
+     Metida como `<tfoot>`, cada número hereda el ancho de SU columna y queda
+     pegado a su día pase lo que pase. Es el mismo motivo por el que la cifra
+     vive en una tabla y no en una fila de cajas: el ancho lo manda una sola
+     cosa. El total de la semana se va al encabezado de la fila, que es la
+     única celda que no pertenece a ningún día. */
+  var pieDentro = '';
+  if (S.vista === 'semana') {
+    var r = horasSemana();
+    pieDentro = '<tfoot><tr><th class="rot">Horas repartidas'
+      + '<span>Semana ' + numero(r.total) + ' h</span></th>'
+      + r.dias.map(function (d) {
+          return '<td' + (d.fecha === hoy ? ' class="hoy"' : '') + '>'
+               + (d.horas ? '<b>' + numero(d.horas) + ' h</b>'
+                          : '<span class="cero">—</span>') + '</td>';
+        }).join('')
+      + '</tr></tfoot>';
+  }
+
   var m = $('#malla');
   m.className = 'malla girada';
-  m.innerHTML = html + '</tbody></table>';
-  pintarPie();
+  m.innerHTML = html + '</tbody>' + pieDentro + '</table>';
+  // Lo marcado sobrevive al repintado porque vive por clave y no por elemento:
+  // sin esto, pegar borraría la marca justo cuando se quiere pegar otra vez.
+  pintarSeleccion();
+  pintarPie(!!pieDentro);
   $('#cEstado').textContent = resumenPublicar();
 }
 
@@ -1554,6 +1634,41 @@ $('#cVista').addEventListener('click', function (ev) {
    ese acoplamiento lo había metido yo y fue justo lo que confundió a Pedro. */
 $('#cSucursal').addEventListener('change',  function () { S.sucursal = this.value; recargarSemana(); });
 
+/* ---------- IMPRIMIR ----------
+
+   Se imprime LO QUE SE ESTÁ VIENDO. No hay una «vista de impresión» aparte, y
+   es a propósito: la hoja que Pedro va a pegar en la cocina es la misma malla
+   que acaba de revisar en pantalla, y una segunda vista que arme el papel por
+   su cuenta es una segunda vista que se puede quedar atrás sin que nadie lo
+   note hasta tener el papel en la mano.
+
+   Lo único que el papel necesita y la pantalla no es DECIR QUÉ ES: en pantalla
+   el local y la semana están en la barra de arriba, y esa barra no se imprime.
+   Sin esto queda una grilla de nombres y horas que no dice de qué local ni de
+   qué semana es — inservible justo donde más se usa, pegada en un muro.
+
+   Se arma en dos momentos porque hay dos maneras de llegar a imprimir: el
+   botón, y el Ctrl+P que el navegador atiende sin pasar por el botón. Si solo
+   lo llenara el botón, quien use Ctrl+P —que es casi todo el mundo— se llevaría
+   la hoja sin encabezado. */
+function prepararImpresion() {
+  var caja = $('#cabImpresa'); if (!caja) return;
+  var local = (S.sucursales.filter(function (s) { return s.id === S.sucursal; })[0] || {}).nombre || '';
+  var comoSeAgrupa = S.agrupar === 'persona' ? 'por persona'
+                   : (S.agrupar === 'cargo' ? 'por cargo' : 'por día');
+  var hoy = hoyTexto();
+  caja.innerHTML = '<b>' + esc(local) + '</b>'
+    + '<span class="cuando">' + $('#cSemana').textContent.trim() + '</span>'
+    + '<span class="como">Turnos ' + comoSeAgrupa
+    + ' · impreso el ' + diaMes(hoy) + '</span>';
+}
+$('#btnImprimir').addEventListener('click', function () {
+  prepararImpresion();
+  window.print();
+});
+// Ctrl+P y el menú del navegador no pasan por el botón.
+window.addEventListener('beforeprint', prepararImpresion);
+
 $('#nav').addEventListener('click', function (ev) {
   var b = ev.target.closest('.tab'); if (!b) return;
   $$('#nav .tab').forEach(function (t) { t.setAttribute('aria-selected', String(t === b)); });
@@ -1593,6 +1708,14 @@ $('#malla').addEventListener('click', function (ev) {
     ev.stopPropagation();
     return borrarNecesidad(S.necesidades.filter(function (n) {
       return n.id === t.dataset.borrarnec; })[0]);
+  }
+  /* La × del turno, por el mismo motivo y antes que el `[data-asigid]` de más
+     abajo: vive DENTRO del bloque apretable, así que sin cortar el clic
+     quitaría el turno y además abriría la ficha del que acaba de irse. */
+  if (t.dataset.quitar) {
+    ev.stopPropagation();
+    return quitarTurno(S.asignaciones.filter(function (x) {
+      return x.id === t.dataset.quitar; })[0]);
   }
   if (t.dataset.nueva)  return abrirNecesidad(null, t.dataset.nueva);
   if (t.dataset.suelta) return abrirAsignacion(null, null, t.dataset.suelta);
@@ -1915,6 +2038,420 @@ $('#aBorrar').addEventListener('click', function () {
       DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', asigActual.id, 'borrar', asigActual, null);
       $('#dlgAsig').close(); return recargarSemana();
     }).catch(function (e) { aviso('#aMsg', e.message, 'bad'); });
+});
+
+/* QUITAR UN TURNO DE UN SOLO CLIC, desde la malla y sin abrir la ficha.
+
+   LA REGLA LA DIO PEDRO con estas palabras (11-10, msg 5633): «si está
+   publicado, pregunta.. si estoy planificando se borra y ya». No es comodidad:
+   es la diferencia real entre los dos estados. Un borrador no se le ha dicho a
+   nadie todavía y preguntar por cada uno convierte el botón en un estorbo
+   justo en el momento en que más se usa —armando la semana—. Un turno
+   publicado, en cambio, ES lo que esa persona ya leyó y con lo que organizó su
+   semana; quitarlo se lo borra del calendario.
+
+   POR QUÉ EL BORRADOR IGUAL SE PUEDE DESHACER. Borrar sin preguntar está bien
+   mientras exista vuelta atrás; si no, el primer clic equivocado le cuesta a
+   Pedro rehacer el turno de memoria. Esa red ya existía en la aplicación
+   —Deshacer— y lo único que faltaba era que este camino también la usara.
+   El aviso se queda corto solo en una cosa, y conviene saberlo: lo que repone
+   Deshacer es un turno con los mismos datos, no la misma fila; si estaba
+   publicado, hay que volver a publicarlo. */
+function quitarTurno(a) {
+  if (!a) return;
+  var publicado = S.turnos.some(function (t) {
+    return t.asignacion_id === a.id && t.estado === 'publicado';
+  });
+  var quien = a.trabajador_id ? nombreTrab(a.trabajador_id) : 'Sin asignar';
+  if (publicado && !confirm(
+        'Este turno YA ESTÁ PUBLICADO:\n\n'
+        + quien + ' · ' + nombreDia(a.fecha) + ' ' + diaMes(a.fecha)
+        + ' · ' + rangoTxt(a.hora_inicio, a.hora_fin) + '\n\n'
+        + 'Quitarlo se lo borra del calendario. ¿Lo quito?')) return;
+
+  // La copia se saca ANTES: después de borrar, `a` sigue en memoria pero la
+  // fila ya no está, y es lo único con que se puede reponer.
+  var copia = JSON.parse(JSON.stringify(a));
+  return DATOS.turnos.borrarDe([a.id]).catch(function () {})
+    .then(function () { return DATOS.asignaciones.borrar(a.id); })
+    .then(function () {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', a.id, 'borrar', copia, null);
+      recordar('quitar el turno de ' + quien, function () {
+        return DATOS.asignaciones.crear({
+          empresa_id: copia.empresa_id, sucursal_id: copia.sucursal_id,
+          necesidad_id: copia.necesidad_id, trabajador_id: copia.trabajador_id,
+          fecha: copia.fecha, hora_inicio: copia.hora_inicio,
+          hora_fin: copia.hora_fin, cargo_id: copia.cargo_id,
+          origen: copia.origen, tocado_a_mano: true,
+          propuesta_id: copia.propuesta_id, estado: copia.estado });
+      });
+      return recargarSemana();
+    })
+    // El error se DICE. Aquí no hay diálogo abierto donde dejar el aviso, y un
+    // turno que sigue en pantalla después de apretar la × parece un botón
+    // muerto cuando en realidad fue la base la que no dejó.
+    .catch(function (e) { alert('No pude quitar el turno: ' + e.message); });
+}
+
+/* ================== LA MALLA COMO UNA PLANILLA ==================
+
+   Pedido por Pedro el 11-10 (msg 5642): «copiar y pegar lo seleccionado o
+   enegrecido». Es lo último que le faltaba del proyecto anterior, donde ya lo
+   había pedido con estas palabras: «la planilla debería aceptar enegrecer,
+   copiar pegar… se debería poder navegar en la planilla como si fuera una
+   planilla excel».
+
+   LA DECISIÓN QUE ORDENA TODO LO DEMÁS: ningún gesto que ya funciona cambia de
+   significado. Un clic en un bloque sigue abriendo la ficha y la × sigue
+   quitando el turno. Lo único que se suma es que cualquier clic ADEMÁS marca
+   la casilla, y que arrastrar desde el fondo de una casilla —no desde un
+   bloque, que ese ya hace otra cosa— pinta un rango.
+
+   Se descartó lo de Excel, «un clic marca y dos clics editan»: el clic que
+   abre la ficha es el gesto más repetido de esta pantalla, y cambiarle el
+   significado le rompería la mano a Pedro por una función que todavía no sabe
+   que existe.
+
+   SOLO EN LA TABLA (Personas y Cargos). «Por día» son tarjetas, no una
+   rejilla, y ahí no hay casillas que marcar.
+
+   LA MARCA VIVE POR CLAVE, no por elemento: la tabla se repinta entera a cada
+   cambio y una referencia a un `<td>` se queda apuntando a algo que ya no está
+   en la página.
+
+   Y LA CLAVE LLEVA LA AGRUPACIÓN ADENTRO. Las dos rejillas se parecen —filas
+   por persona, filas por cargo— pero una casilla significa cosas distintas en
+   cada una. Sin el prefijo, lo copiado en Personas se podría pegar en Cargos,
+   donde querría decir otra cosa. */
+
+var SEL = { claves: [], ancla: null, pintando: false, arrastro: false };
+var PORTA = null;   // lo copiado: { agrupar, alto, ancho, celdas: [[ [turnos] ]] }
+
+function esPlanilla() { return S.agrupar === 'persona' || S.agrupar === 'cargo'; }
+
+function claveCel(td) {
+  return S.agrupar + '|' + (td.dataset.fila || '') + '|' + td.dataset.fecha;
+}
+function partesClave(k) {
+  var i = k.indexOf('|'), j = k.lastIndexOf('|');
+  return { agrupar: k.slice(0, i), fila: k.slice(i + 1, j), fecha: k.slice(j + 1) };
+}
+
+/* La geometría se saca del DOM EN EL MOMENTO del gesto. Las filas no son una
+   rejilla regular —está la de «Sin asignar» y el pie de horas— así que contar
+   `<tr>` no sirve: se numeran solo las que tienen casillas. */
+function rejilla() {
+  var t = document.querySelector('#malla table.girada');
+  if (!t) return null;
+  var filas = $$('tbody tr', t).map(function (tr) { return $$('td.cel', tr); })
+                               .filter(function (c) { return c.length; });
+  var mapa = {};
+  filas.forEach(function (cels, f) {
+    cels.forEach(function (td, c) { mapa[claveCel(td)] = { f: f, c: c, td: td }; });
+  });
+  return { filas: filas, mapa: mapa };
+}
+
+/* Los turnos que hay en una casilla. En la rejilla de personas es «lo de Ana
+   el lunes»; en la de cargos, «todo lo de Cocina el lunes», que puede ser de
+   varias personas a la vez y también de nadie. */
+function turnosDeClave(k) {
+  var p = partesClave(k);
+  return S.asignaciones.filter(function (a) {
+    var mio = p.agrupar === 'persona' ? (a.trabajador_id || '') : (a.cargo_id || '');
+    return a.fecha === p.fecha && String(mio) === p.fila;
+  }).sort(function (u, v) {
+    return hhmm(u.hora_inicio) < hhmm(v.hora_inicio) ? -1 : 1;
+  });
+}
+
+function limpiarSeleccion() {
+  SEL.claves = []; SEL.ancla = null;
+  pintarSeleccion();
+}
+
+function pintarSeleccion() {
+  $$('#malla td.cel').forEach(function (td) {
+    var k = claveCel(td);
+    td.classList.toggle('sel', SEL.claves.indexOf(k) >= 0);
+    td.classList.toggle('ancla', k === SEL.ancla);
+  });
+  avisarSeleccion();
+}
+
+function marcarRango(desde, hasta) {
+  var g = rejilla(); if (!g) return;
+  var a = g.mapa[desde], b = g.mapa[hasta];
+  if (!a || !b) return;
+  var f1 = Math.min(a.f, b.f), f2 = Math.max(a.f, b.f);
+  var c1 = Math.min(a.c, b.c), c2 = Math.max(a.c, b.c);
+  SEL.claves = [];
+  for (var f = f1; f <= f2; f++)
+    for (var c = c1; c <= c2; c++)
+      if (g.filas[f] && g.filas[f][c]) SEL.claves.push(claveCel(g.filas[f][c]));
+  pintarSeleccion();
+}
+
+/* LA BARRA DE ABAJO. Sin ella, la marca es un recuadro de color que no le
+   avisa a nadie que ahora puede apretar Ctrl+C: la función existiría y no la
+   encontraría nadie. Es el mismo problema que tuvo «Horario libre…» en el
+   proyecto anterior, escondido donde nadie lo buscaba. */
+function avisarSeleccion(mensaje) {
+  var caja = $('#selAviso'); if (!caja) return;
+  if (!SEL.claves.length && !mensaje) { caja.hidden = true; return; }
+  caja.hidden = false;
+  if (mensaje) { caja.innerHTML = '<b class="dice">' + esc(mensaje) + '</b>'; return; }
+  var n = SEL.claves.length;
+  var turnos = SEL.claves.reduce(function (t, k) { return t + turnosDeClave(k).length; }, 0);
+  caja.innerHTML = '<b>' + n + '</b> ' + (n === 1 ? 'casilla' : 'casillas')
+    + ' · <b>' + turnos + '</b> ' + (turnos === 1 ? 'turno' : 'turnos')
+    + '<span class="teclas">Ctrl+C copiar · Ctrl+X cortar · Ctrl+V pegar'
+    + ' · Supr quitar · Esc soltar</span>'
+    + (PORTA ? (function () {
+         var cp = PORTA.celdas.reduce(function (t, f) {
+           return t + f.reduce(function (u, c) { return u + c.length; }, 0); }, 0);
+         return '<em>copiado: ' + PORTA.alto + '×' + PORTA.ancho
+              + ' (' + cp + (cp === 1 ? ' turno' : ' turnos') + ')</em>';
+       })() : '');
+}
+function decirSel(texto) {
+  avisarSeleccion(texto);
+  setTimeout(function () { if (!SEL.pintando) pintarSeleccion(); }, 2200);
+}
+// Decir algo (o nada) y salir, siempre con una promesa en la mano.
+function nada(texto) {
+  if (texto) decirSel(texto);
+  return Promise.resolve();
+}
+
+// ---------- copiar ----------
+function copiarSeleccion(cortar) {
+  if (!SEL.claves.length) return decirSel('Marca primero qué quieres copiar.');
+  var g = rejilla(); if (!g) return;
+  var fs = [], cs = [];
+  SEL.claves.forEach(function (k) { var p = g.mapa[k]; if (p) { fs.push(p.f); cs.push(p.c); } });
+  if (!fs.length) return;
+  var f1 = Math.min.apply(null, fs), f2 = Math.max.apply(null, fs);
+  var c1 = Math.min.apply(null, cs), c2 = Math.max.apply(null, cs);
+  var celdas = [];
+  for (var f = f1; f <= f2; f++) {
+    var linea = [];
+    for (var c = c1; c <= c2; c++) {
+      var td = g.filas[f] && g.filas[f][c];
+      linea.push(!td ? [] : turnosDeClave(claveCel(td)).map(function (a) {
+        return { hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+                 cargo_id: a.cargo_id, trabajador_id: a.trabajador_id };
+      }));
+    }
+    celdas.push(linea);
+  }
+  PORTA = { agrupar: S.agrupar, alto: f2 - f1 + 1, ancho: c2 - c1 + 1, celdas: celdas };
+  if (cortar) return borrarSeleccion(true);
+  avisarSeleccion();
+}
+
+// ---------- pegar ----------
+/* PEGAR REEMPLAZA lo que haya en la casilla de destino, como en Excel. Sumar
+   encima sería más «seguro» y es peor: copiar un lunes sobre un martes que ya
+   tenía gente dejaría al martes con el doble de turnos y nadie entendería de
+   dónde salieron. */
+/* DEVUELVE SIEMPRE UNA PROMESA, también cuando no hace nada. Media función que
+   a veces devuelve promesa y a veces no obliga a quien la llama a preguntarse
+   cuál de las dos le tocó — y el que se olvide se lleva un error en una rama
+   que casi nunca pasa. Lo encontré probando el caso de la ausencia. */
+function pegarSeleccion() {
+  if (!PORTA) return nada('No hay nada copiado todavía.');
+  if (PORTA.agrupar !== S.agrupar)
+    return nada(PORTA.agrupar === 'persona'
+      ? 'Eso lo copiaste agrupado por persona. Vuelve a Personas para pegarlo.'
+      : 'Eso lo copiaste agrupado por cargo. Vuelve a Cargos para pegarlo.');
+  if (!SEL.claves.length) return nada('Marca primero dónde quieres pegar.');
+  var g = rejilla(); if (!g) return nada();
+
+  // El destino es la esquina de arriba a la izquierda de lo marcado, aunque
+  // haya marcado un rango más grande: igual que una planilla.
+  var fs = [], cs = [];
+  SEL.claves.forEach(function (k) { var p = g.mapa[k]; if (p) { fs.push(p.f); cs.push(p.c); } });
+  if (!fs.length) return nada();
+  var f0 = Math.min.apply(null, fs), c0 = Math.min.apply(null, cs);
+
+  var crear = [], borrar = [], fuera = 0, dormidos = 0;
+  for (var i = 0; i < PORTA.alto; i++) {
+    for (var j = 0; j < PORTA.ancho; j++) {
+      var td = g.filas[f0 + i] && g.filas[f0 + i][c0 + j];
+      if (!td) { fuera++; continue; }
+      var k = claveCel(td), p = partesClave(k);
+
+      /* UNA AUSENCIA NO SE PISA. Si alguien está de vacaciones, pegarle un
+         turno encima es justo lo que el resto de la aplicación impide; que
+         aquí entrara por la puerta de atrás haría inútil el control. */
+      if (p.agrupar === 'persona' && p.fila && ausenciasDe(p.fila, p.fecha).length) {
+        dormidos++; continue;
+      }
+      turnosDeClave(k).forEach(function (a) { borrar.push(a); });
+      PORTA.celdas[i][j].forEach(function (t) {
+        crear.push({
+          empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal,
+          necesidad_id: null,
+          // La cara que manda es la de la FILA de destino; la otra viaja con
+          // lo copiado. Pegar en la fila de Ana hace que el turno sea de Ana.
+          trabajador_id: p.agrupar === 'persona' ? (p.fila || null) : (t.trabajador_id || null),
+          cargo_id:      p.agrupar === 'cargo'   ? p.fila : t.cargo_id,
+          fecha: p.fecha, hora_inicio: t.hora_inicio, hora_fin: t.hora_fin,
+          origen: 'mano', tocado_a_mano: true, estado: 'confirmada',
+        });
+      });
+    }
+  }
+
+  if (!crear.length && !borrar.length) {
+    return nada(dormidos ? 'Ahí hay ausencias: no le pego turnos encima.'
+                         : 'No había nada que pegar.');
+  }
+
+  avisarSeleccion('Pegando…');
+  var nacidos = [];
+  var cadena = borrar.reduce(function (pr, a) {
+    return pr.then(function () {
+      return DATOS.turnos.borrarDe([a.id]).catch(function () {})
+        .then(function () { return DATOS.asignaciones.borrar(a.id); });
+    });
+  }, Promise.resolve());
+  crear.forEach(function (d) {
+    cadena = cadena.then(function () {
+      // Un choque con el índice único no bota el pegado entero: se cuenta y
+      // se sigue. Parar a la mitad dejaría la semana por la mitad, que es peor
+      // que pegar casi todo y decir cuántos no entraron.
+      return DATOS.asignaciones.crear(d)
+        .then(function (fila) { nacidos.push(fila); })
+        .catch(function () { fuera++; });
+    });
+  });
+
+  return cadena.then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'crear', null,
+                 { pegado: nacidos.length, quitados: borrar.length });
+    /* Deshacer de un pegado: se van los que nacieron y vuelven los que se
+       fueron. Sin esto, pegar sobre la semana equivocada se arregla a mano
+       turno por turno — y es la operación que más turnos mueve de una vez. */
+    recordar('pegar en ' + (crear.length ? nacidos.length : borrar.length) + ' turno(s)',
+      function () {
+        var v = nacidos.reduce(function (pr, fila) {
+          return pr.then(function () { return DATOS.asignaciones.borrar(fila.id); });
+        }, Promise.resolve());
+        borrar.forEach(function (a) {
+          v = v.then(function () {
+            return DATOS.asignaciones.crear({
+              empresa_id: a.empresa_id, sucursal_id: a.sucursal_id,
+              necesidad_id: a.necesidad_id, trabajador_id: a.trabajador_id,
+              fecha: a.fecha, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+              cargo_id: a.cargo_id, origen: a.origen, tocado_a_mano: true,
+              estado: a.estado });
+          });
+        });
+        return v;
+      });
+    return recargarSemana();
+  }).then(function () {
+    var dice = 'Pegados ' + nacidos.length + ' turno(s)';
+    if (dormidos) dice += ' · ' + dormidos + ' casilla(s) con ausencia, intactas';
+    if (fuera)    dice += ' · ' + fuera + ' no entraron';
+    decirSel(dice);
+  }).catch(function (e) { decirSel('No pude pegar: ' + e.message); });
+}
+
+// ---------- quitar lo marcado ----------
+/* La misma regla de la ×, pero preguntando UNA sola vez por todo el lote: un
+   diálogo por turno en una selección de veinte es un castigo, no un resguardo.
+   Y se dice cuántos de los marcados ya están publicados, que es el dato con el
+   que se decide. */
+function borrarSeleccion(callado) {
+  var todos = [];
+  SEL.claves.forEach(function (k) { turnosDeClave(k).forEach(function (a) { todos.push(a); }); });
+  if (!todos.length) return nada(callado ? null : 'No hay turnos en lo que marcaste.');
+  var publicados = todos.filter(function (a) {
+    return S.turnos.some(function (t) {
+      return t.asignacion_id === a.id && t.estado === 'publicado';
+    });
+  }).length;
+  if (publicados && !confirm(
+        'Vas a quitar ' + todos.length + ' turno(s), y ' + publicados
+        + ' de ellos YA ESTÁN PUBLICADOS.\n\n'
+        + 'A esas personas se les borra de su calendario. ¿Los quito?')) return nada();
+
+  avisarSeleccion('Quitando…');
+  var idos = todos.map(function (a) { return JSON.parse(JSON.stringify(a)); });
+  var cadena = todos.reduce(function (pr, a) {
+    return pr.then(function () {
+      return DATOS.turnos.borrarDe([a.id]).catch(function () {})
+        .then(function () { return DATOS.asignaciones.borrar(a.id); });
+    });
+  }, Promise.resolve());
+  return cadena.then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'borrar',
+                 { quitados: idos.length }, null);
+    recordar('quitar ' + idos.length + ' turno(s)', function () {
+      return idos.reduce(function (pr, a) {
+        return pr.then(function () {
+          return DATOS.asignaciones.crear({
+            empresa_id: a.empresa_id, sucursal_id: a.sucursal_id,
+            necesidad_id: a.necesidad_id, trabajador_id: a.trabajador_id,
+            fecha: a.fecha, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+            cargo_id: a.cargo_id, origen: a.origen, tocado_a_mano: true,
+            estado: a.estado });
+        });
+      }, Promise.resolve());
+    });
+    return recargarSemana();
+  }).then(function () {
+    decirSel('Quitados ' + idos.length + ' turno(s)');
+  }).catch(function (e) { decirSel('No pude quitar: ' + e.message); });
+}
+
+// ---------- los gestos ----------
+$('#malla').addEventListener('mousedown', function (ev) {
+  if (!esPlanilla()) return;
+  var td = ev.target.closest && ev.target.closest('td.cel');
+  if (!td) return;
+  var k = claveCel(td);
+  // Con Ctrl o Mayús se extiende desde donde estaba; sin nada, se empieza de cero.
+  if (ev.shiftKey && SEL.ancla) { marcarRango(SEL.ancla, k); return; }
+  SEL.ancla = k; SEL.claves = [k];
+  /* Solo se arrastra desde el FONDO de la casilla. Si el gesto empezó sobre un
+     bloque o sobre su ×, arrastrar significaría otra cosa y pintar un rango
+     mientras tanto haría que un clic cualquiera pareciera haber marcado media
+     semana. */
+  SEL.pintando = !ev.target.closest('.blq');
+  pintarSeleccion();
+});
+$('#malla').addEventListener('mouseover', function (ev) {
+  if (!SEL.pintando || !SEL.ancla) return;
+  var td = ev.target.closest && ev.target.closest('td.cel');
+  if (td) { SEL.arrastro = true; marcarRango(SEL.ancla, claveCel(td)); }
+});
+document.addEventListener('mouseup', function () {
+  SEL.pintando = false; SEL.arrastro = false;
+});
+
+/* LAS TECLAS NO SE ROBAN CUANDO ALGUIEN ESTÁ ESCRIBIENDO. Sin esta guarda,
+   Ctrl+C dentro de un campo de texto dejaría de copiar el texto —que es lo
+   que la persona quiso— para copiar casillas de la malla. */
+function escribiendo(ev) {
+  var e = ev.target;
+  if (!e || !e.tagName) return false;
+  var t = e.tagName.toLowerCase();
+  return t === 'input' || t === 'textarea' || t === 'select' || e.isContentEditable
+      || !!(e.closest && e.closest('dialog[open]'));
+}
+document.addEventListener('keydown', function (ev) {
+  if (escribiendo(ev)) return;
+  if (ev.key === 'Escape' && SEL.claves.length) { limpiarSeleccion(); return; }
+  if (!esPlanilla() || !SEL.claves.length) return;
+  var ctrl = ev.ctrlKey || ev.metaKey;
+  if (ctrl && (ev.key === 'c' || ev.key === 'C')) { ev.preventDefault(); copiarSeleccion(false); }
+  else if (ctrl && (ev.key === 'x' || ev.key === 'X')) { ev.preventDefault(); copiarSeleccion(true); }
+  else if (ctrl && (ev.key === 'v' || ev.key === 'V')) { ev.preventDefault(); pegarSeleccion(); }
+  else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); borrarSeleccion(false); }
 });
 
 // ====================================================================
@@ -3435,6 +3972,14 @@ window.__app = {
   desgloseAusencia: desgloseAusencia,
   marcarTurnosParaRevisar: marcarTurnosParaRevisar,
   recargarSemana: recargarSemana,
+  prepararImpresion: prepararImpresion,
+  // La planilla: marcar casillas y copiar/pegar. La prueba las llama directo
+  // porque los gestos de ratón y las teclas no se pueden fingir de verdad
+  // desde fuera, pero lo que corre es exactamente lo que corre al apretarlas.
+  SEL: SEL, marcarRango: marcarRango, limpiarSeleccion: limpiarSeleccion,
+  claveCel: claveCel,
+  copiarSeleccion: copiarSeleccion, pegarSeleccion: pegarSeleccion,
+  borrarSeleccion: borrarSeleccion, verPorta: function () { return PORTA; },
 };
 
 /* Se arranca y ya. Si falta la configuracion, quien lo sabe es la capa de datos

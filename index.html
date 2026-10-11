@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v63</span></p>
+      <span style="float:right;opacity:.55" id="ver">v65</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -62,7 +62,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v63</span>
+    <span class="hint" id="ver2" title="Versión publicada">v65</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -89,6 +89,7 @@
       <button class="plano" id="btnDespues" title="Siguiente">›</button>
       <button class="plano" id="btnHoy">Hoy</button>
       <button class="plano" id="btnDeshacer" disabled title="No hay nada que deshacer">↶ Deshacer</button>
+      <button class="plano" id="btnImprimir" title="Imprimir la malla que estás viendo">Imprimir</button>
       <span class="espacio"></span>
       <span class="hint" id="cEstado"></span>
 <button class="plano" id="btnGuardarModelo" hidden>Guardar como modelo</button>
@@ -97,7 +98,17 @@
     </div>
 
     <p class="aviso" id="avisoPlan" hidden></p>
+    <!-- EL ENCABEZADO DEL PAPEL. En pantalla no se ve: todo lo que dice ya está
+         en la barra de arriba, y la barra no se imprime. Una malla impresa sin
+         local ni fechas es una hoja que nadie puede usar — y al revés, es el
+         papel que se pega en la cocina, así que tiene que decir de qué semana
+         es sin que haya que preguntarle a nadie. -->
+    <div id="cabImpresa" class="cabimpresa" aria-hidden="true"></div>
     <div id="malla" class="malla"></div>
+    <!-- Lo que llevas marcado y qué puedes hacer con ello. Sin esta barra, la
+         selección es un recuadro de color que no le dice a nadie que ahora
+         puede apretar Ctrl+C: la función existiría y no la encontraría nadie. -->
+    <div id="selAviso" class="selaviso" hidden></div>
     <!-- Las horas que llevas puestas, mientras las pones. Las horas son plata, y
          verlas después en un informe llega tarde para corregir. -->
     <div id="pieHoras" class="piehoras" hidden></div>
