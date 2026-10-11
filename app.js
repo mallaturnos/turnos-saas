@@ -68,7 +68,7 @@ var S = {
   // Ausencias de la vista y el catalogo de tipos. `hayAusencias` en null
   // significa «todavia no pregunte»: con la migracion sin pegar queda false y
   // la pantalla sigue funcionando sin ellas.
-  ausencias:[], tiposAusencia:[], hayAusencias:null,
+  ausencias:[], tiposAusencia:[], bloqueos:[], hayAusencias:null,
   yoTrabajador:null,
 };
 
@@ -526,10 +526,11 @@ function recargarSemana() {
       DATOS.turnos.listar(S.sucursal, desde, hasta),
       hay ? DATOS.ausencias.listar(desde, hasta) : Promise.resolve([]),
       hay ? DATOS.ausencias.tipos() : Promise.resolve([]),
+      hay ? DATOS.ausencias.bloqueos() : Promise.resolve([]),
     ]);
   }).then(function (r) {
     S.necesidades = r[0]; S.asignaciones = r[1]; S.turnos = r[2];
-    S.ausencias = r[3]; S.tiposAusencia = r[4];
+    S.ausencias = r[3]; S.tiposAusencia = r[4]; S.bloqueos = r[5];
     pintarMalla();
   }).catch(function (e) { avisoPlan('No pude cargar la semana: ' + esc(e.message)); });
 }
@@ -1340,6 +1341,23 @@ function pintarAsignacion(a) {
 
      Es una marca, no un impedimento: el turno sigue ahi, se puede abrir y se
      puede dejar igual. Lo que no puede es pasar desapercibido. */
+  /* EL TURNO QUE SE PISA CON OTRO DE LA MISMA PERSONA, marcado en la semana.
+
+     Lo pregunto Pedro (msg 5612) y tenia razon en lo que no dije: el control
+     que puse al guardar impide crear turnos nuevos que se pisen, pero LOS QUE
+     YA ESTABAN siguen ahi, invisibles. Es exactamente el mismo agujero que las
+     ausencias tuvieron esta tarde — avisar al asignar no alcanza, porque el
+     caso corriente es que el problema ya este guardado.
+
+     Se mira solo dentro de lo cargado en pantalla. Para avisar al GUARDAR se
+     pregunta a la base, que es mas caro y mas exacto; para pintar la semana
+     alcanza con lo que ya se trajo, y asi la malla no hace una consulta por
+     cada turno que dibuja. */
+  var pisa = a.trabajador_id && S.asignaciones.some(function (o) {
+    return o.id !== a.id && o.trabajador_id === a.trabajador_id
+        && minutosQueSePisan(a, o) > 0;
+  });
+
   var choca = a.trabajador_id && ausenciasDe(a.trabajador_id, a.fecha).length > 0;
   var ausTxt = choca
     ? ausenciasDe(a.trabajador_id, a.fecha).map(function (x) {
@@ -1358,10 +1376,11 @@ function pintarAsignacion(a) {
   var titulo = choca ? ' title="' + esc(quien + ' tiene ' + ausTxt + ' ese día') + '"' : '';
   var marca  = choca ? '<span class="choque' + (entero ? '' : ' parte') + '">'
                      + (entero ? 'no está' : 'parte del día') + '</span>' : '';
+  var marcaPisa = pisa ? '<span class="choque pisa">se pisa</span>' : '';
   return '<li class="' + (a.trabajador_id ? (publicado ? 'publicado' : 'borrador') : 'pendiente')
-       + (choca ? ' choca' : '')
+       + (choca ? ' choca' : '') + (pisa ? ' sepisa' : '')
        + '" data-asigid="' + a.id + '"' + titulo + '>'
-       + quien + marca
+       + quien + marcaPisa + marca
        + '<span class="hs">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span></li>';
 }
 
@@ -1559,7 +1578,7 @@ $('#nav').addEventListener('click', function (ev) {
      pantalla salia vacia, sin un solo error en la consola. Es el mismo defecto
      contra el que avisa el comentario de aqui arriba, y lo encontro la prueba
      de humo, no yo. */
-  if (b.dataset.p === 'config') cargarCatalogo();
+  if (b.dataset.p === 'config') { cargarCatalogo(); cargarBloqueos(); }
 });
 
 // Un solo oyente para toda la malla: los botones se repintan constantemente y
@@ -2876,6 +2895,19 @@ function pintarOjoAusencia() {
   var d = $('#usDesde').value, h = $('#usHastaCaja').hidden ? d : ($('#usHasta').value || d);
   if (!pid || !d) { e.hidden = true; return; }
 
+  /* El bloqueo se avisa ACA y se impide al guardar. Avisarlo solo al final
+     sería dejar que la persona escriba todo para recibir un no. */
+  var tipoSel = tipoAusencia($('#usTipo').value);
+  var bloq = bloqueoQueChoca(tipoSel, pid, d, h);
+  if (bloq) {
+    e.hidden = false;
+    e.innerHTML = '🔴 Esas fechas están <b>bloqueadas</b>'
+      + (bloq.motivo ? ' (' + esc(bloq.motivo) + ')' : '')
+      + ': del <b>' + esc(diaMes(bloq.desde)) + '</b> al <b>' + esc(diaMes(bloq.hasta))
+      + '</b> no se puede pedir libre. Esta no se va a poder guardar.';
+    return;
+  }
+
   var choca = S.asignaciones.filter(function (a) {
     return a.trabajador_id === pid && a.fecha >= d && a.fecha <= h;
   });
@@ -2985,6 +3017,14 @@ function guardarAusencia(que) {
   if (hasta < desde) return aviso('#usMsg', 'La fecha de término es anterior a la de inicio.', 'bad');
   if (t.pide_nota && !$('#usNota').value.trim())
     return aviso('#usMsg', 'Este tipo necesita que escribas el motivo.', 'bad');
+
+  /* LA UNICA PUERTA CERRADA, y la encendio Pedro. Basta que UN dia del rango
+     caiga dentro: partir la solicitud dejaria media ausencia sin revisar. */
+  var bloq = bloqueoQueChoca(t, pid, desde, hasta);
+  if (bloq) return aviso('#usMsg', 'Del <b>' + esc(diaMes(bloq.desde)) + '</b> al <b>'
+    + esc(diaMes(bloq.hasta)) + '</b> las fechas están bloqueadas'
+    + (bloq.motivo ? ' (' + esc(bloq.motivo) + ')' : '')
+    + ', así que no se puede registrar esto. Quita el bloqueo en Configuración si cambiaste de idea.', 'bad');
 
   /* El estado sale del TRATO, no de un desplegable.
 
@@ -3249,6 +3289,128 @@ $('#tpGuardar').addEventListener('click', function () {
   });
 });
 
+// ====================================================================
+// DIAS BLOQUEADOS
+//
+// LA UNICA PUERTA CERRADA DEL SISTEMA, y esta bien que lo sea: la pidio Pedro
+// para cerrar fin de año. Todo lo demas en esta app avisa; esto impide.
+//
+// Dos reglas que vienen de mirar como lo hace 7shifts y que Pedro aprobo:
+//   · LA LICENCIA MEDICA PASA IGUAL. Un bloqueo es una politica del local y una
+//     licencia no se pide: llega. Lo decide la columna `exento_bloqueos` del
+//     tipo, no un `if` con el nombre escrito aca.
+//   · SI UN SOLO DIA del rango que piden cae dentro, se bloquea la solicitud
+//     ENTERA. Partirla a medias dejaria una ausencia que nadie reviso.
+// ====================================================================
+var bloqueoActual = null;
+
+function cargarBloqueos() {
+  if (!S.hayAusencias) return Promise.resolve([]);
+  return DATOS.ausencias.bloqueos().then(function (f) {
+    S.bloqueos = f; pintarBloqueos(); return f;
+  }).catch(function (e) {
+    $('#listaBloqueos').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
+  });
+}
+
+function pintarBloqueos() {
+  $('#ctrlBloqueos').hidden = !S.hayAusencias;
+  $('#hintBloqueos').hidden = !S.hayAusencias;
+  if (!S.hayAusencias) { $('#listaBloqueos').innerHTML = ''; return; }
+  if (!S.bloqueos.length) {
+    $('#listaBloqueos').innerHTML = '<p class="vacio">No hay fechas bloqueadas.</p>';
+    return;
+  }
+  $('#listaBloqueos').innerHTML = S.bloqueos.map(function (b) {
+    var donde = b.sucursal_id ? nombreSucursal(b.sucursal_id) : 'todos los locales';
+    var quien = b.cargo_id ? nombreCargo(b.cargo_id) : 'todos los cargos';
+    return '<div class="item" data-bloqid="' + b.id + '">'
+      + '<b>' + esc(diaMes(b.desde)) + ' — ' + esc(diaMes(b.hasta)) + '</b>'
+      + '<span class="sub">' + esc(donde) + ' · ' + esc(quien)
+      + (b.motivo ? ' · ' + esc(b.motivo) : '') + '</span></div>';
+  }).join('');
+}
+function nombreSucursal(id) {
+  for (var i = 0; i < S.sucursales.length; i++)
+    if (S.sucursales[i].id === id) return S.sucursales[i].nombre;
+  return 'ese local';
+}
+
+$('#listaBloqueos').addEventListener('click', function (ev) {
+  var it = ev.target.closest('.item'); if (!it) return;
+  abrirBloqueo(S.bloqueos.filter(function (b) { return b.id === it.dataset.bloqid; })[0]);
+});
+$('#btnBloqueo').addEventListener('click', function () { abrirBloqueo(null); });
+
+function abrirBloqueo(b) {
+  bloqueoActual = b || null;
+  $('#blTit').textContent = b ? 'Fechas bloqueadas' : 'Bloquear fechas';
+  $('#blLocal').innerHTML = '<option value="">Todos los locales</option>'
+    + S.sucursales.map(function (x) {
+        return '<option value="' + x.id + '">' + esc(x.nombre) + '</option>'; }).join('');
+  $('#blCargo').innerHTML = '<option value="">Todos los cargos</option>'
+    + S.cargos.map(function (c) {
+        return '<option value="' + c.id + '">' + esc(c.nombre) + '</option>'; }).join('');
+  $('#blDesde').value  = b ? b.desde : hoyTexto();
+  $('#blHasta').value  = b ? b.hasta : hoyTexto();
+  $('#blLocal').value  = (b && b.sucursal_id) || '';
+  $('#blCargo').value  = (b && b.cargo_id) || '';
+  $('#blMotivo').value = (b && b.motivo) || '';
+  $('#blBorrar').hidden = !b;
+  aviso('#blMsg', '');
+  $('#dlgBloqueo').showModal();
+}
+
+$('#blCancelar').addEventListener('click', function () { $('#dlgBloqueo').close(); });
+$('#blGuardar').addEventListener('click', function () {
+  var d = {
+    desde: $('#blDesde').value, hasta: $('#blHasta').value,
+    sucursal_id: $('#blLocal').value || null,
+    cargo_id: $('#blCargo').value || null,
+    motivo: $('#blMotivo').value.trim() || null,
+  };
+  if (!d.desde || !d.hasta) return aviso('#blMsg', 'Faltan las fechas.', 'bad');
+  if (d.hasta < d.desde) return aviso('#blMsg', 'La fecha de término es anterior a la de inicio.', 'bad');
+  aviso('#blMsg', 'Guardando…');
+  var p = bloqueoActual ? DATOS.ausencias.guardarBloqueo(bloqueoActual.id, d)
+                        : DATOS.ausencias.crearBloqueo(S.yo.empresa_id, d);
+  p.then(function (fila) {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'dia_bloqueado', fila.id,
+                 bloqueoActual ? 'editar' : 'crear', bloqueoActual, fila);
+    $('#dlgBloqueo').close();
+    return cargarBloqueos();
+  }).catch(function (e) { aviso('#blMsg', e.message, 'bad'); });
+});
+
+$('#blBorrar').addEventListener('click', function () {
+  if (!bloqueoActual) return;
+  if (!confirm('¿Quitar este bloqueo? Las fechas vuelven a quedar libres.')) return;
+  DATOS.ausencias.borrarBloqueo(bloqueoActual.id).then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'dia_bloqueado', bloqueoActual.id,
+                 'borrar', bloqueoActual, null);
+    $('#dlgBloqueo').close();
+    return cargarBloqueos();
+  }).catch(function (e) { aviso('#blMsg', e.message, 'bad'); });
+});
+
+/* ¿Choca con un bloqueo? Devuelve el que choca, o null.
+
+   Se mira el RANGO COMPLETO que se pide, dia por dia: basta que uno caiga
+   dentro. Y se respeta a quien alcanza el bloqueo — sin local es toda la
+   empresa, sin cargo son todos los cargos. */
+function bloqueoQueChoca(tipo, trabajadorId, desde, hasta) {
+  if (!tipo || tipo.exento_bloqueos) return null;
+  var persona = S.trabajadores.filter(function (p) { return p.id === trabajadorId; })[0];
+  var cargos = (persona && persona.trabajador_cargos || []).map(function (x) { return x.cargo_id; });
+  for (var i = 0; i < S.bloqueos.length; i++) {
+    var b = S.bloqueos[i];
+    if (b.desde > hasta || b.hasta < desde) continue;          // no se tocan
+    if (b.cargo_id && cargos.indexOf(b.cargo_id) < 0) continue; // no es su cargo
+    return b;
+  }
+  return null;
+}
+
 /* Un asa para las pruebas, y se declara como lo que es.
 
    Sin esto, la prueba de humo tendria que llegar a todo por la pantalla, y hay
@@ -3265,6 +3427,8 @@ window.__app = {
   abrirFicha: abrirFicha,
   abrirAusencia: abrirAusencia,
   abrirTipo: abrirTipo,
+  abrirBloqueo: abrirBloqueo,
+  cargarBloqueos: cargarBloqueos,
   cargarCatalogo: cargarCatalogo,
   desgloseAusencia: desgloseAusencia,
   marcarTurnosParaRevisar: marcarTurnosParaRevisar,

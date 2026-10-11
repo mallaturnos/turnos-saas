@@ -540,3 +540,7 @@ label.chk input:disabled + span, label.chk:has(input:disabled) { color:#7d8a8e; 
 #ctrlTipos {
   margin-top:2.2rem; padding-top:1.4rem; border-top:1px solid var(--borde);
 }
+/* Un turno que se pisa con otro de la misma persona. Rojo, no ámbar: esto no
+   es un dato a tener en cuenta como una ausencia — es algo que no puede ser. */
+.gente li.sepisa { background:var(--rojo-claro); border-radius:5px; }
+.gente li .choque.pisa { background:var(--rojo); }

@@ -445,6 +445,21 @@
           }) }, 'guardar el detalle por dia');
         });
     },
+    /* Dias bloqueados. Se leen con la semana y tambien al registrar, porque el
+       rango que pide alguien puede caer fuera de la semana que esta a la vista. */
+    bloqueos: function () {
+      return rest('dias_bloqueados?select=*&order=desde', null, 'leer los días bloqueados');
+    },
+    crearBloqueo: function (e, d) {
+      return crear('dias_bloqueados', Object.assign({ empresa_id: e }, d), 'guardar el bloqueo');
+    },
+    guardarBloqueo: function (id, d) {
+      return editar('dias_bloqueados', id, d, 'guardar el bloqueo');
+    },
+    borrarBloqueo: function (id) {
+      return quitar('dias_bloqueados', 'id=eq.' + id, 'quitar el bloqueo');
+    },
+
     dias: function (ausenciaId) {
       return rest('ausencia_dias?select=*&ausencia_id=eq.' + ausenciaId + '&order=fecha',
                   null, 'leer el detalle por dia');

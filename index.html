@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=34">
+<link rel="stylesheet" href="estilo.css?v=35">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v61</span></p>
+      <span style="float:right;opacity:.55" id="ver">v62</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -62,7 +62,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v61</span>
+    <span class="hint" id="ver2" title="Versión publicada">v62</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -155,6 +155,18 @@
       <b>El trato</b> es quién decide: lo que se acuerda se puede rechazar, lo que
       la ley no deja negar no tiene ese botón.</p>
     <div id="listaTipos" class="lista"></div>
+
+
+    <!-- DIAS BLOQUEADOS · la unica puerta cerrada del sistema, y existe porque
+         Pedro la pidio: cerrar fin de año para que nadie pueda pedir libre. -->
+    <div class="controles" id="ctrlBloqueos" hidden>
+      <h2>Días bloqueados</h2><span class="espacio"></span>
+      <button class="primario" id="btnBloqueo">+ Bloquear fechas</button>
+    </div>
+    <p class="hint" id="hintBloqueos" hidden>En estas fechas nadie puede pedir libre.
+      <b>Las licencias médicas pasan igual</b>: esas no se bloquean. Y si un solo día de
+      lo que piden cae dentro, no se puede guardar la solicitud completa.</p>
+    <div id="listaBloqueos" class="lista"></div>
 
     <!-- La seccion «Horarios guardados» ya no existe: sus tramos viven dentro
          de la tarjeta de su local (opcion C, Pedro msg 5292). Eso saca de la
@@ -379,6 +391,30 @@
   </form>
 </dialog>
 
+<!-- Cerrar un rango de fechas. Sin local = todos; sin cargo = todos. -->
+<dialog id="dlgBloqueo" class="dlg">
+  <form method="dialog">
+    <h3 id="blTit">Bloquear fechas</h3>
+    <div class="fldrow">
+      <div class="fld"><label for="blDesde">Desde</label><input type="date" id="blDesde"></div>
+      <div class="fld"><label for="blHasta">Hasta</label><input type="date" id="blHasta"></div>
+    </div>
+    <div class="fldrow">
+      <div class="fld"><label for="blLocal">Local</label><select id="blLocal"></select></div>
+      <div class="fld"><label for="blCargo">Cargo</label><select id="blCargo"></select></div>
+    </div>
+    <div class="fld"><label for="blMotivo">Motivo</label>
+      <input type="text" id="blMotivo" placeholder="Fin de año, inventario, temporada alta…"></div>
+    <p class="hint">Déjalo en «todos» si el cierre es para el local entero.</p>
+    <p class="msg" id="blMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="blGuardar">Guardar</button>
+      <button type="button" class="plano" id="blBorrar" hidden>Quitar</button>
+      <button type="button" class="plano" id="blCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlgFicha" class="dlg">
   <form method="dialog">
     <h3 id="fTit">—</h3>
@@ -391,7 +427,7 @@
   </form>
 </dialog>
 <script src="config.js?v=5"></script>
-<script src="datos.js?v=17"></script>
-<script src="app.js?v=30"></script>
+<script src="datos.js?v=18"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>
