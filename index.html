@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v71</span></p>
+      <span style="float:right;opacity:.55" id="ver">v72</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v71</span>
+    <span class="hint" id="ver2" title="Versión publicada">v72</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -106,6 +106,14 @@
       <button class="plano" id="btnImprimir" title="Imprimir la malla que estás viendo">Imprimir</button>
       <span class="espacio"></span>
       <span class="hint" id="cEstado"></span>
+      <!-- La leyenda de los puntitos. Estaban ahi desde hace semanas sin que
+           nada dijera que significan: Pedro pregunto «¿que es ese punto verde
+           al lado de la hora?». Va pegada al contador de «sin publicar»,
+           porque es la misma idea contada de dos maneras. -->
+      <span class="leyenda" id="cLeyenda">
+        <span class="pub">●</span> publicado
+        <span class="bor">○</span> borrador
+      </span>
 <button class="plano" id="btnGuardarModelo" hidden>Guardar como modelo</button>
       <button class="plano" id="btnAplicarModelo" hidden>Aplicar un modelo</button>
             <button class="primario" id="btnPublicar">Publicar</button>
@@ -297,7 +305,14 @@
     <div class="fld" id="aCargoCaja" hidden>
       <label for="aCargo">Cargo</label><select id="aCargo"></select>
     </div>
-    <div class="fld"><label for="aQuien">Persona</label><select id="aQuien"></select></div>
+    <!-- CUANDO VIENES DE UNA FILA, ESA CARA NO SE ELIGE: ya la elegiste al
+         apretar el + ahi. Lo pidio Pedro (11-10): «en menu persona deberia
+         pinchar el + del dia correspondiente a la persona; distinto en el
+         menu puesto». Desde la tabla por Personas queda fija la persona y se
+         elige el cargo; desde la de Cargos, al reves. -->
+    <p class="fijo" id="aCargoFijo" hidden></p>
+    <div class="fld" id="aQuienCaja"><label for="aQuien">Persona</label><select id="aQuien"></select></div>
+    <p class="fijo" id="aQuienFijo" hidden></p>
     <p class="hint" id="aOjo" hidden></p>
     <div class="fldrow">
       <div class="fld"><label for="aEntra">Entra</label><input type="time" id="aEntra"></div>

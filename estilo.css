@@ -396,6 +396,18 @@ table.girada .gente { padding:0; }
 .gente.bloques .blq::before { content:none; }
 .gente.bloques .blq.publicado b::after { content:" ●"; color:var(--verde); font-size:.55rem; }
 .gente.bloques .blq.borrador  b::after { content:" ○"; color:var(--gris);  font-size:.55rem; }
+/* La leyenda de los puntitos, junto al contador de «sin publicar». Discreta:
+   es una aclaración, no un aviso — tiene que poder ignorarse. */
+.leyenda { color:var(--gris); font-size:.78rem; white-space:nowrap; }
+.leyenda .pub { color:var(--verde); font-size:.6rem; }
+.leyenda .bor { color:var(--gris);  font-size:.6rem; margin-left:.4rem; }
+/* Para que no se imprima va en el bloque @media print de más abajo, con todo
+   lo demás que se esconde. UN SEGUNDO `@media print` SUELTO AQUÍ ROMPIÓ LAS
+   PRUEBAS DEL PAPEL: la comprobación saca el bloque de `estilo.css` en el
+   momento —para no trabajar sobre una copia vieja— y se lleva el PRIMERO que
+   encuentra. Con dos bloques, se llevaba este y daba por no aplicadas todas
+   las reglas del otro. Un solo bloque. */
+
 /* ---------- el + para agregar en una casilla de la tabla ----------
    Pedido por Pedro el 11-10: marcó una casilla por Cargos y no tenía cómo
    agregar nada. Antes ahí iba un punto gris decorativo.
@@ -736,7 +748,7 @@ table.girada td.cel { user-select:none; }
   @page { size: landscape; margin: 10mm; }
 
   /* Fuera todo lo que se aprieta: no se puede apretar una hoja. */
-  header, #nav, .controles, .nada, #selAviso,
+  header, #nav, .controles, .nada, #selAviso, .leyenda,
   .quitar-asig, .agregar-cel, .borrar-nec, .mas, .agregar-tramo,
   #avisoPlan, dialog { display:none !important; }
 
@@ -790,4 +802,12 @@ table.girada td.cel { user-select:none; }
   table.girada.porpersona tbody tr:not(.suelto) th.rot {
     padding-bottom:3pt; vertical-align:top;
   }
+}
+
+/* Lo que ya quedó decidido al apretar el + en una fila: se muestra como un
+   dato, no como un control apagado. Un desplegable gris se lee como «esto está
+   roto»; un texto se lee como «esto ya está resuelto». */
+.dlg .fijo {
+  margin:.65rem 0 0; padding:.45rem .6rem; font-size:.9rem;
+  background:var(--verde-claro); border-radius:6px; color:var(--tinta);
 }

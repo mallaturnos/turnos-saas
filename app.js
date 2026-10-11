@@ -1402,7 +1402,11 @@ function pintarAsignacion(a) {
   var entero = choca && ausenciasDe(a.trabajador_id, a.fecha).some(function (x) {
     return unidadDe(x) === 'dia';
   });
-  var titulo = choca ? ' title="' + esc(quien + ' tiene ' + ausTxt + ' ese día') + '"' : '';
+  // El `title` lleva las dos cosas: qué estado tiene y, si choca, por qué.
+  // Pisarlo con una sola dejaría la otra sin explicación.
+  var partes = [estadoTexto(a, publicado)];
+  if (choca) partes.push(quien + ' tiene ' + ausTxt + ' ese día');
+  var titulo = ' title="' + esc(partes.join(' · ')) + '"';
   var marca  = choca ? '<span class="choque' + (entero ? '' : ' parte') + '">'
                      + (entero ? 'no está' : 'parte del día') + '</span>' : '';
   // «Se cruzan», no «se pisan»: lo pidio Pedro (msg 5622) y es la palabra que
@@ -1425,6 +1429,18 @@ function pintarAsignacion(a) {
 
    Es un `<button>` de verdad y no un `<span>`: lo alcanza el tabulador y el
    lector de pantalla lo anuncia como lo que es. */
+/* QUE SIGNIFICA EL PUNTITO, EN PALABRAS. Un solo sitio.
+
+   El punto existia desde hace semanas y en ninguna parte decia que era: Pedro
+   lo pregunto el 11-10 —«¿qué es ese punto verde al lado de la hora?»— y tenia
+   razon, habia que adivinarlo. Un simbolo sin leyenda es decoracion para quien
+   no lo sabe. */
+function estadoTexto(a, publicado) {
+  if (!a.trabajador_id) return 'Pendiente — todavía no tiene a nadie';
+  return publicado ? 'Publicado — esta persona ya lo vio'
+                   : 'Borrador — todavía no se lo has dicho a nadie';
+}
+
 function botonQuitar(a) {
   return '<button class="quitar-asig" data-quitar="' + a.id + '"'
        + ' title="Quitar este turno" aria-label="Quitar este turno">×</button>';
@@ -1463,7 +1479,8 @@ function pintarBloqueSemana(a, abajo) {
           : (sinDueno ? 'sin asignar' : nombreTrab(a.trabajador_id));
   return '<li class="blq ' + colorCargo(a.cargo_id)
        + (sinDueno ? ' pendiente' : (publicado ? ' publicado' : ' borrador'))
-       + '" data-asigid="' + a.id + '">'
+       + '" data-asigid="' + a.id + '"'
+       + ' title="' + esc(estadoTexto(a, publicado)) + '">'
        + '<b>' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</b>'
        // Mismo formato H:MM que en todo el resto: dos maneras de escribir lo
        // mismo obligan a traducir mentalmente, y eso ya es un costo.
@@ -1774,7 +1791,8 @@ $('#malla').addEventListener('click', function (ev) {
     var cel = t.closest('td.cel'); if (!cel) return;
     var quien = cel.dataset.fila || null;
     return abrirAsignacion(null, null, cel.dataset.fecha,
-      S.agrupar === 'persona' ? { trabajadorId: quien } : { cargoId: quien });
+      S.agrupar === 'persona' ? { trabajadorId: quien, fijo: quien ? 'persona' : null }
+                              : { cargoId: quien,      fijo: quien ? 'cargo'   : null });
   }
   if (t.dataset.nueva)  return abrirNecesidad(null, t.dataset.nueva);
   if (t.dataset.suelta) return abrirAsignacion(null, null, t.dataset.suelta);
@@ -1950,6 +1968,22 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
                    : ((preset && preset.cargoId)
                       || cargoQueHace(preset && preset.trabajadorId)
                       || (S.cargos[0] || {}).id));
+  /* QUE SE PUEDE CAMBIAR Y QUE NO, segun de donde vino el clic.
+
+     Pedro lo pidio asi el 11-10 despues de probarlo: apreto el + en la fila
+     de Ana, el desplegable le ofrecio a Camila, y aunque el turno terminaba
+     correctamente en la fila de Camila le resulto raro —«deberia ser solo
+     para elegir a ana»—. Tiene razon: en esa pantalla la fila YA ES la
+     pregunta «¿de quien?», y volver a preguntarla abajo invita a
+     contradecirla sin querer.
+
+     La regla queda simetrica: desde la tabla por Personas, la persona es fija
+     y se elige el cargo; desde la de Cargos, el cargo es fijo y se elige la
+     persona — que ahi si es la pregunta de verdad: «quien cubre esto».
+     Entrando por cualquier otro lado, las dos se eligen como siempre. */
+  var fijaPersona = !!(preset && preset.fijo === 'persona' && preset.trabajadorId);
+  var fijaCargo   = !!(preset && preset.fijo === 'cargo'   && preset.cargoId);
+
   $('#aCargoCaja').hidden = !!n;
   $('#aCargo').innerHTML = S.cargos.map(function (q) {
     return '<option value="' + q.id + '">' + esc(q.nombre) + '</option>';
@@ -1971,6 +2005,23 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   pintarDuracion('#aEntra', '#aSale', '#aDur');
   $('#aBorrar').hidden = !a;
   aviso('#aMsg', '');
+  // Lo fijo se muestra como texto, no como un desplegable apagado: un
+  // desplegable gris se lee como «esto esta roto», no como «esto ya esta
+  // decidido». El valor sigue puesto en el <select> escondido, que es de
+  // donde lo lee el guardado.
+  $('#aQuienCaja').hidden = fijaPersona;
+  $('#aQuienFijo').hidden = !fijaPersona;
+  if (fijaPersona) $('#aQuienFijo').innerHTML = '<b>' + esc(nombreTrab(preset.trabajadorId))
+    + '</b> — apretaste el + en su fila';
+  if (!n) {
+    $('#aCargoCaja').hidden = fijaCargo;
+    $('#aCargoFijo').hidden = !fijaCargo;
+    if (fijaCargo) $('#aCargoFijo').innerHTML = '<b>' + esc(nombreCargo(preset.cargoId))
+      + '</b> — apretaste el + en esa fila';
+  } else {
+    $('#aCargoFijo').hidden = true;
+  }
+
   pintarDeQuien();
   pintarOjo();
   $('#dlgAsig').showModal();
