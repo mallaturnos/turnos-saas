@@ -245,7 +245,23 @@ button:disabled { opacity:.5; cursor:default; }
 
 /* ---------- la malla girada: gente o cargos en las filas ---------- */
 .malla.girada { display:block; overflow-x:auto; }
-table.girada { border-collapse:separate; border-spacing:0; width:100%; min-width:46rem;
+/* LOS SIETE DÍAS MIDEN LO MISMO, tengan turnos o no.
+
+   Sin `table-layout:fixed` el navegador reparte el ancho según lo que hay
+   dentro, y un martes sin nadie queda como una franja angosta entre dos días
+   anchos. Lo vio Pedro el 11-10 en su semana real: *«algunos días están más
+   pequeños cuando no tienen info, como el martes»*.
+
+   No es solo que se vea desparejo. Una semana se lee comparando días, y con
+   anchos distintos el día vacío PARECE más vacío de lo que es y el lleno más
+   lleno: la columna misma está diciendo algo que no es dato. Además la
+   columna cambia de tamaño cada vez que se agrega o se quita un turno, y la
+   malla da un salto bajo el cursor.
+
+   El `min-width` sube a 58rem para que, cuando la pantalla obligue a
+   desplazar, cada día siga teniendo donde escribir «16:45–00:45» sin partirlo. */
+table.girada { border-collapse:separate; border-spacing:0; width:100%; min-width:58rem;
+               table-layout:fixed;
                background:var(--blanco); border:1px solid var(--borde); border-radius:var(--radio); }
 table.girada th, table.girada td { border-bottom:1px solid var(--borde); padding:.35rem .4rem;
                                    vertical-align:top; }
@@ -260,7 +276,10 @@ table.girada thead th b { display:block; text-transform:capitalize; }
 table.girada thead th span { color:var(--gris); font-weight:400; font-size:.75rem; }
 /* El nombre se queda a la vista al desplazar en horizontal: una fila sin nombre
    es una fila que no se puede leer. */
-th.rot { position:sticky; left:0; z-index:3; background:var(--blanco); min-width:8rem;
+/* Con `table-layout:fixed` el ancho de una columna lo manda `width`, no
+   `min-width`: sin esto la de los nombres se reparte como una más. */
+th.rot { position:sticky; left:0; z-index:3; background:var(--blanco);
+         width:9rem; min-width:9rem;
          text-align:left; font-size:.88rem; }
 thead th.rot { z-index:3; background:#f0ede7; }
 table.girada td.hoy, table.girada th.hoy { background:var(--verde-claro); }
@@ -294,6 +313,9 @@ table.girada .gente { padding:0; }
   font-size:.7rem; color:var(--gris); }
 .gente.bloques .blq em { display:block; font-style:normal; font-size:.75rem;
   color:var(--gris); margin-top:.05rem; padding-right:1.6rem; }
+/* La columna ya no crece para acomodar un nombre largo —ahora todas miden lo
+   mismo—, así que el nombre tiene que saber cortarse en vez de desbordarse. */
+.gente.bloques .blq em, th.rot { overflow-wrap:anywhere; }
 /* El turno sin dueño se raya, como en la línea de tiempo del día: se ve que
    existe y que le falta alguien, sin esconderlo. */
 .gente.bloques .blq.pendiente {
@@ -604,6 +626,11 @@ table.girada td.cel { user-select:none; }
   border-radius:var(--radio); padding:.45rem .7rem; font-size:.85rem;
 }
 .selaviso .teclas { color:var(--gris); font-size:.78rem; margin-left:.4rem; }
+/* El cartel que enseña la función, cuando todavía no hay nada marcado. Va en
+   papel y no en verde: el verde es «tienes algo marcado», y gastarlo en un
+   aviso permanente le quita el significado justo cuando importa. */
+.selaviso.pista { background:var(--papel); }
+.selaviso.pista .teclas { margin-left:0; }
 .selaviso em { margin-left:auto; font-style:normal; font-size:.78rem; color:var(--verde); font-weight:600; }
 .selaviso .dice { font-weight:600; }
 

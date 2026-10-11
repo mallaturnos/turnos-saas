@@ -659,10 +659,15 @@ function pintarMalla() {
   var tabla = S.vista === 'semana' && S.agrupar !== 'dia';
   if (!tabla && SEL.claves.length) limpiarSeleccion();
 
-  if (S.vista === 'dia') return pintarDia();
-  if (S.vista === 'mes') return pintarMes();
-  if (S.agrupar !== 'dia') return pintarGirada();
-  pintarSemana();
+  if (S.vista === 'dia') pintarDia();
+  else if (S.vista === 'mes') pintarMes();
+  else if (S.agrupar !== 'dia') pintarGirada();
+  else pintarSemana();
+
+  // La barra de abajo se decide DESPUÉS de saber qué se pintó, y en un solo
+  // sitio: es la que enseña que existe copiar y pegar, y tiene que aparecer
+  // también cuando no hay nada marcado todavía.
+  avisarSeleccion();
 }
 
 /* La celda de un día es la MISMA en las tres vistas. Si se escribiera tres
@@ -1701,6 +1706,8 @@ $('#nav').addEventListener('click', function (ev) {
 // Un solo oyente para toda la malla: los botones se repintan constantemente y
 // enganchar uno por uno es como se queda un botón muerto sin que nadie lo note.
 $('#malla').addEventListener('click', function (ev) {
+  // El clic que cierra un arrastre no abre nada: la persona estaba marcando.
+  if (SEL.tragarClic) return;
   var t = ev.target;
   /* La × antes que nada, y cortando el clic: vive DENTRO de la cabecera, que
      también es apretable, así que sin esto borrar abriría además la ficha. */
@@ -2124,7 +2131,7 @@ function quitarTurno(a) {
    cada una. Sin el prefijo, lo copiado en Personas se podría pegar en Cargos,
    donde querría decir otra cosa. */
 
-var SEL = { claves: [], ancla: null, pintando: false, arrastro: false };
+var SEL = { claves: [], ancla: null, pintando: false, arrastro: false, tragarClic: false };
 var PORTA = null;   // lo copiado: { agrupar, alto, ancho, celdas: [[ [turnos] ]] }
 
 function esPlanilla() { return S.agrupar === 'persona' || S.agrupar === 'cargo'; }
@@ -2198,9 +2205,36 @@ function marcarRango(desde, hasta) {
    proyecto anterior, escondido donde nadie lo buscaba. */
 function avisarSeleccion(mensaje) {
   var caja = $('#selAviso'); if (!caja) return;
-  if (!SEL.claves.length && !mensaje) { caja.hidden = true; return; }
+  if (mensaje) {
+    caja.hidden = false; caja.classList.remove('pista');
+    caja.innerHTML = '<b class="dice">' + esc(mensaje) + '</b>';
+    return;
+  }
+
+  /* SIN NADA MARCADO, LA BARRA ENSEÑA QUE ESTO EXISTE.
+
+     Antes aparecía solo después de marcar — y para marcar hay que saber que
+     se puede. Pedro abrió la aplicación recién publicada y escribió «no pude
+     copiar pegar»: la función estaba entera y no había forma de descubrirla.
+
+     Y el primer tropiezo fue peor que eso: la pantalla ABRE en «Por día», que
+     es tarjetas y no una rejilla, así que probó donde no existía. Por eso ahí
+     la barra no se calla: dice dónde está. Un cartel es más barato que una
+     función que nadie encuentra. */
+  if (!SEL.claves.length) {
+    var enTabla = esPlanilla() && S.vista === 'semana';
+    var enTarjetas = S.vista === 'semana' && S.agrupar === 'dia';
+    if (!enTabla && !enTarjetas) { caja.hidden = true; return; }
+    caja.hidden = false; caja.classList.add('pista');
+    caja.innerHTML = enTabla
+      ? '<span class="teclas">Arrastra sobre las casillas para marcarlas y cópialas'
+        + ' con <b>Ctrl+C</b> y <b>Ctrl+V</b>. <b>Supr</b> las quita.</span>'
+      : '<span class="teclas">Para copiar y pegar turnos, cambia a'
+        + ' <b>Personas</b> o <b>Cargos</b>.</span>';
+    return;
+  }
+  caja.classList.remove('pista');
   caja.hidden = false;
-  if (mensaje) { caja.innerHTML = '<b class="dice">' + esc(mensaje) + '</b>'; return; }
   var n = SEL.claves.length;
   var turnos = SEL.claves.reduce(function (t, k) { return t + turnosDeClave(k).length; }, 0);
   caja.innerHTML = '<b>' + n + '</b> ' + (n === 1 ? 'casilla' : 'casillas')
@@ -2411,25 +2445,50 @@ function borrarSeleccion(callado) {
 // ---------- los gestos ----------
 $('#malla').addEventListener('mousedown', function (ev) {
   if (!esPlanilla()) return;
+  // La × hace lo suyo y no toca la marca: quitar un turno no es marcarlo.
+  if (ev.target.dataset && ev.target.dataset.quitar) return;
   var td = ev.target.closest && ev.target.closest('td.cel');
   if (!td) return;
   var k = claveCel(td);
-  // Con Ctrl o Mayús se extiende desde donde estaba; sin nada, se empieza de cero.
+  // Con Mayús se extiende desde donde estaba; sin nada, se empieza de cero.
   if (ev.shiftKey && SEL.ancla) { marcarRango(SEL.ancla, k); return; }
   SEL.ancla = k; SEL.claves = [k];
-  /* Solo se arrastra desde el FONDO de la casilla. Si el gesto empezó sobre un
-     bloque o sobre su ×, arrastrar significaría otra cosa y pintar un rango
-     mientras tanto haría que un clic cualquiera pareciera haber marcado media
-     semana. */
-  SEL.pintando = !ev.target.closest('.blq');
+  /* SE ARRASTRA DESDE DONDE SEA, incluso desde encima de un turno.
+
+     Aquí decía `SEL.pintando = !ev.target.closest('.blq')` — arrastrar solo
+     desde el fondo de la casilla. Lo copié del proyecto anterior, donde tenía
+     una razón buena: allá arrastrar un bloque MOVÍA el turno, y pintar un
+     rango le habría robado el gesto.
+
+     En este producto **un turno no se arrastra**: ese gesto está libre. La
+     regla no protegía nada y prohibía justo lo natural — pasar el dedo por
+     encima de la fila de turnos, que es precisamente la fila que uno quiere
+     copiar. Pedro lo probó el 11-10 y dijo «no sirve arrastrar»; medido
+     después: desde el bloque marcaba 1 casilla, desde el fondo 2.
+
+     Lo que se hereda de otro proyecto son las decisiones de SIGNIFICADO. Las
+     que esquivan un choque entre gestos no, porque los gestos son otros. */
+  SEL.pintando = true;
   pintarSeleccion();
 });
 $('#malla').addEventListener('mouseover', function (ev) {
   if (!SEL.pintando || !SEL.ancla) return;
   var td = ev.target.closest && ev.target.closest('td.cel');
-  if (td) { SEL.arrastro = true; marcarRango(SEL.ancla, claveCel(td)); }
+  if (td && claveCel(td) !== SEL.ancla) {
+    SEL.arrastro = true; marcarRango(SEL.ancla, claveCel(td));
+  }
 });
 document.addEventListener('mouseup', function () {
+  /* Si de verdad hubo arrastre, el clic que viene detrás no abre nada.
+
+     Sin esto, soltar el ratón sobre otro turno podía terminar abriendo su
+     ficha encima de la selección recién hecha: la persona marcó un rango y se
+     encontró con un diálogo. Se apaga en el siguiente turno del reloj, cuando
+     ese clic ya pasó. */
+  if (SEL.arrastro) {
+    SEL.tragarClic = true;
+    setTimeout(function () { SEL.tragarClic = false; }, 0);
+  }
   SEL.pintando = false; SEL.arrastro = false;
 });
 
