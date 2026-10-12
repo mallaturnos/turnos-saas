@@ -309,15 +309,9 @@ $('#formEntrar').addEventListener('submit', function (ev) {
 function entrarDeVerdad() {
   var email = $('#eMail').value.trim(), clave = $('#eClave').value;
   entrando = true;
+  // El tope de los 15 segundos lo arma `paso()` para todos los pasos, también
+  // los del arranque automático. Antes estaba aquí y solo cubría este camino.
   paso('Conectando…', generacion);
-  // Si en 15 segundos no pasó nada, decirlo. Un colgado callado se ve idéntico
-  // a algo que está tardando, y la persona se queda mirando sin saber cuál es.
-  clearTimeout(window.__tope);
-  window.__tope = setTimeout(function () {
-    if (/Conectando|Entrando|Verificando|Buscando|Cargando|Dibujando/.test($('#eMsg').textContent))
-      aviso('#eMsg', 'Está tardando demasiado en «' + $('#eMsg').textContent.replace('…','')
-                   + '». Mándame esta pantalla.', 'bad');
-  }, 15000);
   DATOS.auth.entrar(email, clave)
     // Se le pasa la sesion que ACABA de llegar en vez de volver a pedirla.
     // Pedirla aqui dejaba la pantalla colgada en «Entrando…» para siempre: la
@@ -417,11 +411,30 @@ var generacion = 0;
    Y para quien usa la app, ver «(3 s)» es muy distinto de ver un texto fijo:
    lo primero es algo trabajando, lo segundo parece roto. */
 var reloj = null, desde = 0, textoPaso = '';
+/* EL TOPE VIVE AQUI, Y NO EN EL BOTON ENTRAR.
+
+   Estaba armado solo dentro de `entrarDeVerdad()`, o sea solo cuando la persona
+   APRETABA Entrar. El arranque automatico de la pagina no tenia ninguno — y es
+   justo el que colgo el 12-10: Pedro mando una foto con «Verificando la
+   sesion... (251 s)» y la pantalla no le dijo nada en cuatro minutos. La guarda
+   existia y no cubria su camino.
+
+   Puesto en `paso()` cubre los dos, porque todo paso anunciado pasa por aqui, y
+   cada paso nuevo reinicia su propio plazo. */
+var CFG_TOPE = { ms: 15000 };
+
 function paso(txt, mia) {
   if (mia !== undefined && mia !== generacion) return;
   if ($('#p-entrar').hidden) return;
   textoPaso = txt; desde = Date.now();
   clearInterval(reloj);
+  clearTimeout(window.__tope);
+  window.__tope = setTimeout(function () {
+    // Solo si seguimos en ESE paso: si ya avanzo o fallo, el aviso seria falso.
+    if (textoPaso !== txt) return;
+    aviso('#eMsg', 'Está tardando demasiado en «' + txt.replace('…', '')
+                 + '». Mándame esta pantalla.', 'bad');
+  }, CFG_TOPE.ms);
   var pintar = function () {
     var s = Math.round((Date.now() - desde) / 1000);
     aviso('#eMsg', textoPaso + (s >= 2 ? '  (' + s + ' s)' : ''));
@@ -4634,6 +4647,7 @@ window.__app = {
   SEL: SEL, marcarRango: marcarRango, limpiarSeleccion: limpiarSeleccion,
   claveTurno: claveTurno, esClaveTurno: esClaveTurno, turnosDeClave: turnosDeClave,
   pintarMalla: pintarMalla, porHoraTurno: porHoraTurno, hhmm: hhmm, avisoPlan: avisoPlan,
+  CFG_TOPE: CFG_TOPE, paso: paso, mostrar: mostrar,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
