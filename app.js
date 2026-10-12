@@ -1087,27 +1087,43 @@ function pintarDia() {
        Es exactamente el mismo defecto que ya se había arreglado para los
        turnos y que a las necesidades no se les aplicó. El rótulo del grupo va
        solo en la primera línea, como allá. */
+    /* SE DIBUJA LO QUE FALTA, NO LO QUE SE PIDIO (opción D, 12-10).
+
+       Antes aquí iba una barra pálida por necesidad: «pide 2 de 08:00 a 16:00».
+       Pedro preguntó qué le estaba diciendo esa barra, y la respuesta honesta
+       era «casi nada»: cuando la gente cubre el tramo completo, la pálida mide
+       exactamente lo mismo que la de abajo y repite la información.
+
+       Al buscar qué hacen los demás resultó que **ninguno dibuja la necesidad**:
+       Deputy y 7shifts dibujan turnos, y lo que falta es un turno sin nadie.
+       Y al explicar él su propio flujo —«digo qué necesito, lo puedo crear con
+       alguien o sin nadie, la persona la asigno después»— quedó claro que en su
+       modelo **una necesidad sin cubrir YA ES ese turno sin dueño**. No son dos
+       cosas: es la misma antes y después de ponerle nombre.
+
+       Así que esto no copia a nadie: dibuja su necesidad como él la piensa. */
+    var lineasHueco = 0;
     if (f.pide && f.pide.length) {
-      f.pide.forEach(function (n, k) {
-        var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
+      f.pide.forEach(function (n) {
+        var huecos = huecosDeNecesidad(n);
+        if (!huecos.length) return;          // cubierta entera: no se dibuja nada
+        var bloques = huecos.map(function (h) {
+          /* `data-asig` lleva a «quién lo cubre» con la necesidad puesta: el
+             hueco es apretable y hace lo único que uno quiere hacer con un
+             hueco, que es taparlo. La barra pálida no hacía ni eso. */
+          return '<span class="lhueco" data-asig="' + n.id + '"'
+               + ' style="left:' + pct(h.desde) + '%;width:' + (pct(h.hasta) - pct(h.desde)) + '%"'
+               + ' title="' + esc('Sin asignar · ' + nombreCargo(n.cargo_id) + ' · '
+                   + rangoTxt(h2a(h.desde), h2a(h.hasta))
+                   + (h.falta > 1 ? ' · faltan ' + h.falta + ' personas' : ' · falta 1 persona')
+                   + ' · aprieta para cubrirlo') + '">'
+               + '<b>sin asignar</b>' + (h.falta > 1 ? ' <i>×' + h.falta + '</i>' : '')
+               + '</span>';
+        }).join('');
         html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
-              + '<span class="lrot">' + (k === 0 ? esc(f.nombre) : '') + '</span>'
-              + '<div class="lpista">'
-              + '<span class="lpide" data-necid="' + n.id + '"'
-              + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
-              + ' title="' + esc('Pide ' + n.personas_requeridas + ' · '
-                  + rangoTxt(n.hora_inicio, n.hora_fin) + ' · ' + estadoNecesidad(n).texto) + '">'
-              /* EL MISMO ESTADO QUE LA TARJETA, Y CON SUS MISMAS PALABRAS. Antes
-                 decía siempre «hacen falta N», donde N era el requisito: una vez
-                 cubierta, la barra contradecía al «Completo» de abajo. */
-              + '<span class="lpidetxt">' + (function () {
-                  var e = estadoNecesidad(n);
-                  if (e.falta > 0) return 'falta ' + e.falta;
-                  if (e.falta < 0) return 'sobra ' + (-e.falta);
-                  return 'completo';
-                })() + '</span>'
-              + '<span class="tirador izq"></span><span class="tirador der"></span>'
-              + '</span></div></div>';
+              + '<span class="lrot">' + (lineasHueco === 0 ? esc(f.nombre) : '') + '</span>'
+              + '<div class="lpista">' + bloques + '</div></div>';
+        lineasHueco++;
       });
     }
     f.suyas.forEach(function (x, k) {
@@ -1121,8 +1137,11 @@ function pintarDia() {
          cocina u otra cosa?». */
       var quien = x.trabajador_id ? nombreTrab(x.trabajador_id) : 'pendiente';
       var rotulo = S.agrupar === 'persona' ? nombreCargo(x.cargo_id) : quien;
-      // El nombre del grupo solo en la primera línea, si no hay fila de pedido.
-      var rot = (!f.pide || !f.pide.length) && k === 0 ? esc(f.nombre) : '';
+      /* El nombre del grupo solo en la primera línea. Y depende de si se dibujó
+         alguna línea de huecos, no de si HAY necesidades: desde la opción D una
+         necesidad cubierta entera no dibuja nada, así que preguntar por
+         `f.pide` dejaba la fila sin nombre justo cuando todo estaba cubierto. */
+      var rot = lineasHueco === 0 && k === 0 ? esc(f.nombre) : '';
       html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
             + '<span class="lrot chico">' + rot + '</span><div class="lpista">'
             + '<span class="lbarra ' + colorCargo(x.cargo_id) + (x.trabajador_id ? '' : ' sinnadie')
@@ -1474,7 +1493,10 @@ function pintarMesB() {
            a ESA semana en vez de dejarte donde estabas. */
         html += '<td class="d' + (d === hoy ? ' hoy' : '')
               + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
-              + ' data-dia="' + d + '">'
+              + ' data-dia="' + d + '"'
+              + ' data-fila="' + esc(String(fila.id || '')) + '"'
+              + ' title="' + esc(fila.nombre + ' · ' + nombreDia(d) + ' ' + diaMes(d)
+                  + (suyas.length ? '' : ' · aprieta para agregarle un turno')) + '">'
               + suyas.map(function (a) {
                   /* `data-asigid` es todo lo que hace falta para que el clic
                      abra la ficha: el oyente de la malla ya abre cualquier cosa
@@ -1518,8 +1540,9 @@ function pintarMesB() {
   pintarPie();
   $('#cEstado').textContent = resumenPublicar();
   avisoPlan('En el <b>Mes</b> se ve dónde hay huecos y a quién le toca siempre lo mismo.'
-          + ' <b>Aprieta un turno</b> para abrirlo sin salir de aquí, o el'
-          + ' <b>número de semana</b> para ir a esa semana.');
+          + ' <b>Aprieta un turno</b> para abrirlo, o una <b>casilla vacía</b> para'
+          + ' agregarle uno — sin salir de aquí. El <b>número de semana</b> te lleva'
+          + ' a esa semana.');
 }
 
 function pintarMes() {
@@ -1570,6 +1593,72 @@ function estadoNecesidad(n) {
     texto: falta === 0 ? 'Completo'
          : (falta > 0 ? 'Falta ' + falta : 'Sobra ' + (-falta)),
   };
+}
+
+/* LOS HUECOS DE UNA NECESIDAD, TRAMO POR TRAMO.
+
+   Pedro eligió D el 12-10 (msg 5929) después de preguntar qué le decía la barra
+   pálida y de ver que **ninguna de las otras plataformas dibuja «la necesidad»**:
+   Deputy y 7shifts dibujan turnos, y lo que falta es un turno sin nadie —Deputy
+   lo llama *open / empty shift* y hasta tiene una fila propia para ellos—.
+
+   Así que en la vista Día ya no se dibuja lo pedido: se dibuja **lo que falta**.
+
+   Y se calcula de verdad, no a bulto. En cada instante del tramo pedido faltan
+   `personas_requeridas` menos los que lo cubren EN ESE instante. Por eso se
+   parte el tramo en los puntos donde alguien entra o sale, y cada pedazo lleva
+   su propio déficit. Sin eso, una necesidad de 17:00 a 23:00 con alguien que se
+   va a las 20:00 diría «falta 1» en todo el tramo —incluida la parte que sí
+   está cubierta—, que es la clase de cifra que se deja de mirar.
+
+   Los pedazos contiguos con el mismo déficit se juntan: tres bloques seguidos
+   que dicen lo mismo son ruido. */
+function huecosDeNecesidad(n) {
+  var i = a2h(n.hora_inicio), ff = a2h(n.hora_fin); if (ff <= i) ff += 24;
+  /* CUENTAN TODAS LAS ASIGNACIONES, CON NOMBRE O SIN NOMBRE.
+
+     Esto se vio mirando la pantalla, no el código. Un turno «pendiente» —de los
+     que Pedro crea sin nadie para asignar después— **ya es el hueco dibujado**:
+     sale como barra rayada en la línea de turnos. Contando solo a los que
+     tienen nombre, el mismo puesto que falta aparecía DOS VECES: la barra
+     rayada y encima un bloque ámbar. Justo la duplicación que la opción D vino
+     a quitar, reapareciendo con otra forma.
+
+     Ojo con la diferencia, que es a propósito: la TARJETA sigue diciendo
+     «Falta 1» cuando hay un pendiente, porque cuenta **personas** y ahí no hay
+     nadie — eso lo decidió Pedro y tiene su propia comprobación desde hace
+     días. Esta función cuenta **bloques ya dibujados**. Las dos son ciertas
+     porque no contestan la misma pregunta.
+
+     La invariante que deja: lo que se ve en la línea —turnos más huecos— suma
+     siempre las personas que pediste. */
+  var mias = S.asignaciones.filter(function (a) {
+    return a.necesidad_id === n.id;
+  }).map(function (a) {
+    var x = a2h(a.hora_inicio), y = a2h(a.hora_fin); if (y <= x) y += 24;
+    return { x: x, y: y };
+  });
+
+  var cortes = [i, ff];
+  mias.forEach(function (m) {
+    if (m.x > i && m.x < ff) cortes.push(m.x);
+    if (m.y > i && m.y < ff) cortes.push(m.y);
+  });
+  cortes = cortes.filter(function (v, k, t) { return t.indexOf(v) === k; })
+                 .sort(function (a, b) { return a - b; });
+
+  var tramos = [];
+  for (var k = 0; k < cortes.length - 1; k++) {
+    var a0 = cortes[k], a1 = cortes[k + 1];
+    if (a1 <= a0) continue;
+    var cubren = mias.filter(function (m) { return m.x <= a0 && m.y >= a1; }).length;
+    var falta = n.personas_requeridas - cubren;
+    if (falta <= 0) continue;
+    var ult = tramos[tramos.length - 1];
+    if (ult && ult.hasta === a0 && ult.falta === falta) ult.hasta = a1;   // se juntan
+    else tramos.push({ desde: a0, hasta: a1, falta: falta });
+  }
+  return tramos;
 }
 
 function pintarNecesidad(n) {
@@ -2055,6 +2144,25 @@ $('#malla').addEventListener('click', function (ev) {
      El viaje a la semana sigue existiendo, pero como GESTO DELIBERADO: se
      aprieta el número de semana. Un clic en una casilla no te mueve la pantalla
      por accidente, y el mes no queda sin salida. */
+  /* LA CASILLA VACIA DEL MES SIRVE PARA AGREGAR.
+
+     Lo encontró Pedro con su malla de verdad (msg 5921): *«a beto, el 14 me lo
+     enegrece, pero no me deja asignarle algo»*. Tenía razón y el defecto era de
+     los peores: la casilla **se iluminaba y mostraba manito** —prometía que se
+     podía apretar— **y no hacía nada**. Una pista falsa es peor que ninguna,
+     porque quien la ve prueba, no pasa nada, y deja de confiar en el resto.
+
+     Agregar desde el mes es además lo que hace Skello, que crea, modifica y
+     borra turnos en su vista Mes. Preselecciona la fila, igual que el + de la
+     semana: filas de personas → la persona; filas de cargos → el cargo. */
+  var celVacia = t.closest && t.closest('.mesb td.d[data-fila]');
+  if (celVacia && !t.closest('[data-asigid]')) {
+    var quienMes = celVacia.dataset.fila || null;
+    return abrirAsignacion(null, null, celVacia.dataset.dia,
+      S.agrupar === 'persona' ? { trabajadorId: quienMes, fijo: quienMes ? 'persona' : null }
+                              : { cargoId: quienMes,      fijo: quienMes ? 'cargo'   : null });
+  }
+
   var semCab = t.closest && t.closest('.mesb [data-semana]');
   if (semCab) {
     S.lunes = semCab.dataset.semana;
@@ -4888,6 +4996,7 @@ window.__app = {
   claveTurno: claveTurno, esClaveTurno: esClaveTurno, turnosDeClave: turnosDeClave,
   pintarMalla: pintarMalla, porHoraTurno: porHoraTurno, hhmm: hhmm, avisoPlan: avisoPlan,
   CFG_TOPE: CFG_TOPE, paso: paso, mostrar: mostrar, estadoNecesidad: estadoNecesidad,
+  huecosDeNecesidad: huecosDeNecesidad, h2a: h2a, a2h: a2h,
   pintarSelectores: pintarSelectores,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,

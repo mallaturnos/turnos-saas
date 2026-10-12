@@ -932,3 +932,24 @@ table.mesb thead th.cont.irsem { cursor: pointer; }
 table.mesb thead th.cont.irsem:hover { background: var(--verde-claro); color: var(--verde); }
 /* Y la marca de un turno se aprieta para abrirlo. */
 table.mesb .mini { cursor: pointer; }
+
+/* ---------- el hueco: lo que falta por cubrir (opción D, 12-10) ----------
+
+   Reemplaza la barra pálida que dibujaba «lo pedido». Pedro preguntó qué le
+   decía esa barra y la respuesta honesta era «casi nada»: cuando el tramo está
+   cubierto entero, medía lo mismo que la barra de abajo y repetía el dato.
+   Ahora solo se dibuja lo que NO tiene nombre todavía.
+
+   EL COLOR ES EL AMBAR QUE LA APP YA USA para «falta gente» en las tarjetas
+   (.cob-falta). Inventar un color nuevo para el mismo significado es como
+   escribir la misma cifra en dos formatos: obliga a traducir. */
+.lhueco {
+  position: absolute; top: .25rem; height: 1.2rem;
+  background: var(--amar); color: #8a5a00;
+  border: 1px dashed var(--amar-borde); border-radius: 5px;
+  font-size: .72rem; line-height: 1.1rem; padding: 0 .4rem;
+  white-space: nowrap; overflow: hidden; cursor: pointer;
+}
+.lhueco b { font-weight: 600; }
+.lhueco i { font-style: normal; font-weight: 700; }
+.lhueco:hover { filter: brightness(.97); }
