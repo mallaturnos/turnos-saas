@@ -2164,7 +2164,7 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   // La foto se toma con los campos YA puestos: si se tomara antes, abrir una
   // ficha prellenada contaria como «cambiaste algo» y escribiria sola.
   fichaBase = leerFicha();
-  $('#aCancelar').hidden = true;
+  pintarSalida();
   $('#dlgAsig').showModal();
 }
 
@@ -2283,11 +2283,53 @@ function pintarOjo() {
   e.hidden = !avisos.length;
   e.innerHTML = avisos.join('<br>');
 }
+/* LA SALIDA SE TIENE QUE VER, Y DICE COSAS DISTINTAS EN CADA CASO.
+
+   Lo encontro Pedro el 12-10 a las 17:06 probando la v79: entro por el + y la
+   ficha le quedo con UN SOLO BOTON, «Listo», que crea el turno. Pregunto lo
+   obvio: «por que aca no da la opcion de cerrar eso y que quede como esta?».
+
+   Salida habia -Escape no crea nada- pero NADA en la pantalla lo decia, y un
+   boton que no se ve es como si no existiera. Es el mismo error que ya costo una
+   vez en este proyecto, cuando copiar y pegar existian solo por teclado y el
+   escribio «no pude copiar pegar».
+
+   La causa fue mia y concreta: puse «Descartar cambios» a aparecer solo cuando
+   `fichaCambiada()`, y en un turno NUEVO no hay nada cambiado todavia.
+
+   Ahora:
+   · turno nuevo     -> «Cancelar» desde el principio. Cerrar no crea nada, y se ve.
+   · turno existente -> «Descartar cambios» cuando se toco algo. Sin cambios,
+                        cerrar no escribe, asi que no hay de que escapar. */
+function pintarSalida() {
+  var b = $('#aCancelar'), c = $('#aAuto');
+  if (!b) return;
+  if (!asigActual) {
+    /* «Cerrar» lo pidió Pedro con esa palabra: «cerrar. es mas intuitivo»
+       (msg 5901). */
+    b.hidden = false;
+    b.textContent = 'Cerrar';
+    /* Y EL CARTEL TIENE QUE CAMBIAR CON ÉL. Decía «lo que cambies se guarda al
+       cerrar», que en un turno nuevo CONTRADICE al botón: ahí cerrar no crea
+       nada. Dos textos que se desmienten en la misma pantalla son peores que
+       uno solo incompleto, porque no se sabe a cuál creerle. */
+    if (c) c.innerHTML = '<b>Listo</b> crea el turno. <b>Cerrar</b> deja la casilla'
+                       + ' como está.';
+  } else {
+    b.hidden = !fichaCambiada();
+    /* Aquí NO se llama «Cerrar» a propósito, aunque él usara esa palabra: en un
+       turno que ya existe, cerrar —con Listo o con Escape— GUARDA. Un botón que
+       dijera «Cerrar» y además tirara los cambios sería la trampa de siempre,
+       la pantalla diciendo una cosa y la acción haciendo otra. */
+    b.textContent = 'Descartar cambios';
+    if (c) c.innerHTML = 'Lo que cambies <b>se guarda al cerrar</b>.'
+                       + ' <b>Deshacer</b> lo revierte.';
+  }
+}
+
 function alCambiarFicha() {
   pintarDeQuien(); pintarOjo();
-  // «Descartar cambios» existe solo cuando hay algo que descartar: con la ficha
-  // intacta sería un botón que no hace nada.
-  var b = $('#aCancelar'); if (b) b.hidden = !fichaCambiada();
+  pintarSalida();
 }
 $('#aQuien').addEventListener('change', alCambiarFicha);
 // Cambiar el cargo también: el aviso depende de los dos, no solo de la persona.
