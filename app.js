@@ -1095,9 +1095,17 @@ function pintarDia() {
               + '<div class="lpista">'
               + '<span class="lpide" data-necid="' + n.id + '"'
               + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
-              + ' title="Hacen falta ' + n.personas_requeridas + ' · '
-              + rangoTxt(n.hora_inicio, n.hora_fin) + '">'
-              + '<span class="lpidetxt">hacen falta ' + n.personas_requeridas + '</span>'
+              + ' title="' + esc('Pide ' + n.personas_requeridas + ' · '
+                  + rangoTxt(n.hora_inicio, n.hora_fin) + ' · ' + estadoNecesidad(n).texto) + '">'
+              /* EL MISMO ESTADO QUE LA TARJETA, Y CON SUS MISMAS PALABRAS. Antes
+                 decía siempre «hacen falta N», donde N era el requisito: una vez
+                 cubierta, la barra contradecía al «Completo» de abajo. */
+              + '<span class="lpidetxt">' + (function () {
+                  var e = estadoNecesidad(n);
+                  if (e.falta > 0) return 'falta ' + e.falta;
+                  if (e.falta < 0) return 'sobra ' + (-e.falta);
+                  return 'completo';
+                })() + '</span>'
               + '<span class="tirador izq"></span><span class="tirador der"></span>'
               + '</span></div></div>';
       });
@@ -1376,7 +1384,141 @@ function soltarTurno(id, filaId, horaNueva, soloHora) {
 /* El mes, con sus semanas numeradas a la izquierda. Las celdas van compactas:
    en un mes no cabe el detalle, y pretender que quepa lo deja ilegible. Se ve
    dónde falta gente y se entra al día para arreglarlo. */
+/* ===================== EL MES POR PERSONA (forma B) =====================
+
+   Pedro eligió B el 12-10 (msg 5909: «probemos con B») sobre la propuesta de
+   `propuesta_mes.py`. Es la forma de Skello, que es además la que él ya había
+   visto en una foto: UNA FILA POR PERSONA, el mes partido en semanas seguidas, y
+   entre semana y semana una columna con el total de esa semana.
+
+   POR QUE ASI Y NO 31 COLUMNAS SUELTAS. El argumento que yo mismo había dado
+   para no hacer el mes —«serían 31 columnas»— era flojo, y los tres
+   competidores lo resuelven: Skello partiendo en semanas, Deputy comprimiendo
+   la celda. Partir en semanas además hace que el total semanal tenga dónde ir.
+
+   QUE PREGUNTA CONTESTA, que es distinto de la semana. La semana contesta
+   «¿quién cubre el martes?». El mes contesta «¿dónde hay huecos?» y «¿a quién le
+   estoy cargando siempre lo mismo?» — y eso solo se ve con la fila de la persona
+   entera delante.
+
+   DE LECTURA, Y EL CLIC LLEVA A LA SEMANA. Nadie trabaja en lote en el mes:
+   7shifts lo tiene de solo lectura y ni Deputy ni Connecteam dejan copiar ahí
+   (Skello sí edita turnos sueltos; verificado y corregido el 12-10). Aquí el mes
+   no intenta ser una rejilla de edición — pero tampoco te expulsa, que es lo que
+   hacía antes: el clic en una casilla te LLEVA a esa semana, que es a donde
+   ibas.
+
+   LO QUE NO PUEDE MOSTRAR TODAVIA es la diferencia contra el contrato, porque
+   las horas contratadas no existen (propuesta D de Equipo). El total de la
+   semana sí, desde el primer día; la diferencia queda para cuando haya contra
+   qué comparar. Se le dijo antes de empezar. */
+function pintarMesB() {
+  var r = rangoVista(), hoy = hoyTexto();
+
+  // Las semanas del mes, cada una con sus siete días.
+  var semanas = [], f = r.desde;
+  while (f <= r.hasta) {
+    var sem = [];
+    for (var i = 0; i < 7; i++) { sem.push(f); f = masDias(f, 1); }
+    semanas.push(sem);
+  }
+  var mes = S.lunes.slice(0, 7);   // el mes que manda, para apagar los vecinos
+  var todos = semanas.reduce(function (t, x) { return t.concat(x); }, []);
+
+  var filas, deQuien;
+  if (S.agrupar === 'persona') {
+    filas = conHistoria(S.asignaciones.filter(function (a) {
+      return todos.indexOf(a.fecha) >= 0;
+    })).map(function (p) {
+      return { id: p.id, nombre: p.nombre, ido: p.activo === false };
+    });
+    filas.push({ id: null, nombre: 'Sin asignar', suelto: true });
+    deQuien = function (a) { return a.trabajador_id; };
+  } else {
+    filas = S.cargos.map(function (q) { return { id: q.id, nombre: q.nombre }; });
+    deQuien = function (a) { return a.cargo_id; };
+  }
+
+  var html = '<table class="mesb"><thead><tr><th class="rot"></th>';
+  semanas.forEach(function (sem) {
+    sem.forEach(function (d) {
+      html += '<th class="d' + (d === hoy ? ' hoy' : '')
+            + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
+            + ' title="' + nombreDia(d) + ' ' + diaMes(d) + '">'
+            + d.slice(8) + '</th>';
+    });
+    html += '<th class="cont" title="Horas de la semana ' + semanaISO(sem[0]) + '">'
+          + 'S' + semanaISO(sem[0]) + '<i>h</i></th>';
+  });
+  html += '<th class="tot">Mes</th></tr></thead><tbody>';
+
+  var porSemana = semanas.map(function () { return 0; });
+  var totalMes = 0;
+
+  filas.forEach(function (fila) {
+    html += '<tr><th class="rot">' + esc(fila.nombre)
+          + (fila.ido ? ' <span class="yano">ya no trabaja aquí</span>' : '') + '</th>';
+    var mesHoras = 0;
+    semanas.forEach(function (sem, iSem) {
+      var semHoras = 0;
+      sem.forEach(function (d) {
+        var suyas = S.asignaciones.filter(function (a) {
+          return a.fecha === d && deQuien(a) === fila.id;
+        }).sort(porHoraTurno);
+        suyas.forEach(function (a) {
+          if (a.trabajador_id) semHoras += horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin));
+        });
+        /* `data-semana` es lo que convierte el mes en una puerta: el clic lleva
+           a ESA semana en vez de dejarte donde estabas. */
+        html += '<td class="d' + (d === hoy ? ' hoy' : '')
+              + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
+              + ' data-semana="' + lunesDe(d) + '" data-dia="' + d + '">'
+              + suyas.map(function (a) {
+                  return '<span class="mini ' + colorCargo(a.cargo_id) + '"'
+                       + ' title="' + esc(hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin)
+                           + ' · ' + nombreCargo(a.cargo_id)) + '">'
+                       + hhmm(a.hora_inicio).slice(0, 2) + '</span>';
+                }).join('')
+              + '</td>';
+      });
+      // Raya y no cero: un 0 se lee como «ahí no hay nada que ver».
+      html += '<td class="cont">'
+            + (semHoras ? numero(semHoras) + ' h' : '<span class="cero">—</span>')
+            + '</td>';
+      porSemana[iSem] += semHoras;
+      mesHoras += semHoras;
+    });
+    html += '<td class="tot">'
+          + (mesHoras ? '<b>' + numero(mesHoras) + ' h</b>' : '<span class="cero">—</span>')
+          + '</td></tr>';
+    totalMes += mesHoras;
+  });
+
+  html += '</tbody><tfoot><tr><th class="rot">Horas</th>';
+  semanas.forEach(function (sem, iSem) {
+    html += '<td class="d" colspan="7"></td>';
+    html += '<td class="cont">'
+          + (porSemana[iSem] ? numero(porSemana[iSem]) + ' h' : '<span class="cero">—</span>')
+          + '</td>';
+  });
+  html += '<td class="tot">'
+        + (totalMes ? '<b>' + numero(totalMes) + ' h</b>' : '<span class="cero">—</span>')
+        + '</td></tr></tfoot></table>';
+
+  var m = $('#malla');
+  m.className = 'malla mesb-wrap';
+  m.innerHTML = html;
+  pintarPie();
+  $('#cEstado').textContent = resumenPublicar();
+  avisoPlan('El <b>Mes</b> es para mirar: aquí se ve dónde hay huecos y a quién le toca'
+          + ' siempre lo mismo. <b>Aprieta cualquier día</b> y te llevo a esa semana para'
+          + ' editarla.');
+}
+
 function pintarMes() {
+  // Agrupado por persona o por cargo, el mes es la forma B. Por día sigue
+  // siendo el calendario, que para mirar un mes suelto también sirve.
+  if (esPlanilla()) return pintarMesB();
   var r = rangoVista(), hoy = hoyTexto(), f = r.desde, html = '';
   html += '<div class="mescab">' + ['lunes','martes','miérc.','jueves','viernes','sábado','domingo']
     .map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>';
@@ -1394,14 +1536,40 @@ function pintarMes() {
 }
 
 
+/* LA COBERTURA SE CUENTA EN UN SOLO SITIO.
+
+   Lo encontró Pedro el 12-10 (msg 5910) en la vista Día: asignó gente, la
+   tarjeta de abajo decía **Completo** y la barra de arriba seguía diciendo
+   **«hacen falta 1»**. Preguntó si eso estaba bien. No lo estaba: eran dos
+   frases sobre lo mismo diciendo lo contrario en la misma pantalla.
+
+   La causa: la barra escribía `personas_requeridas` con las palabras «hacen
+   falta», o sea el REQUISITO contado como si fuera el HUECO. Mientras no había
+   nadie asignado las dos cosas coinciden, y por eso pasó inadvertido.
+
+   Y había algo peor de fondo: la tarjeta calculaba la cobertura por su cuenta y
+   la barra no la calculaba en absoluto. Ahora las dos preguntan aquí. Es la
+   misma regla que `porHoraTurno`: si el orden —o la cuenta— se decide en dos
+   sitios, algún día dicen cosas distintas, y entonces hay que elegir cuál
+   miente. */
+function estadoNecesidad(n) {
+  var cubren = S.asignaciones.filter(function (a) {
+    return a.necesidad_id === n.id && a.trabajador_id;
+  }).length;
+  var falta = n.personas_requeridas - cubren;
+  return {
+    cubren: cubren, falta: falta,
+    clase: falta === 0 ? 'cob-completo' : (falta > 0 ? 'cob-falta' : 'cob-sobra'),
+    texto: falta === 0 ? 'Completo'
+         : (falta > 0 ? 'Falta ' + falta : 'Sobra ' + (-falta)),
+  };
+}
+
 function pintarNecesidad(n) {
   var mias = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; })
                           .sort(porHoraTurno);
-  var cubren = mias.filter(function (a) { return a.trabajador_id; }).length;
-  var falta = n.personas_requeridas - cubren;
-  var clase = falta === 0 ? 'cob-completo' : (falta > 0 ? 'cob-falta' : 'cob-sobra');
-  var texto = falta === 0 ? 'Completo'
-            : (falta > 0 ? 'Falta ' + falta : 'Sobra ' + (-falta));
+  var e = estadoNecesidad(n);
+  var cubren = e.cubren, falta = e.falta, clase = e.clase, texto = e.texto;
 
   return '<div class="nec ' + colorCargo(n.cargo_id) + '">'
     + '<div class="cab" data-nec="' + n.id + '">'
@@ -1768,12 +1936,15 @@ $('#btnHoy').addEventListener('click',      function () {
 $('#cAgrupar').addEventListener('click', function (ev) {
   var b = ev.target.closest('button'); if (!b) return;
   S.agrupar = b.dataset.g;
-  // Agrupar por gente no tiene sentido en el Mes: se vuelve a Semana y se dice.
-  if (S.agrupar !== 'dia' && S.vista === 'mes') {
-    S.vista = 'semana';
-    avisoPlan('La vista <b>Mes</b> no se puede agrupar por persona ni por cargo '
-            + '—serían 31 columnas—, así que te dejé en <b>Semana</b>.');
-  }
+  /* YA NO TE ECHA DEL MES.
+
+     Aquí había un rebote: agrupar por persona o cargo en el Mes te devolvía a
+     Semana con el aviso de que «serían 31 columnas». Ese argumento era mío y
+     era flojo —Skello parte el mes en semanas, Deputy comprime la celda—, y el
+     rebote era el verdadero defecto: te sacaba de donde habías decidido estar.
+
+     Desde la v81 el Mes por persona o por cargo ES la vista B. Agrupado por día
+     sigue siendo el calendario. Ninguna de las dos te expulsa. */
   pintarSelectores(); pintarMalla();
 });
 // El selector de cargo del gráfico se repinta con la malla, así que el oyente
@@ -1865,6 +2036,18 @@ $('#malla').addEventListener('click', function (ev) {
   // El clic que cierra un arrastre no abre nada: la persona estaba marcando.
   if (SEL.tragarClic) return;
   var t = ev.target;
+  /* EL MES ES UNA PUERTA, NO UNA PARED. El clic en cualquier día lleva a esa
+     semana — que es a donde iba quien lo apretó. Antes el Mes solo sabía
+     expulsarte: si intentabas agruparlo, te devolvía a Semana sin que lo
+     pidieras. Esto es lo contrario: vas porque tú apretaste. */
+  var celMes = t.closest && t.closest('.mesb td[data-semana]');
+  if (celMes) {
+    S.lunes = celMes.dataset.semana;
+    S.vista = 'semana';
+    pintarSelectores(); pintarMalla();
+    avisoPlan('');
+    return;
+  }
   /* La × antes que nada, y cortando el clic: vive DENTRO de la cabecera, que
      también es apretable, así que sin esto borrar abriría además la ficha. */
   if (t.dataset.borrarnec) {
@@ -4689,7 +4872,8 @@ window.__app = {
   SEL: SEL, marcarRango: marcarRango, limpiarSeleccion: limpiarSeleccion,
   claveTurno: claveTurno, esClaveTurno: esClaveTurno, turnosDeClave: turnosDeClave,
   pintarMalla: pintarMalla, porHoraTurno: porHoraTurno, hhmm: hhmm, avisoPlan: avisoPlan,
-  CFG_TOPE: CFG_TOPE, paso: paso, mostrar: mostrar,
+  CFG_TOPE: CFG_TOPE, paso: paso, mostrar: mostrar, estadoNecesidad: estadoNecesidad,
+  pintarSelectores: pintarSelectores,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,

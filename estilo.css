@@ -851,3 +851,73 @@ table.girada tbody tr.ido .yano { display:block; font-size:.68rem; font-weight:6
 table.girada tbody tr.ido td.cel .agregar-cel { display:none; }
 /* Agrupado por cargos no hay fila que marcar: la marca va en el nombre. */
 .gente.bloques .blq em.sefue { color:#8a6d2f; font-weight:600; }
+
+/* ===================== EL MES POR PERSONA (forma B) =====================
+
+   Una fila por persona y el mes partido en semanas, con la columna del total
+   entre medio. Lo eligió Pedro el 12-10.
+
+   LAS MARCAS SON DIMINUTAS A PROPOSITO. Aquí no se edita: lo que se viene a
+   ver es el REPARTO —quién carga siempre la noche, dónde quedan huecos—, y eso
+   se ve mejor con 31 columnas chicas que con siete grandes. El detalle de cada
+   turno está en el `title`, y para trabajarlo se aprieta y se va a la semana. */
+.malla.mesb-wrap { overflow-x: auto; }
+
+table.mesb { border-collapse: collapse; width: 100%; font-size: .78rem; }
+
+table.mesb th.rot {
+  text-align: left; padding: .3rem .45rem; white-space: nowrap;
+  position: sticky; left: 0; background: var(--papel); z-index: 1;
+  border-right: 1px solid var(--borde); font-weight: 600;
+}
+table.mesb thead th.rot { background: var(--papel); }
+table.mesb th.rot .yano { font-weight: 400; font-size: .68rem; color: var(--oro); }
+
+table.mesb thead th.d {
+  width: 1.55rem; min-width: 1.55rem; padding: .25rem 0; text-align: center;
+  font-weight: 600; color: var(--gris); font-size: .68rem;
+  border-bottom: 1px solid var(--borde);
+}
+table.mesb td.d {
+  width: 1.55rem; min-width: 1.55rem; padding: 1px; vertical-align: top;
+  border-bottom: 1px solid var(--borde); cursor: pointer;
+}
+table.mesb td.d:hover { background: var(--verde-claro); }
+
+/* Los días de los meses vecinos que caen en una semana mostrada se apagan, en
+   vez de esconderse: la semana tiene siete días y recortarla mentiría sobre
+   cuánto se trabajó esa semana. Es lo que hace Skello. */
+table.mesb .vecino { background: #00000008; color: #aab; }
+
+table.mesb .hoy { box-shadow: inset 0 0 0 2px var(--verde); }
+
+/* Una marca por turno: la hora de entrada y nada más. */
+table.mesb .mini {
+  display: block; font-size: .6rem; line-height: 1.5; text-align: center;
+  border-radius: 2px; margin: 1px 0; color: #fff; background: var(--verde);
+}
+table.mesb .mini.c1 { background: #0f6b63; }
+table.mesb .mini.c2 { background: #8a6d2f; }
+table.mesb .mini.c3 { background: #3a5a86; }
+table.mesb .mini.c4 { background: #8a3f3f; }
+
+/* LA COLUMNA DEL TOTAL ENTRE SEMANAS, que es la gracia de la forma B: dice
+   cuánto lleva esa persona ESA semana, sin salir del mes. Lo que todavía no
+   puede decir es la diferencia contra el contrato — las horas contratadas no
+   existen (propuesta D de Equipo). */
+table.mesb .cont {
+  width: 3.2rem; min-width: 3.2rem; text-align: right; padding: .25rem .35rem;
+  background: var(--papel); border-left: 1px solid var(--borde);
+  border-right: 1px solid var(--borde); border-bottom: 1px solid var(--borde);
+  font-variant-numeric: tabular-nums;
+}
+table.mesb thead th.cont { font-size: .62rem; color: var(--gris); font-weight: 600; }
+/* La cabecera dice las dos cosas: qué semana es y que lo de abajo son horas. */
+table.mesb thead th.cont i { font-style: normal; display: block; font-size: .58rem;
+  opacity: .8; }
+table.mesb .tot {
+  width: 3rem; min-width: 3rem; text-align: right; padding: .25rem .4rem;
+  border-bottom: 1px solid var(--borde); font-variant-numeric: tabular-nums;
+}
+table.mesb .cero { color: var(--gris); }
+table.mesb tfoot td, table.mesb tfoot th { border-top: 2px solid var(--borde); }
