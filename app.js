@@ -2027,6 +2027,46 @@ $('#nBorrar').addEventListener('click', function () {
 // ====================================================================
 var asigPreset = null;
 var asigActual = null, asigNecesidad = null, asigFecha = null;
+var fichaBase = null;   // la foto de los campos al abrir, para saber si cambio algo
+
+/* SE GUARDA AL CERRAR, Y NO SE ESCRIBE SI NO CAMBIO NADA.
+
+   Lo eligio Pedro el 12-10 (msg 5880, opcion C), despues de preguntar que hacia
+   el boton Guardar: «no es necesario apretar guardar en cada cambio... la
+   planilla va teniendo como memoria». Su comparacion fue Google Sheets.
+
+   DOS COSAS QUE NO SON COMO EN SHEETS, y por eso esto guarda AL CERRAR y no a
+   cada tecla:
+
+   1. En Sheets una celda es un valor solo. Aqui un turno son cuatro datos que
+      solo tienen sentido juntos -cargo, persona, entra, sale-. Guardar a media
+      edicion escribiria un turno imposible: la entrada ya cambiada y la salida
+      todavia no.
+   2. Sheets nunca rechaza lo que escribes. Aqui hay reglas -nadie en dos turnos
+      a la vez, no se pisa una ausencia, el indice de no repetir-. Asi que si el
+      guardado se bloquea, la ficha SE QUEDA ABIERTA y dice por que, en vez de
+      cerrarse y perder lo escrito.
+
+   Y lo que hace que «entrar a mirar» no cueste nada: si los campos estan igual
+   que cuando se abrio, cerrar NO escribe -ni toca el contador de cambiadas, ni
+   ocupa un paso de Deshacer-. Eso ademas arregla lo que le conte antes, que
+   apretar Guardar sin cambiar nada escribia igual. */
+function leerFicha() {
+  return {
+    trabajador_id: $('#aQuien').value || null,
+    hora_inicio: $('#aEntra').value,
+    hora_fin: $('#aSale').value,
+    cargo_id: $('#aCargo').value || null,
+  };
+}
+function fichaCambiada() {
+  if (!fichaBase) return false;
+  var h = leerFicha();
+  return h.trabajador_id !== fichaBase.trabajador_id
+      || h.hora_inicio !== fichaBase.hora_inicio
+      || h.hora_fin !== fichaBase.hora_fin
+      || h.cargo_id !== fichaBase.cargo_id;
+}
 /* `preset` lo manda la tabla por Personas o Cargos: dice de qué fila salió el
    clic, para que el turno nazca con la persona —o el cargo— de esa fila ya
    puesta. Sin esto, agregar desde la fila «Cocina» abría un turno de «Caja». */
@@ -2108,6 +2148,10 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
 
   pintarDeQuien();
   pintarOjo();
+  // La foto se toma con los campos YA puestos: si se tomara antes, abrir una
+  // ficha prellenada contaria como «cambiaste algo» y escribiria sola.
+  fichaBase = leerFicha();
+  $('#aCancelar').hidden = true;
   $('#dlgAsig').showModal();
 }
 
@@ -2226,13 +2270,50 @@ function pintarOjo() {
   e.hidden = !avisos.length;
   e.innerHTML = avisos.join('<br>');
 }
-function alCambiarFicha() { pintarDeQuien(); pintarOjo(); }
+function alCambiarFicha() {
+  pintarDeQuien(); pintarOjo();
+  // «Descartar cambios» existe solo cuando hay algo que descartar: con la ficha
+  // intacta sería un botón que no hace nada.
+  var b = $('#aCancelar'); if (b) b.hidden = !fichaCambiada();
+}
 $('#aQuien').addEventListener('change', alCambiarFicha);
 // Cambiar el cargo también: el aviso depende de los dos, no solo de la persona.
 $('#aCargo').addEventListener('change', alCambiarFicha);
+// Y las horas, que son los otros dos campos que cuentan como cambio.
+['#aEntra', '#aSale'].forEach(function (sel) {
+  $(sel).addEventListener('change', alCambiarFicha);
+  $(sel).addEventListener('input', alCambiarFicha);
+});
 
-$('#aCancelar').addEventListener('click', function () { $('#dlgAsig').close(); });
-$('#aGuardar').addEventListener('click', function () {
+/* DESCARTAR es lo único que cierra sin escribir. Cerrar de cualquier otra forma
+   guarda, que es lo que pidió Pedro. */
+$('#aCancelar').addEventListener('click', function () { fichaBase = null; $('#dlgAsig').close(); });
+
+/* ESCAPE TAMBIÉN GUARDA. Si Escape descartara y «Listo» guardara, habría dos
+   formas de cerrar con resultados distintos, y la persona no tendría cómo saber
+   cuál le tocó. Se corta el cierre automático para decidir aquí: si el guardado
+   se bloquea —el duplicado exacto que rechaza la base—, la ficha se queda
+   abierta en vez de cerrarse perdiendo lo escrito. */
+$('#dlgAsig').addEventListener('cancel', function (ev) {
+  ev.preventDefault();
+  cerrarFicha(false);
+});
+
+$('#aGuardar').addEventListener('click', function () { cerrarFicha(true); });
+
+/* `explicito` es true cuando se apretó «Listo». Importa en un solo caso: entrar
+   por el + y cerrar SIN TOCAR NADA. Con Escape no se crea el turno —apretar el
+   + y arrepentirse no puede dejar un turno puesto—, pero con «Listo» sí, porque
+   ahí la persona dijo que el prellenado le servía. */
+function cerrarFicha(explicito) {
+  if (!fichaCambiada() && (asigActual || !explicito)) {
+    fichaBase = null; $('#dlgAsig').close();
+    return Promise.resolve();
+  }
+  return guardarFicha();
+}
+
+function guardarFicha() {
   var n = asigNecesidad ? S.necesidades.filter(function (x) { return x.id === asigNecesidad; })[0] : null;
   var d = {
     empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal,
@@ -2250,11 +2331,17 @@ $('#aGuardar').addEventListener('click', function () {
   if (!d.hora_inicio || !d.hora_fin) return aviso('#aMsg', 'Faltan las horas.', 'bad');
 
   aviso('#aMsg', 'Revisando…');
-  revisarChoque(d).then(function (choque) {
-    if (choque) return aviso('#aMsg', choque, 'bad');
-    return guardarAsignacion(d);
-  }).catch(function (e) { aviso('#aMsg', e.message, 'bad'); });
-});
+  return revisarChoque(d).then(function (choque) {
+    return guardarAsignacion(d).then(function (bien) {
+      /* El aviso del cruce va DESPUÉS de guardar y FUERA de la ficha, porque la
+         ficha ya se cerró. Si fuera antes sería una pregunta disfrazada; así es
+         lo que es: ya quedó hecho, y aquí está lo que conviene saber. */
+      if (bien !== false && choque) avisoPlan('⚠️ <b>Guardado con un cruce.</b> '
+        + choque + ' Queda marcado <b>«se cruza»</b> en la semana.');
+      return bien;
+    });
+  }).catch(function (e) { aviso('#aMsg', e.message, 'bad'); return false; });
+}
 
 /* ¿Se pisa con otro turno de esa misma persona? Devuelve el mensaje, o null.
 
@@ -2276,18 +2363,24 @@ function revisarChoque(d) {
       if (m > min) { min = m; pisa = o; }
     });
     if (!pisa) return null;
-    return '<b>No puede estar en dos turnos a la vez.</b> Se cruza <b>' + minTexto(min)
+    /* YA NO ES UNA NEGATIVA, ES UN AVISO. Lo decidió Pedro el 12-10, y es su
+       propio principio de la malla: «avisa, no bloquea». Antes esta frase
+       empezaba con «No puede estar en dos turnos a la vez» y la pantalla se
+       negaba a guardar; ahora se guarda y queda marcado «se cruza» en la
+       semana, que es un marcado que ya existía para los cruces heredados. */
+    return 'Se cruza <b>' + minTexto(min)
       + '</b> con su turno de ' + esc(rangoTxt(pisa.hora_inicio, pisa.hora_fin))
-      + ' del ' + esc(nombreDia(pisa.fecha)) + ' ' + esc(diaMes(pisa.fecha))
-      + '. Cambia las horas o mueve el otro.';
+      + ' del ' + esc(nombreDia(pisa.fecha)) + ' ' + esc(diaMes(pisa.fecha)) + '.';
   });
 }
 
+/* DEVUELVE SU PROMESA. Antes no la devolvía y quien la llamaba no tenía forma de
+   saber si había terminado — ni de decir algo después, como el aviso del cruce. */
 function guardarAsignacion(d) {
   aviso('#aMsg', 'Guardando…');
   var p = asigActual ? DATOS.asignaciones.guardar(asigActual.id, d) : DATOS.asignaciones.crear(d);
   var antesA = asigActual && JSON.parse(JSON.stringify(asigActual));
-  p.then(function (fila) {
+  return p.then(function (fila) {
     DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', fila.id, asigActual ? 'editar' : 'crear', asigActual, fila);
     if (antesA) recordar('el cambio en el turno', function () {
       return DATOS.asignaciones.guardar(antesA.id, {
@@ -2296,13 +2389,24 @@ function guardarAsignacion(d) {
     });
     else recordar('asignar a ' + (fila.trabajador_id ? nombreTrab(fila.trabajador_id) : 'pendiente'),
       function () { return DATOS.asignaciones.borrar(fila.id); });
-    $('#dlgAsig').close(); return recargarSemana();
+    fichaBase = null;
+    $('#dlgAsig').close();
+    return recargarSemana().then(function () { return true; });
   }).catch(function (e) {
-    // El índice único es el que impide duplicar el MISMO bloque. Traducirlo,
-    // porque el texto de Postgres no le dice nada a nadie.
-    if (/asignaciones_sin_repetir/.test(e.message))
-      return aviso('#aMsg', 'Esa persona ya tiene un turno que empieza a esa hora ese día.', 'bad');
+    /* DEVUELVE false Y DEJA LA FICHA ABIERTA. Lo segundo es lo que importa: si
+       se cerrara, la persona perdería lo que escribió por un choque que todavía
+       puede arreglar. Y lo primero evita que después se anuncie un cruce
+       «guardado» que en realidad no se guardó.
+
+       El índice único es el que impide duplicar el MISMO bloque. Se traduce,
+       porque el texto de Postgres no le dice nada a nadie. */
+    if (/asignaciones_sin_repetir/.test(e.message)) {
+      aviso('#aMsg', 'Esa persona ya tiene un turno que empieza a esa hora ese día.'
+                   + ' Cambia la hora de entrada.', 'bad');
+      return false;
+    }
     aviso('#aMsg', e.message, 'bad');
+    return false;
   });
 }
 
@@ -4529,7 +4633,8 @@ window.__app = {
   // desde fuera, pero lo que corre es exactamente lo que corre al apretarlas.
   SEL: SEL, marcarRango: marcarRango, limpiarSeleccion: limpiarSeleccion,
   claveTurno: claveTurno, esClaveTurno: esClaveTurno, turnosDeClave: turnosDeClave,
-  pintarMalla: pintarMalla, porHoraTurno: porHoraTurno,
+  pintarMalla: pintarMalla, porHoraTurno: porHoraTurno, hhmm: hhmm, avisoPlan: avisoPlan,
+  cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
   copiarSeleccion: copiarSeleccion, pegarSeleccion: pegarSeleccion,

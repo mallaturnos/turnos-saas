@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v77</span></p>
+      <span style="float:right;opacity:.55" id="ver">v78</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v77</span>
+    <span class="hint" id="ver2" title="Versión publicada">v78</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -324,11 +324,17 @@
     </div>
     <p class="hint">Puedes cubrir <b>solo un trozo</b>: deja las horas que de
     verdad va a trabajar esa persona.</p>
+    <!-- SE GUARDA AL CERRAR, y se dice. Lo eligio Pedro el 12-10 («no es
+         necesario apretar guardar en cada cambio»). Sin este cartel, el cambio
+         es invisible: quien venia apretando Guardar no sabe que ya no hace
+         falta, y quien no lo sabia no se entera de que sus cambios quedan. -->
+    <p class="hint" id="aAuto">Lo que cambies <b>se guarda al cerrar</b>.
+    <b>Deshacer</b> lo revierte.</p>
     <p class="msg" id="aMsg"></p>
     <div class="acciones">
-      <button type="button" class="primario" id="aGuardar">Guardar</button>
+      <button type="button" class="primario" id="aGuardar">Listo</button>
       <button type="button" class="plano" id="aBorrar" hidden>Quitar</button>
-      <button type="button" class="plano" id="aCancelar">Cancelar</button>
+      <button type="button" class="plano" id="aCancelar" hidden>Descartar cambios</button>
     </div>
   </form>
 </dialog>
