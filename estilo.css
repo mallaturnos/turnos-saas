@@ -916,7 +916,11 @@ table.mesb thead th.cont { font-size: .62rem; color: var(--gris); font-weight: 6
 table.mesb thead th.cont i { font-style: normal; display: block; font-size: .58rem;
   opacity: .8; }
 table.mesb .tot {
-  width: 3rem; min-width: 3rem; text-align: right; padding: .25rem .4rem;
+  /* 4,2rem y no 3: con 151 h el total se partia en dos lineas -«151» arriba y
+     «h» abajo- y un numero roto se lee como un error de la pantalla. Se vio
+     rellenando un mes entero de prueba, no con los pocos turnos de la demo. */
+  width: 4.2rem; min-width: 4.2rem; white-space: nowrap;
+  text-align: right; padding: .25rem .4rem;
   border-bottom: 1px solid var(--borde); font-variant-numeric: tabular-nums;
 }
 table.mesb .cero { color: var(--gris); }
