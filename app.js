@@ -2495,8 +2495,20 @@ function limpiarSeleccion() {
 function pintarSeleccion() {
   $$('#malla td.cel').forEach(function (td) {
     var k = claveCel(td);
-    td.classList.toggle('sel', SEL.claves.indexOf(k) >= 0);
-    td.classList.toggle('ancla', k === SEL.ancla);
+    var marcada = SEL.claves.indexOf(k) >= 0;
+    td.classList.toggle('sel', marcada);
+    /* EL ANCLA SOLO SE PINTA SI LA CASILLA ESTÁ MARCADA DE VERDAD.
+
+       Al marcar un turno suelto se guarda igual su casilla como ancla —hace
+       falta para que Mayús extienda un rango desde ahí— y eso se estaba
+       DIBUJANDO: la casilla salía con su borde verde aunque no estuviera
+       seleccionada. Lo vio Pedro en la v75 el 12-10: «ahora sí puedo
+       seleccionar el turno pero igual enegrece la casilla completa».
+
+       El borde no mentía sobre la selección interna, pero daba en pantalla
+       exactamente la misma impresión que el defecto que se vino a arreglar —y
+       en una pantalla, lo que la persona cree es el único resultado que hay. */
+    td.classList.toggle('ancla', marcada && k === SEL.ancla);
   });
   /* Y los turnos sueltos se marcan uno por uno. Sin esto el arreglo sería
      invisible: la selección sería correcta por dentro y la pantalla seguiría
