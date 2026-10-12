@@ -2125,10 +2125,29 @@ function pintarDeQuien() {
   }
   var pid = $('#aQuien').value;
   var cid = $('#aCargo').value;
-  $('#aDe').innerHTML = '<b>Turno suelto</b> — va a quedar en '
-    + (pid ? '<b>' + esc(nombreTrab(pid)) + '</b>' : '<b>Sin asignar</b>')
-    + (cid ? ' · ' + esc(nombreCargo(cid)) : '')
-    + (asigFecha ? ' · <b>' + nombreDia(asigFecha) + ' ' + diaMes(asigFecha) + '</b>' : '')
+  var donde = (pid ? '<b>' + esc(nombreTrab(pid)) + '</b>' : '<b>Sin asignar</b>')
+            + (cid ? ' · ' + esc(nombreCargo(cid)) : '')
+            + (asigFecha ? ' · <b>' + nombreDia(asigFecha) + ' ' + diaMes(asigFecha) + '</b>' : '');
+
+  /* ABRIR UN TURNO QUE YA EXISTE NO ES LO MISMO QUE CREAR UNO.
+
+     Defecto mío, introducido esta misma tarde al hacer que la ficha dijera
+     dónde iba a caer el turno: escribía «va a quedar en…» SIEMPRE, también
+     al abrir uno que ya estaba. Pedro abrió uno de tres turnos de la misma
+     casilla y la ficha parecía estar creando otro —y encima no decía CUÁL de
+     los tres había abierto, que con dos de ellos a la misma hora es justo lo
+     que hay que saber—.
+
+     Al editar, lo primero que tiene que decir es QUÉ turno es. */
+  if (asigActual) {
+    $('#aDe').innerHTML = 'Estás abriendo el turno de <b>'
+      // Sin la duración: `rangoTxt` agrega «· 8:00» y aquí ensucia la frase,
+      // que ya lleva persona, cargo y día detrás.
+      + esc(hhmm(asigActual.hora_inicio) + '–' + hhmm(asigActual.hora_fin)) + '</b> · ' + donde
+      + '. Sin nada planificado detrás: sale marcado como «sin planificar».';
+    return;
+  }
+  $('#aDe').innerHTML = '<b>Turno nuevo</b> — va a quedar en ' + donde
     + '. Sin nada planificado detrás: sale marcado como «sin planificar».';
 }
 function opcion(p) { return '<option value="' + p.id + '">' + esc(p.nombre) + '</option>'; }
