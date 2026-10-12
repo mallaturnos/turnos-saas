@@ -719,7 +719,13 @@ function pintarMalla() {
    exactamente como se cuelan los defectos de «la mitad de los sitios». */
 function celdaDia(f, hoy, compacta) {
   var necs = S.necesidades.filter(function (n) { return n.fecha === f; });
-  var sueltas = S.asignaciones.filter(function (a) { return a.fecha === f && !a.necesidad_id; });
+  /* Y LOS SUELTOS TAMBIÉN ORDENADOS. Las necesidades de abajo se ordenan desde
+     hace semanas y estos no, y son los que más se ven: un turno pegado sale
+     «sin planificar», así que lo que Pedro pegó el 12-10 caía justo aquí. El
+     Mes y el Día se dibujan con esta misma función, de modo que el desorden que
+     vio en la semana también llegaba allá. */
+  var sueltas = S.asignaciones.filter(function (a) { return a.fecha === f && !a.necesidad_id; })
+                              .sort(porHoraTurno);
 
   /* AGRUPADAS POR CARGO, y dentro del cargo por hora.
 
@@ -1376,7 +1382,8 @@ function pintarMes() {
 
 
 function pintarNecesidad(n) {
-  var mias = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; });
+  var mias = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; })
+                          .sort(porHoraTurno);
   var cubren = mias.filter(function (a) { return a.trabajador_id; }).length;
   var falta = n.personas_requeridas - cubren;
   var clase = falta === 0 ? 'cob-completo' : (falta > 0 ? 'cob-falta' : 'cob-sobra');
@@ -1620,7 +1627,7 @@ function pintarGirada() {
     dias.forEach(function (f) {
       var suyas = S.asignaciones.filter(function (a) {
         return a.fecha === f && deQuien(a) === fila.id;
-      });
+      }).sort(porHoraTurno);
       // La cara que NO es la fila: filas de personas → el puesto; filas de
       // cargos → quién lo hace.
       var abajo = S.agrupar === 'persona' ? 'cargo' : 'persona';
@@ -2455,6 +2462,33 @@ function rejilla() {
 /* Los turnos que hay en una casilla. En la rejilla de personas es «lo de Ana
    el lunes»; en la de cargos, «todo lo de Cocina el lunes», que puede ser de
    varias personas a la vez y también de nadie. */
+/* EL ORDEN DE LOS TURNOS DE UNA CASILLA, EN UN SOLO SITIO.
+
+   Lo encontró Pedro el 12-10 después de pegar: en la casilla de Caja le quedó
+   el de 14:00 ARRIBA del de 09:00, y al repintarse cambiaron de orden también
+   casillas que él no había tocado. La causa: `turnosDeClave` ordenaba por hora
+   y **el dibujo no ordenaba nada** —salía el orden en que volvían de la base—,
+   así que la misma casilla tenía dos órdenes distintos según quién preguntara.
+
+   Esta lección ya estaba aprendida en `celdaDia`, que ordena desde hace
+   semanas y lo dejó escrito. La rejilla semanal nunca la recibió. Por eso la
+   regla vive **aquí y una sola vez**, y la usan los tres sitios que dibujan
+   turnos: si el día que se agregue un cuarto hay que elegir orden otra vez,
+   volvemos a tener dos.
+
+   Y DESEMPATA HASTA EL FINAL. Con dos turnos a la misma hora —que es normal:
+   Fernanda y Tomás a las 09:00— ordenar solo por hora_inicio deja el empate en
+   manos del orden de llegada, y entonces la casilla se reordena sola en cada
+   repintado sin que nadie haya cambiado nada. El `id` al final hace el orden
+   total y estable. */
+function porHoraTurno(u, v) {
+  var a = hhmm(u.hora_inicio), b = hhmm(v.hora_inicio);
+  if (a !== b) return a < b ? -1 : 1;
+  var c = hhmm(u.hora_fin), d = hhmm(v.hora_fin);
+  if (c !== d) return c < d ? -1 : 1;
+  return String(u.id) < String(v.id) ? -1 : 1;
+}
+
 function turnosDeClave(k) {
   // Un turno suelto se resuelve solo; si ya no existe, la selección se queda
   // sin él en vez de reventar.
@@ -2463,9 +2497,7 @@ function turnosDeClave(k) {
   return S.asignaciones.filter(function (a) {
     var mio = p.agrupar === 'persona' ? (a.trabajador_id || '') : (a.cargo_id || '');
     return a.fecha === p.fecha && String(mio) === p.fila;
-  }).sort(function (u, v) {
-    return hhmm(u.hora_inicio) < hhmm(v.hora_inicio) ? -1 : 1;
-  });
+  }).sort(porHoraTurno);
 }
 
 /* La posición en la rejilla de cualquiera de las dos claves. Un turno suelto
@@ -4497,6 +4529,7 @@ window.__app = {
   // desde fuera, pero lo que corre es exactamente lo que corre al apretarlas.
   SEL: SEL, marcarRango: marcarRango, limpiarSeleccion: limpiarSeleccion,
   claveTurno: claveTurno, esClaveTurno: esClaveTurno, turnosDeClave: turnosDeClave,
+  pintarMalla: pintarMalla, porHoraTurno: porHoraTurno,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
   copiarSeleccion: copiarSeleccion, pegarSeleccion: pegarSeleccion,
