@@ -2666,6 +2666,64 @@ $('#aGuardar').addEventListener('click', function () { cerrarFicha(true); });
    por el + y cerrar SIN TOCAR NADA. Con Escape no se crea el turno —apretar el
    + y arrepentirse no puede dejar un turno puesto—, pero con «Listo» sí, porque
    ahí la persona dijo que el prellenado le servía. */
+/* UNA NECESIDAD DE UNA PERSONA ES EL TURNO DE ESA PERSONA.
+
+   La regla la dio Pedro el 12-10 (msgs 5935-5941), con su foto delante: había
+   creado «Caja 08:00–16:00, 1 persona», puesto a Ana, y al acortarla a las 14:30
+   le quedó la tarjeta diciendo **Completo** y la línea marcando hora y media
+   **sin asignar**. Su modelo: *«si creé la necesidad en un rango de horas y
+   luego asigné a alguien, eso ya está cubierto; si edito el turno, se edita
+   todo: la necesidad, la persona, las horas»*.
+
+   Y el criterio con el que hay que juzgarlo, también suyo: *«la idea de
+   necesidad, quién lo cubre, turno es simplemente para hacer uno poder
+   planificar más fácil»*. No es una contabilidad que haya que cuadrar.
+
+   SE LE PLANTEÓ EL RIESGO y lo descartó con razón: *«la persona que planifica
+   sabe la hora de cierre del local; si esa persona no puede hasta las 4:00
+   pondrá a otra»*. El cambio queda igualmente registrado en Actividad.
+
+   ⚠️ POR QUE SOLO CON `personas_requeridas === 1`, y no con «una sola
+   asignación»: en los datos de prueba hay una necesidad que pide **3** personas
+   y tiene **una** asignada (n2, 17:00–23:00 con alguien de 17:00 a 20:00). Con
+   la regla escrita a la ligera, esa necesidad se habría encogido a las 20:00
+   **estando a dos personas de cubrirse** — justo el hueco que no se puede
+   perder. Lo pilló mirar los datos antes de escribir la regla, no después.
+
+   Con dos o más personas la necesidad sigue siendo un tramo propio y «cubrir
+   solo un trozo» sigue valiendo, que es donde esa función sirve de verdad. */
+function alinearNecesidad(fila) {
+  if (!fila || !fila.necesidad_id) return Promise.resolve();
+  var n = S.necesidades.filter(function (x) { return x.id === fila.necesidad_id; })[0];
+  if (!n || n.personas_requeridas !== 1) return Promise.resolve();
+
+  var hermanas = S.asignaciones.filter(function (a) {
+    return a.necesidad_id === n.id && a.id !== fila.id;
+  });
+  if (hermanas.length) return Promise.resolve();
+
+  if (hhmm(n.hora_inicio) === hhmm(fila.hora_inicio)
+   && hhmm(n.hora_fin) === hhmm(fila.hora_fin)) return Promise.resolve();
+
+  var antes = { hora_inicio: n.hora_inicio, hora_fin: n.hora_fin };
+  return DATOS.necesidades.guardar(n.id, {
+    hora_inicio: fila.hora_inicio, hora_fin: fila.hora_fin,
+  }).then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', n.id, 'editar',
+                 Object.assign({ id: n.id }, antes),
+                 { id: n.id, hora_inicio: fila.hora_inicio, hora_fin: fila.hora_fin });
+    /* El deshacer tiene que devolver LAS DOS COSAS. Si solo repusiera el turno,
+       la necesidad se quedaría encogida y el hueco no volvería: deshacer habría
+       dejado la pantalla en un estado que nunca existió. */
+    recordar('las horas de ' + nombreCargo(n.cargo_id), function () {
+      return DATOS.necesidades.guardar(n.id, antes).then(function () {
+        return DATOS.asignaciones.guardar(fila.id, {
+          hora_inicio: antes.hora_inicio, hora_fin: antes.hora_fin });
+      });
+    });
+  }).catch(function () { /* que falle esto no puede deshacer el turno ya guardado */ });
+}
+
 function cerrarFicha(explicito) {
   if (!fichaCambiada() && (asigActual || !explicito)) {
     fichaBase = null; $('#dlgAsig').close();
@@ -2752,7 +2810,9 @@ function guardarAsignacion(d) {
       function () { return DATOS.asignaciones.borrar(fila.id); });
     fichaBase = null;
     $('#dlgAsig').close();
-    return recargarSemana().then(function () { return true; });
+    return alinearNecesidad(fila).then(function () {
+      return recargarSemana().then(function () { return true; });
+    });
   }).catch(function (e) {
     /* DEVUELVE false Y DEJA LA FICHA ABIERTA. Lo segundo es lo que importa: si
        se cerrara, la persona perdería lo que escribió por un choque que todavía
