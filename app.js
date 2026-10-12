@@ -1447,7 +1447,9 @@ function pintarMesB() {
             + ' title="' + nombreDia(d) + ' ' + diaMes(d) + '">'
             + d.slice(8) + '</th>';
     });
-    html += '<th class="cont" title="Horas de la semana ' + semanaISO(sem[0]) + '">'
+    html += '<th class="cont irsem" data-semana="' + sem[0] + '"'
+          + ' title="Horas de la semana ' + semanaISO(sem[0])
+          + ' · aprieta para ir a esa semana">'
           + 'S' + semanaISO(sem[0]) + '<i>h</i></th>';
   });
   html += '<th class="tot">Mes</th></tr></thead><tbody>';
@@ -1472,11 +1474,16 @@ function pintarMesB() {
            a ESA semana en vez de dejarte donde estabas. */
         html += '<td class="d' + (d === hoy ? ' hoy' : '')
               + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
-              + ' data-semana="' + lunesDe(d) + '" data-dia="' + d + '">'
+              + ' data-dia="' + d + '">'
               + suyas.map(function (a) {
+                  /* `data-asigid` es todo lo que hace falta para que el clic
+                     abra la ficha: el oyente de la malla ya abre cualquier cosa
+                     que lleve ese atributo. Lo eligió Pedro (msg 5919, opción
+                     C) y es lo que hace Skello, que edita en su vista Mes. */
                   return '<span class="mini ' + colorCargo(a.cargo_id) + '"'
+                       + ' data-asigid="' + a.id + '"'
                        + ' title="' + esc(hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin)
-                           + ' · ' + nombreCargo(a.cargo_id)) + '">'
+                           + ' · ' + nombreCargo(a.cargo_id) + ' · aprieta para abrirlo') + '">'
                        + hhmm(a.hora_inicio).slice(0, 2) + '</span>';
                 }).join('')
               + '</td>';
@@ -1510,9 +1517,9 @@ function pintarMesB() {
   m.innerHTML = html;
   pintarPie();
   $('#cEstado').textContent = resumenPublicar();
-  avisoPlan('El <b>Mes</b> es para mirar: aquí se ve dónde hay huecos y a quién le toca'
-          + ' siempre lo mismo. <b>Aprieta cualquier día</b> y te llevo a esa semana para'
-          + ' editarla.');
+  avisoPlan('En el <b>Mes</b> se ve dónde hay huecos y a quién le toca siempre lo mismo.'
+          + ' <b>Aprieta un turno</b> para abrirlo sin salir de aquí, o el'
+          + ' <b>número de semana</b> para ir a esa semana.');
 }
 
 function pintarMes() {
@@ -2036,13 +2043,21 @@ $('#malla').addEventListener('click', function (ev) {
   // El clic que cierra un arrastre no abre nada: la persona estaba marcando.
   if (SEL.tragarClic) return;
   var t = ev.target;
-  /* EL MES ES UNA PUERTA, NO UNA PARED. El clic en cualquier día lleva a esa
-     semana — que es a donde iba quien lo apretó. Antes el Mes solo sabía
-     expulsarte: si intentabas agruparlo, te devolvía a Semana sin que lo
-     pidieras. Esto es lo contrario: vas porque tú apretaste. */
-  var celMes = t.closest && t.closest('.mesb td[data-semana]');
-  if (celMes) {
-    S.lunes = celMes.dataset.semana;
+  /* EN EL MES, EL CLIC ABRE EL TURNO Y NO TE MUEVE.
+
+     La primera versión llevaba a la semana al apretar cualquier casilla. Pedro
+     lo probó y dijo «en mes, piche una casilla y me llevo a semana»; al buscar
+     qué hacen los demás resultó que **llevarte a la semana no lo hace ninguno
+     de los cuatro que yo pueda documentar — era un invento mío**. Lo que hacen
+     es actuar ahí mismo (Skello edita en su mes, Deputy crea y publica) o no
+     dejarte actuar (7shifts, solo lectura). Eligió C: abrir el turno ahí.
+
+     El viaje a la semana sigue existiendo, pero como GESTO DELIBERADO: se
+     aprieta el número de semana. Un clic en una casilla no te mueve la pantalla
+     por accidente, y el mes no queda sin salida. */
+  var semCab = t.closest && t.closest('.mesb [data-semana]');
+  if (semCab) {
+    S.lunes = semCab.dataset.semana;
     S.vista = 'semana';
     pintarSelectores(); pintarMalla();
     avisoPlan('');

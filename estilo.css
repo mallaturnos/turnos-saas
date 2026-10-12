@@ -925,3 +925,10 @@ table.mesb .tot {
 }
 table.mesb .cero { color: var(--gris); }
 table.mesb tfoot td, table.mesb tfoot th { border-top: 2px solid var(--borde); }
+
+/* El número de semana es la puerta a esa semana: un gesto que se aprieta a
+   propósito, no un clic que te mueve la pantalla sin querer. */
+table.mesb thead th.cont.irsem { cursor: pointer; }
+table.mesb thead th.cont.irsem:hover { background: var(--verde-claro); color: var(--verde); }
+/* Y la marca de un turno se aprieta para abrirlo. */
+table.mesb .mini { cursor: pointer; }
