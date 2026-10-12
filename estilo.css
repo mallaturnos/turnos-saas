@@ -726,6 +726,17 @@ table.girada td.cel.sel {
   box-shadow: inset 0 0 0 2px var(--verde);
   background-image: linear-gradient(rgba(15,107,99,.07), rgba(15,107,99,.07));
 }
+/* UN TURNO SUELTO MARCADO. Se dibuja distinto de la casilla marcada a
+   propósito: si los dos se vieran igual, la pantalla volvería a no decir si
+   tienes uno entre manos o los tres de la casilla, que es el defecto que esto
+   vino a arreglar. La casilla se marca por fuera, con el borde; el turno por
+   dentro, relleno. */
+.gente.bloques .blq.selturno {
+  box-shadow: inset 0 0 0 2px var(--verde);
+  background: var(--verde-claro);
+  border-radius: 4px;
+}
+
 /* La casilla desde la que se empezó: se distingue de las demás porque es la
    esquina que manda al pegar. */
 table.girada td.cel.ancla { box-shadow: inset 0 0 0 2px var(--verde), inset 0 0 0 6px rgba(15,107,99,.15); }

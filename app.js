@@ -2394,7 +2394,7 @@ function quitarTurno(a) {
    cada una. Sin el prefijo, lo copiado en Personas se podría pegar en Cargos,
    donde querría decir otra cosa. */
 
-var SEL = { claves: [], ancla: null, pintando: false, arrastro: false, tragarClic: false };
+var SEL = { claves: [], ancla: null, pintando: false, arrastro: false, tragarClic: false, ctrlClic: false };
 var PORTA = null;   // lo copiado: { agrupar, alto, ancho, celdas: [[ [turnos] ]] }
 
 function esPlanilla() { return S.agrupar === 'persona' || S.agrupar === 'cargo'; }
@@ -2405,6 +2405,36 @@ function claveCel(td) {
 function partesClave(k) {
   var i = k.indexOf('|'), j = k.lastIndexOf('|');
   return { agrupar: k.slice(0, i), fila: k.slice(i + 1, j), fecha: k.slice(j + 1) };
+}
+
+/* LO MARCADO SIGUE AL GESTO (12-10-2026).
+
+   Hasta la v74 la unidad de selección era SOLO la casilla, y eso tenía un
+   defecto peligroso, no estético: en una casilla con tres turnos, el clic
+   sobre uno ABRÍA ese turno pero MARCABA LA CASILLA ENTERA. La pantalla
+   afirmaba que tenías uno entre manos y en realidad tenías tres — apretar
+   `Supr` ahí borraba los tres. Lo encontró Pedro el 11-10 y tuvo que insistir.
+
+   Desde aquí `SEL.claves` admite DOS tipos de entrada:
+     · `persona|<fila>|<fecha>`  → una casilla completa, como siempre
+     · `turno|<id>`              → un turno suelto
+
+   Todo lo que consume la selección pasa por `turnosDeClave` y `posDeClave`,
+   así que ninguna de las dos necesita saber cuál de los dos tipos le tocó. */
+function claveTurno(id) { return 'turno|' + id; }
+function esClaveTurno(k) { return String(k).slice(0, 6) === 'turno|'; }
+
+function asigDeClave(k) {
+  var id = String(k).slice(6);
+  return S.asignaciones.filter(function (a) { return String(a.id) === id; })[0] || null;
+}
+
+/* En qué casilla vive un turno, en la agrupación que esté puesta ahora. Es la
+   misma cuenta que hace `turnosDeClave` al revés, y la necesitan copiar y
+   pegar, que trabajan sobre un rectángulo de casillas. */
+function claveCelDeAsig(a) {
+  var fila = S.agrupar === 'persona' ? (a.trabajador_id || '') : (a.cargo_id || '');
+  return S.agrupar + '|' + fila + '|' + a.fecha;
 }
 
 /* La geometría se saca del DOM EN EL MOMENTO del gesto. Las filas no son una
@@ -2426,12 +2456,34 @@ function rejilla() {
    el lunes»; en la de cargos, «todo lo de Cocina el lunes», que puede ser de
    varias personas a la vez y también de nadie. */
 function turnosDeClave(k) {
+  // Un turno suelto se resuelve solo; si ya no existe, la selección se queda
+  // sin él en vez de reventar.
+  if (esClaveTurno(k)) { var uno = asigDeClave(k); return uno ? [uno] : []; }
   var p = partesClave(k);
   return S.asignaciones.filter(function (a) {
     var mio = p.agrupar === 'persona' ? (a.trabajador_id || '') : (a.cargo_id || '');
     return a.fecha === p.fecha && String(mio) === p.fila;
   }).sort(function (u, v) {
     return hhmm(u.hora_inicio) < hhmm(v.hora_inicio) ? -1 : 1;
+  });
+}
+
+/* La posición en la rejilla de cualquiera de las dos claves. Un turno suelto
+   vale por la casilla donde está dibujado. */
+function posDeClave(g, k) {
+  if (!esClaveTurno(k)) return g.mapa[k];
+  var a = asigDeClave(k);
+  return a ? g.mapa[claveCelDeAsig(a)] : null;
+}
+
+/* Los turnos de una casilla QUE ESTÁN MARCADOS. Si la casilla entera está
+   marcada, son todos; si no, solo los sueltos que caen dentro. Es lo que
+   impide que copiar una selección de un turno se lleve los tres de la
+   casilla, que es el mismo engaño que se vino a arreglar. */
+function turnosMarcadosEn(k) {
+  if (SEL.claves.indexOf(k) >= 0) return turnosDeClave(k);
+  return SEL.claves.filter(esClaveTurno).map(asigDeClave).filter(function (a) {
+    return a && claveCelDeAsig(a) === k;
   });
 }
 
@@ -2445,6 +2497,13 @@ function pintarSeleccion() {
     var k = claveCel(td);
     td.classList.toggle('sel', SEL.claves.indexOf(k) >= 0);
     td.classList.toggle('ancla', k === SEL.ancla);
+  });
+  /* Y los turnos sueltos se marcan uno por uno. Sin esto el arreglo sería
+     invisible: la selección sería correcta por dentro y la pantalla seguiría
+     sin decir qué hay marcado, que es justo el problema que se arregla. */
+  $$('#malla .blq').forEach(function (li) {
+    var id = li.dataset && li.dataset.asigid;
+    li.classList.toggle('selturno', !!id && SEL.claves.indexOf(claveTurno(id)) >= 0);
   });
   avisarSeleccion();
 }
@@ -2491,16 +2550,27 @@ function avisarSeleccion(mensaje) {
     caja.hidden = false; caja.classList.add('pista');
     caja.innerHTML = enTabla
       ? '<span class="teclas">Arrastra sobre las casillas para marcarlas y cópialas'
-        + ' con <b>Ctrl+C</b> y <b>Ctrl+V</b>. <b>Supr</b> las quita.</span>'
+        + ' con <b>Ctrl+C</b> y <b>Ctrl+V</b>. <b>Supr</b> las quita.'
+        + ' Un clic sobre un turno marca <b>ese</b> turno; <b>Ctrl+clic</b> suma.</span>'
       : '<span class="teclas">Para copiar y pegar turnos, cambia a'
         + ' <b>Personas</b> o <b>Cargos</b>.</span>';
     return;
   }
   caja.classList.remove('pista');
   caja.hidden = false;
-  var n = SEL.claves.length;
+  /* LA CUENTA NO PUEDE MENTIR. Antes decía siempre «N casillas», también
+     cuando lo marcado era un turno suelto — y esa frase es justo la que hacía
+     creer que `Supr` iba a quitar una cosa cuando iba a quitar tres. */
+  var casillas = SEL.claves.filter(function (k) { return !esClaveTurno(k); }).length;
+  var sueltos = SEL.claves.length - casillas;
   var turnos = SEL.claves.reduce(function (t, k) { return t + turnosDeClave(k).length; }, 0);
-  caja.innerHTML = '<b>' + n + '</b> ' + (n === 1 ? 'casilla' : 'casillas')
+  var que = casillas && sueltos
+      ? '<b>' + casillas + '</b> ' + (casillas === 1 ? 'casilla' : 'casillas')
+        + ' y <b>' + sueltos + '</b> ' + (sueltos === 1 ? 'turno suelto' : 'turnos sueltos')
+      : (sueltos
+          ? '<b>' + sueltos + '</b> ' + (sueltos === 1 ? 'turno' : 'turnos')
+          : '<b>' + casillas + '</b> ' + (casillas === 1 ? 'casilla' : 'casillas'));
+  caja.innerHTML = que
     + ' · <b>' + turnos + '</b> ' + (turnos === 1 ? 'turno' : 'turnos')
     + '<span class="teclas">Ctrl+C copiar · Ctrl+X cortar · Ctrl+V pegar'
     + ' · Supr quitar · Esc soltar</span>'
@@ -2526,7 +2596,7 @@ function copiarSeleccion(cortar) {
   if (!SEL.claves.length) return decirSel('Marca primero qué quieres copiar.');
   var g = rejilla(); if (!g) return;
   var fs = [], cs = [];
-  SEL.claves.forEach(function (k) { var p = g.mapa[k]; if (p) { fs.push(p.f); cs.push(p.c); } });
+  SEL.claves.forEach(function (k) { var p = posDeClave(g, k); if (p) { fs.push(p.f); cs.push(p.c); } });
   if (!fs.length) return;
   var f1 = Math.min.apply(null, fs), f2 = Math.max.apply(null, fs);
   var c1 = Math.min.apply(null, cs), c2 = Math.max.apply(null, cs);
@@ -2535,7 +2605,9 @@ function copiarSeleccion(cortar) {
     var linea = [];
     for (var c = c1; c <= c2; c++) {
       var td = g.filas[f] && g.filas[f][c];
-      linea.push(!td ? [] : turnosDeClave(claveCel(td)).map(function (a) {
+      /* `turnosMarcadosEn` y no `turnosDeClave`: si marcaste UN turno de una
+         casilla que tiene tres, se copia ese y no los tres. */
+      linea.push(!td ? [] : turnosMarcadosEn(claveCel(td)).map(function (a) {
         return { hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
                  cargo_id: a.cargo_id, trabajador_id: a.trabajador_id };
       }));
@@ -2568,7 +2640,7 @@ function pegarSeleccion() {
   // El destino es la esquina de arriba a la izquierda de lo marcado, aunque
   // haya marcado un rango más grande: igual que una planilla.
   var fs = [], cs = [];
-  SEL.claves.forEach(function (k) { var p = g.mapa[k]; if (p) { fs.push(p.f); cs.push(p.c); } });
+  SEL.claves.forEach(function (k) { var p = posDeClave(g, k); if (p) { fs.push(p.f); cs.push(p.c); } });
   if (!fs.length) return nada();
   var f0 = Math.min.apply(null, fs), c0 = Math.min.apply(null, cs);
 
@@ -2732,6 +2804,39 @@ $('#malla').addEventListener('mousedown', function (ev) {
   var k = claveCel(td);
   // Con Mayús se extiende desde donde estaba; sin nada, se empieza de cero.
   if (ev.shiftKey && SEL.ancla) { marcarRango(SEL.ancla, k); return; }
+
+  /* LO MARCADO SIGUE AL GESTO. El clic sobre un turno marca ESE turno —el
+     mismo que se abre—; el clic sobre el fondo de la casilla marca la casilla
+     entera. Arrastrar sigue marcando casillas completas, porque `marcarRango`
+     reemplaza la selección por claves de casilla.
+
+     Ctrl/Cmd+clic SUMA y RESTA, sobre turnos o sobre casillas, que es lo que
+     hace Skello (verificado en su manual el 11-10). Ahí no se arrastra: quien
+     está acumulando no quiere además pintar un rango. */
+  var blq = ev.target.closest && ev.target.closest('.blq');
+  var idTurno = blq && blq.dataset ? blq.dataset.asigid : null;
+  var ctrl = ev.ctrlKey || ev.metaKey;
+
+  if (ctrl) {
+    var kc = idTurno ? claveTurno(idTurno) : k;
+    var i = SEL.claves.indexOf(kc);
+    if (i >= 0) SEL.claves.splice(i, 1); else SEL.claves.push(kc);
+    SEL.ancla = k;
+    SEL.pintando = false;
+    /* Y este clic NO abre la ficha. Sin esto, Ctrl+clic marcaba el turno y
+       además te abría el diálogo encima de lo que estabas acumulando. */
+    SEL.ctrlClic = true;
+    pintarSeleccion();
+    return;
+  }
+
+  if (idTurno) {
+    SEL.ancla = k; SEL.claves = [claveTurno(idTurno)];
+    SEL.pintando = true;
+    pintarSeleccion();
+    return;
+  }
+
   SEL.ancla = k; SEL.claves = [k];
   /* SE ARRASTRA DESDE DONDE SEA, incluso desde encima de un turno.
 
@@ -2765,11 +2870,11 @@ document.addEventListener('mouseup', function () {
      ficha encima de la selección recién hecha: la persona marcó un rango y se
      encontró con un diálogo. Se apaga en el siguiente turno del reloj, cuando
      ese clic ya pasó. */
-  if (SEL.arrastro) {
+  if (SEL.arrastro || SEL.ctrlClic) {
     SEL.tragarClic = true;
     setTimeout(function () { SEL.tragarClic = false; }, 0);
   }
-  SEL.pintando = false; SEL.arrastro = false;
+  SEL.pintando = false; SEL.arrastro = false; SEL.ctrlClic = false;
 });
 
 /* LAS TECLAS NO SE ROBAN CUANDO ALGUIEN ESTÁ ESCRIBIENDO. Sin esta guarda,
@@ -4379,6 +4484,8 @@ window.__app = {
   // porque los gestos de ratón y las teclas no se pueden fingir de verdad
   // desde fuera, pero lo que corre es exactamente lo que corre al apretarlas.
   SEL: SEL, marcarRango: marcarRango, limpiarSeleccion: limpiarSeleccion,
+  claveTurno: claveTurno, esClaveTurno: esClaveTurno, turnosDeClave: turnosDeClave,
+  turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
   copiarSeleccion: copiarSeleccion, pegarSeleccion: pegarSeleccion,
   borrarSeleccion: borrarSeleccion, verPorta: function () { return PORTA; },
