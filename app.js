@@ -195,6 +195,31 @@ var nombreCargo = function (id) {
   var q = S.cargos.filter(function (x) { return x.id === id; })[0];
   return q ? q.nombre : '—';
 };
+/* LOS QUE TODAVIA TRABAJAN AQUI.
+
+   `S.trabajadores` los tiene a TODOS, porque hace falta para poner el nombre
+   en los turnos de quien ya se fue. Pero a la hora de OFRECER gente —las filas
+   de la malla, el desplegable de la ficha, el de ausencias— solo van los
+   activos: si no, archivar no serviria de nada. */
+function activos() {
+  return S.trabajadores.filter(function (p) { return p.activo !== false; });
+}
+
+/* Quienes van como FILA: los que trabajan aqui, mas los que ya se fueron PERO
+   tienen turnos en lo que se esta mirando.
+
+   Sin la segunda mitad, archivar a alguien le haria desaparecer los turnos de
+   la pantalla —no de la base, pero da igual: si no se ven, no estan—. Y con
+   todos los idos siempre, la malla se llenaria de filas vacias de gente que ya
+   no esta, que es justo lo que archivar venia a evitar. */
+function conHistoria(asignaciones) {
+  var hay = {};
+  asignaciones.forEach(function (a) { if (a.trabajador_id) hay[a.trabajador_id] = true; });
+  return S.trabajadores.filter(function (p) {
+    return p.activo !== false || hay[p.id];
+  });
+}
+
 var nombreTrab = function (id) {
   var p = S.trabajadores.filter(function (x) { return x.id === id; })[0];
   return p ? p.nombre : '—';
@@ -335,6 +360,25 @@ $('#formPrimera').addEventListener('submit', function (ev) {
     .then(arrancar)
     .catch(function (e) { aviso('#pMsg', e.message, 'bad'); });
 });
+
+/* CUANDO LA SESION SE VENCE, LA PANTALLA LO DICE Y LLEVA A ENTRAR.
+
+   Antes el aviso era «JWT expired», en rojo y en ingles, dentro del dialogo —
+   y la persona se quedaba ahi apretando Guardar contra una sesion muerta. Lo
+   vio Pedro el 11-10 con la pantalla abierta un rato largo.
+
+   Se avisa UNA sola vez: si cada llamada que falla mandara a la pantalla de
+   entrar, una malla con diez peticiones en vuelo parpadearia diez veces. */
+var yaAvise = false;
+DATOS.auth.alCambiar = function (e) {
+  if (yaAvise) return;
+  yaAvise = true;
+  // Los dialogos abiertos se cierran: dejar uno encima del login es dejar a la
+  // persona escribiendo en un formulario que ya no puede guardar nada.
+  $$('dialog[open]').forEach(function (d) { try { d.close(); } catch (x) {} });
+  mostrar('entrar');
+  aviso('#eMsg', (e && e.message) || 'Tu sesión se venció. Entra de nuevo.', 'bad');
+};
 
 $$('#btnSalir, #btnSalir1').forEach(function (b) {
   b.addEventListener('click', function () { DATOS.auth.salir().then(function () { location.reload(); }); });
@@ -871,8 +915,9 @@ function pintarDia() {
   // Las filas siguen lo que esté elegido arriba: gente, cargos o lo planificado.
   var filas;
   if (S.agrupar === 'persona') {
-    filas = S.trabajadores.map(function (p) { return { id: p.id, nombre: p.nombre,
-      suyas: delDia.filter(function (x) { return x.trabajador_id === p.id; }) }; });
+    filas = conHistoria(delDia).map(function (p) { return { id: p.id, nombre: p.nombre,
+      suyas: delDia.filter(function (x) { return x.trabajador_id === p.id; }),
+      ido: p.activo === false }; });
     /* LO PENDIENTE NO SE ESCONDE: su propia fila al final, como en la tabla
        girada. Sin esto, agrupar por persona hacía DESAPARECER los turnos sin
        dueño —no hay fila a la que pertenezcan— y el día se veía cubierto
@@ -1475,6 +1520,22 @@ function pintarBloqueSemana(a, abajo) {
     return t.asignacion_id === a.id && t.estado === 'publicado';
   });
   var sinDueno = !a.trabajador_id;
+  /* Agrupado por CARGOS no hay fila de persona que marcar, así que la marca va
+     en el nombre del bloque. Lo preguntó Pedro —«¿cómo se verá en la vista
+     cargo?»— y la respuesta era: igual que cualquiera, que es el problema. */
+  /* LA MARCA LLEVA LA FECHA, y no es un adorno.
+
+     Primero puse solo «ya no trabaja aquí» y Pedro pregunto lo obvio: «¿desde
+     cuando?». Y detras habia algo peor que un dato que falta: el turno es del
+     lunes 5 y ella se fue el 8, o sea que ese turno SI lo trabajo — pero sin
+     la fecha la pantalla se lee como una contradiccion, «no trabaja aqui pero
+     tiene turno el lunes». Con «hasta el 08/10» las dos cosas encajan solas y
+     ademas ocupa menos. */
+  var quienEs = sinDueno ? null : S.trabajadores.filter(function (x) {
+    return x.id === a.trabajador_id; })[0];
+  var seFue = !!(quienEs && quienEs.activo === false);
+  var hasta = seFue && quienEs.fecha_salida ? 'hasta el ' + diaMes(quienEs.fecha_salida)
+                                            : 'ya no trabaja aquí';
   var pie = abajo === 'cargo' ? nombreCargo(a.cargo_id)
           : (sinDueno ? 'sin asignar' : nombreTrab(a.trabajador_id));
   return '<li class="blq ' + colorCargo(a.cargo_id)
@@ -1485,7 +1546,13 @@ function pintarBloqueSemana(a, abajo) {
        // Mismo formato H:MM que en todo el resto: dos maneras de escribir lo
        // mismo obligan a traducir mentalmente, y eso ya es un costo.
        + '<span class="dur">' + durTexto(a.hora_inicio, a.hora_fin) + '</span>'
-       + '<em>' + esc(pie) + '</em>' + botonQuitar(a) + '</li>';
+       + '<em' + (seFue && abajo === 'persona'
+            ? ' class="sefue" title="' + esc(pie + ' ya no trabaja aquí'
+                + (quienEs.fecha_salida ? ' · su último día fue el '
+                   + nombreDia(quienEs.fecha_salida) + ' ' + diaMes(quienEs.fecha_salida) : '')) + '"'
+            : '')
+       + '>' + esc(pie) + (seFue && abajo === 'persona' ? ' · ' + hasta : '')
+       + '</em>' + botonQuitar(a) + '</li>';
 }
 
 /* LA MALLA GIRADA: filas de gente (o de cargos) y columnas de días.
@@ -1504,7 +1571,11 @@ function pintarGirada() {
 
   var filas, deQuien;
   if (S.agrupar === 'persona') {
-    filas = S.trabajadores.map(function (p) { return { id: p.id, nombre: p.nombre }; });
+    filas = conHistoria(S.asignaciones.filter(function (a) {
+      return dias.indexOf(a.fecha) >= 0;
+    })).map(function (p) {
+      return { id: p.id, nombre: p.nombre, ido: p.activo === false, salida: p.fecha_salida };
+    });
     // Lo pendiente no se esconde: tiene su propia fila al final.
     filas.push({ id: null, nombre: 'Sin asignar', suelto: true });
     deQuien = function (a) { return a.trabajador_id; };
@@ -1538,8 +1609,14 @@ function pintarGirada() {
 
   filas.forEach(function (fila) {
     var suma = 0;
-    html += '<tr' + (fila.suelto ? ' class="suelto"' : '') + '><th class="rot">'
-          + esc(fila.nombre) + '</th>';
+    /* Quien ya no trabaja aqui sale igual SI tiene turnos esa semana, pero
+       marcado: si se viera como los demas, el encargado le asignaria turnos
+       nuevos sin darse cuenta de que esa persona ya no esta. */
+    html += '<tr' + (fila.suelto ? ' class="suelto"' : (fila.ido ? ' class="ido"' : ''))
+          + '><th class="rot">' + esc(fila.nombre)
+          + (fila.ido ? '<span class="yano" title="Ya no trabaja aquí">'
+              + (fila.salida ? 'hasta el ' + diaMes(fila.salida) : 'ya no trabaja aquí')
+              + '</span>' : '') + '</th>';
     dias.forEach(function (f) {
       var suyas = S.asignaciones.filter(function (a) {
         return a.fecha === f && deQuien(a) === fila.id;
@@ -1990,7 +2067,7 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   }).join('');
   if (cargoId) $('#aCargo').value = cargoId;
   var sabe = [], resto = [];
-  S.trabajadores.forEach(function (p) {
+  activos().forEach(function (p) {
     var tiene = (p.trabajador_cargos || []).some(function (x) { return x.cargo_id === cargoId; });
     (tiene ? sabe : resto).push(p);
   });
@@ -2476,7 +2553,7 @@ function pegarSeleccion() {
   if (!fs.length) return nada();
   var f0 = Math.min.apply(null, fs), c0 = Math.min.apply(null, cs);
 
-  var crear = [], borrar = [], fuera = 0, dormidos = 0;
+  var crear = [], borrar = [], fuera = 0, dormidos = 0, revividos = 0;
   for (var i = 0; i < PORTA.alto; i++) {
     for (var j = 0; j < PORTA.ancho; j++) {
       var td = g.filas[f0 + i] && g.filas[f0 + i][c0 + j];
@@ -2491,12 +2568,28 @@ function pegarSeleccion() {
       }
       turnosDeClave(k).forEach(function (a) { borrar.push(a); });
       PORTA.celdas[i][j].forEach(function (t) {
+        /* QUIEN YA NO TRABAJA AQUI NO REVIVE AL PEGAR.
+
+           Encontrado el 11-10 probándolo: copiando una semana vieja y
+           pegándola en la siguiente, el turno de alguien que ya se fue se
+           creaba de nuevo a su nombre. La malla se habría llenado sola de
+           gente que no está, por el camino más normal del mundo — copiar la
+           semana pasada es justo lo que uno hace.
+
+           No se descarta el turno: pasa SIN DUEÑO. Las horas y el cargo hacen
+           falta igual; lo que ya no sirve es la persona. Así el hueco queda a
+           la vista en vez de desaparecer, y se cuenta abajo. */
+        var suyo = p.agrupar === 'persona' ? (p.fila || null) : (t.trabajador_id || null);
+        if (suyo && !S.trabajadores.some(function (x) {
+              return x.id === suyo && x.activo !== false; })) {
+          suyo = null; revividos++;
+        }
         crear.push({
           empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal,
           necesidad_id: null,
           // La cara que manda es la de la FILA de destino; la otra viaja con
           // lo copiado. Pegar en la fila de Ana hace que el turno sea de Ana.
-          trabajador_id: p.agrupar === 'persona' ? (p.fila || null) : (t.trabajador_id || null),
+          trabajador_id: suyo,
           cargo_id:      p.agrupar === 'cargo'   ? p.fila : t.cargo_id,
           fecha: p.fecha, hora_inicio: t.hora_inicio, hora_fin: t.hora_fin,
           origen: 'mano', tocado_a_mano: true, estado: 'confirmada',
@@ -2555,6 +2648,7 @@ function pegarSeleccion() {
     return recargarSemana();
   }).then(function () {
     var dice = 'Pegados ' + nacidos.length + ' turno(s)';
+    if (revividos) dice += ' · ' + revividos + ' quedaron sin asignar: esa persona ya no trabaja aquí';
     if (dormidos) dice += ' · ' + dormidos + ' casilla(s) con ausencia, intactas';
     if (fuera)    dice += ' · ' + fuera + ' no entraron';
     decirSel(dice);
@@ -2810,6 +2904,9 @@ function abrirFicha(tipo, dato) {
   }
   $('#fCampos').innerHTML = campos;
   aviso('#fMsg', '');
+  var esTrab = tipo === 'trabajador' && !!dato;
+  $('#fSalida').hidden = !(esTrab && dato.activo !== false);
+  $('#fVuelve').hidden = !(esTrab && dato.activo === false);
   $('#dlgFicha').showModal();
 }
 function campo(tipo, id, etiqueta, valor) {
@@ -2827,6 +2924,46 @@ function marcas(pre, lista, marcados) {
 }
 
 $('#fCancelar').addEventListener('click', function () { $('#dlgFicha').close(); });
+
+/* QUIEN SE VA NO SE BORRA: se le pone la fecha en que dejo de trabajar.
+
+   Borrarlo se llevaria sus turnos pasados por delante, que es justo lo que
+   hace falta el dia que reclama su ultima semana. Y la FECHA se pregunta en
+   vez de suponer hoy: casi siempre esto se marca unos dias despues, y esa
+   fecha es la que manda en la liquidacion. Se propone hoy para que el caso
+   corriente sea apretar Enter. */
+$('#fSalida').addEventListener('click', function () {
+  var d = ficha && ficha.dato; if (!d) return;
+  var cuando = prompt('¿Cuál fue su último día de trabajo?\n\n'
+    + 'Sus turnos pasados se quedan tal cual. Deja de aparecer al repartir.',
+    hoyTexto());
+  if (cuando === null) return;
+  cuando = (cuando || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cuando))
+    return aviso('#fMsg', 'La fecha va como 2026-10-11.', 'bad');
+  aviso('#fMsg', 'Guardando…');
+  // El orden importa: primero la fecha no se puede poner con la persona
+  // activa —lo impide el candado de la base—, así que van juntas.
+  DATOS.trabajadores.guardar(d.id, { activo: false, fecha_salida: cuando })
+    .then(function () {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'trabajador', d.id, 'editar',
+                   { activo: true }, { activo: false, fecha_salida: cuando });
+      $('#dlgFicha').close(); return cargarTodo();
+    }).catch(function (e) { aviso('#fMsg', e.message, 'bad'); });
+});
+
+$('#fVuelve').addEventListener('click', function () {
+  var d = ficha && ficha.dato; if (!d) return;
+  aviso('#fMsg', 'Guardando…');
+  // Vuelve a estar activa y se le quita la fecha: las dos cosas, o el candado
+  // de la base lo impide — y con razón, porque decirían cosas distintas.
+  DATOS.trabajadores.guardar(d.id, { activo: true, fecha_salida: null })
+    .then(function () {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'trabajador', d.id, 'editar',
+                   { activo: false }, { activo: true });
+      $('#dlgFicha').close(); return cargarTodo();
+    }).catch(function (e) { aviso('#fMsg', e.message, 'bad'); });
+});
 $('#fGuardar').addEventListener('click', function () {
   var nombre = ($('#fNombre') || {}).value;
   if (!nombre || !nombre.trim()) return aviso('#fMsg', 'Ponle un nombre.', 'bad');
@@ -2892,13 +3029,33 @@ $('#btnCargo').addEventListener('click',      function () { abrirFicha('cargo', 
 $('#btnSucursal').addEventListener('click',   function () { abrirFicha('sucursal', null); });
 
 function pintarEquipo() {
-  $('#listaTrabajadores').innerHTML = S.trabajadores.length
-    ? S.trabajadores.map(function (p) {
+  $('#listaTrabajadores').innerHTML = activos().length
+    ? activos().map(function (p) {
         var cs = (p.trabajador_cargos || []).map(function (x) { return nombreCargo(x.cargo_id); });
         return '<div class="item" data-tipo="trabajador" data-id="' + p.id + '"><b>' + esc(p.nombre) + '</b>'
              + '<span class="sub">' + (cs.length ? esc(cs.join(' · ')) : 'sin cargos') + '</span></div>';
       }).join('')
     : '<p class="vacio">Todavía no hay nadie. Agrega a tu gente.</p>';
+
+  /* LOS QUE YA NO TRABAJAN AQUI, aparte y al final.
+
+     Tienen que estar en alguna parte: si no, marcar a alguien como ido seria
+     un camino de ida —no habria donde encontrarlo para corregir la fecha o
+     para decir que volvio—. Pero van abajo y apagados, porque la lista de
+     arriba es la que se usa todos los dias. */
+  var idos = S.trabajadores.filter(function (p) { return p.activo === false; });
+  var caja = $('#listaIdos');
+  if (caja) {
+    caja.hidden = !idos.length;
+    caja.innerHTML = !idos.length ? '' :
+      '<h3 class="idos-tit">Ya no trabajan aquí <span>(' + idos.length + ')</span></h3>'
+      + idos.map(function (p) {
+          return '<div class="item ido" data-tipo="trabajador" data-id="' + p.id + '">'
+               + '<b>' + esc(p.nombre) + '</b><span class="sub">'
+               + (p.fecha_salida ? 'hasta el ' + diaMes(p.fecha_salida) : 'sin fecha')
+               + ' · sus turnos pasados siguen ahí</span></div>';
+        }).join('');
+  }
 
   $('#listaCargos').innerHTML = S.cargos.length
     ? S.cargos.map(function (q) {
@@ -3040,7 +3197,7 @@ function pintarConfig() {
         : '');
 }
 
-['#listaTrabajadores','#listaCargos'].forEach(function (sel) {
+['#listaTrabajadores','#listaIdos','#listaCargos'].forEach(function (sel) {
   $(sel).addEventListener('click', function (ev) {
     var it = ev.target.closest('.item'); if (!it) return;
     var listas = { trabajador:S.trabajadores, cargo:S.cargos };
@@ -3481,7 +3638,7 @@ function abrirAusencia(a, fecha, trabajadorId) {
     return alert('Falta pegar la migración de ausencias en la base.');
   if (!S.tiposAusencia.length)
     return alert('No hay tipos de ausencia cargados todavía.');
-  if (!S.trabajadores.length)
+  if (!activos().length)
     return alert('Primero crea a alguien en Equipo.');
 
   ausActual = a || null;
@@ -3493,8 +3650,8 @@ function abrirAusencia(a, fecha, trabajadorId) {
      licencia medica —que nadie concede— o a una falta. */
   $('#usTit').textContent = a ? 'Ausencia / permiso' : 'Registrar una ausencia / permiso';
 
-  $('#usQuien').innerHTML = S.trabajadores.map(opcion).join('');
-  $('#usQuien').value = a ? a.trabajador_id : (trabajadorId || S.trabajadores[0].id);
+  $('#usQuien').innerHTML = activos().map(opcion).join('');
+  $('#usQuien').value = a ? a.trabajador_id : (trabajadorId || activos()[0].id);
 
   /* Los tipos salen AGRUPADOS POR TRATO y con el trato escrito en el titulo
      del grupo. No es decoracion: es lo unico que explica, en el momento de

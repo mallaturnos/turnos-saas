@@ -78,20 +78,60 @@
       var d = null;
       if (t) { try { d = JSON.parse(t); } catch (e) { d = null; } }
       if (!r.ok) {
-        throw new Error((d && (d.message || d.msg || d.error_description || d.error))
-          || ('la base respondió ' + r.status + ' al ' + que));
+        var dice = (d && (d.message || d.msg || d.error_description || d.error))
+          || ('la base respondió ' + r.status + ' al ' + que);
+        /* «JWT expired» es lo que contesta Supabase, y no es un mensaje para
+           nadie: esta en ingles, nombra una sigla y no dice que hacer. Puede
+           colarse aunque renovemos antes —si el token vence entre que sale la
+           llamada y llega—, asi que se traduce aqui tambien. */
+        if (/JWT|token is expired|invalid claim/i.test(dice)) {
+          var ev = new Error('Tu sesión se venció. Entra de nuevo.');
+          ev.sesionVencida = true;
+          if (typeof cuenta.alCambiar === 'function') cuenta.alCambiar(ev);
+          throw ev;
+        }
+        throw new Error(dice);
       }
       return d;
     });
   }
 
+  /* LA SESION SE RENUEVA ANTES DE CADA LLAMADA, no solo al cargar la pagina.
+
+     El token de Supabase dura una hora. La renovacion existia desde siempre
+     —`cuenta.sesion()` la hace— pero SOLO se llamaba al arrancar, y `rest()`
+     tomaba el token tal como estuviera. Resultado: a la hora de tener la
+     pantalla abierta, TODO fallaba con «JWT expired» hasta recargar.
+
+     Y una malla es justo lo que se deja abierto toda la tarde. Pedro lo vio el
+     11-10 al guardar un turno despues de un rato: el mensaje en rojo era ese,
+     en ingles y sin decirle que hacer.
+
+     Renovar aqui no cuesta una llamada de mas: `cuenta.sesion()` devuelve al
+     tiro si el token todavia sirve. Solo sale a la red cuando de verdad vencio. */
+  function alDia() {
+    if (!sesion || !sesion.access_token) return Promise.resolve();
+    return cuenta.sesion().then(function (s) {
+      if (s) return;
+      // Habia sesion y la renovacion no la pudo salvar: no se disfraza de
+      // error de permisos. Se dice, y se avisa a la pantalla para que lleve
+      // a la persona a entrar de nuevo en vez de dejarla apretando botones.
+      var e = new Error('Tu sesión se venció. Entra de nuevo.');
+      e.sesionVencida = true;
+      if (typeof cuenta.alCambiar === 'function') cuenta.alCambiar(e);
+      throw e;
+    });
+  }
+
   function rest(camino, o, que) {
     o = o || {};
-    return conTope(fetch(cfg().SUPABASE_URL + '/rest/v1/' + camino, {
-      method: o.method || 'GET',
-      headers: Object.assign(cabeceras(true), o.headers || {}),
-      body: o.body ? JSON.stringify(o.body) : undefined,
-    }).then(function (r) { return respuesta(r, que); }), que);
+    return conTope(alDia().then(function () {
+      return fetch(cfg().SUPABASE_URL + '/rest/v1/' + camino, {
+        method: o.method || 'GET',
+        headers: Object.assign(cabeceras(true), o.headers || {}),
+        body: o.body ? JSON.stringify(o.body) : undefined,
+      }).then(function (r) { return respuesta(r, que); });
+    }), que);
   }
 
   function auth(camino, cuerpo, que) {
@@ -204,8 +244,18 @@
 
   var trabajadores = {
     listar: function () {
+      /* SE TRAEN TODOS, también los que ya no trabajan aquí.
+
+         Antes esto filtraba `activo=eq.true` y parecía lo correcto. No lo es:
+         la pantalla resuelve el nombre de cada turno buscando en esta lista, y
+         quien no esté sale como «—». O sea que archivar a alguien le habría
+         borrado el nombre de TODOS sus turnos pasados — justo lo contrario de
+         lo que archivar promete.
+
+         Quién existe y a quién se le puede asignar un turno son dos preguntas
+         distintas. Esta trae a todos; la de ofrecer filtra (`activos()`). */
       return rest('trabajadores?select=*,trabajador_cargos(cargo_id),trabajador_sucursales(sucursal_id)'
-                  + '&activo=eq.true&order=nombre', null, 'leer los trabajadores');
+                  + '&order=nombre', null, 'leer los trabajadores');
     },
     crear:  function (e, d) { return crear('trabajadores', Object.assign({ empresa_id: e }, d), 'crear el trabajador'); },
     guardar:function (id, d) { return editar('trabajadores', id, d, 'guardar el trabajador'); },

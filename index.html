@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v72</span></p>
+      <span style="float:right;opacity:.55" id="ver">v73</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v72</span>
+    <span class="hint" id="ver2" title="Versión publicada">v73</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -145,6 +145,9 @@
           <button class="primario" id="btnTrabajador">Agregar</button>
         </div>
         <div id="listaTrabajadores" class="lista"></div>
+        <!-- Los que ya no trabajan aqui. Vacio y escondido mientras no haya
+             ninguno: una seccion que dice «(0)» es ruido. -->
+        <div id="listaIdos" class="lista" hidden></div>
       </div>
       <div>
         <div class="controles">
@@ -473,6 +476,12 @@
     <p class="msg" id="fMsg"></p>
     <div class="acciones">
       <button type="button" class="primario" id="fGuardar">Guardar</button>
+      <!-- «Ya no trabaja aqui» y no «archivar»: lo cuestiono Pedro y tiene la
+           misma razon que cuando cambio «se pisa» por «se cruza» — es la
+           palabra que se usa en un local. Ademas «archivar» no dice lo que
+           paso, y suena a guardar un papel. -->
+      <button type="button" class="plano" id="fSalida" hidden>Ya no trabaja aquí</button>
+      <button type="button" class="plano" id="fVuelve" hidden>Volvió a trabajar</button>
       <button type="button" class="plano" id="fCancelar">Cancelar</button>
     </div>
   </form>

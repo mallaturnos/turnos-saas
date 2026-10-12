@@ -318,6 +318,18 @@ table.girada { border-collapse:separate; border-spacing:0; width:100%; min-width
                background:var(--blanco); border:1px solid var(--borde); border-radius:var(--radio); }
 table.girada th, table.girada td { border-bottom:1px solid var(--borde); padding:.35rem .4rem;
                                    vertical-align:top; }
+/* TODAS LAS FILAS MIDEN LO MISMO cuando no hay nada que las haga crecer.
+
+   Lo vio Pedro en su semana real: las filas de quien no tiene ningún turno
+   quedaban a la mitad de alto que las demás, y la tabla se leía como un
+   serrucho. Es el mismo defecto que ya habíamos corregido en las columnas — un
+   ancho que cambia hace que un día vacío PAREZCA más vacío — pero en el otro
+   eje y sin que yo lo hubiera mirado.
+
+   `height` en una celda de tabla se comporta como MÍNIMO: la fila con tres
+   turnos sigue creciendo, que es correcto porque ahí sí hay más que mostrar.
+   Lo que se empareja es el suelo. */
+table.girada tbody td.cel { height:5.5rem; }
 /* La cabecera NO se queda pegada arriba.
    Lo intenté con `position:sticky; top:3.1rem` —calculando a ojo el alto de la
    barra— y se montó encima de la primera fila, tapando el turno de Ana. Un
@@ -342,10 +354,10 @@ table.girada td.hoy, table.girada th.hoy { background:var(--verde-claro); }
    cuánto lleva cada uno. Va separada por una línea más marcada para que se lea
    como un total y no como un día más. */
 table.girada .tot {
-  width:5.2rem; text-align:right; background:var(--papel);
+  width:5.2rem; text-align:center; background:var(--papel);
   border-left:2px solid var(--borde); font-size:.85rem; vertical-align:middle;
 }
-table.girada thead th.tot { background:#ebe7e0; text-align:right; font-size:.8rem; }
+table.girada thead th.tot { background:#ebe7e0; text-align:center; font-size:.8rem; }
 table.girada tfoot td.tot { background:#e4ded3; }
 table.girada tfoot td.tot span { display:block; font-weight:600; font-size:.7rem;
                                  color:var(--gris); }
@@ -811,3 +823,20 @@ table.girada td.cel { user-select:none; }
   margin:.65rem 0 0; padding:.45rem .6rem; font-size:.9rem;
   background:var(--verde-claro); border-radius:6px; color:var(--tinta);
 }
+
+/* ---------- los que ya no trabajan aquí ----------
+   Apagados y al final: tienen que poder encontrarse —para corregir la fecha o
+   decir que volvieron— sin competir con la lista que se usa todos los días. */
+#listaIdos { margin-top:1.1rem; }
+.idos-tit { font-size:.9rem; color:var(--gris); margin:0 0 .4rem; font-weight:600; }
+.idos-tit span { font-weight:400; }
+.lista .item.ido { opacity:.65; }
+.lista .item.ido b { font-weight:600; text-decoration:line-through;
+                     text-decoration-color:var(--borde); }
+/* La fila de quien ya se fue, cuando aparece por tener turnos esa semana. */
+table.girada tbody tr.ido th.rot { color:var(--gris); }
+table.girada tbody tr.ido .yano { display:block; font-size:.68rem; font-weight:600;
+                                  color:#8a6d2f; text-transform:none; }
+table.girada tbody tr.ido td.cel .agregar-cel { display:none; }
+/* Agrupado por cargos no hay fila que marcar: la marca va en el nombre. */
+.gente.bloques .blq em.sefue { color:#8a6d2f; font-weight:600; }
