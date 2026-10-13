@@ -1349,7 +1349,20 @@ function estirarTurno(id, ini, fin) {
       return DATOS.asignaciones.guardar(id, {
         hora_inicio: copia.hora_inicio, hora_fin: copia.hora_fin });
     });
-    return recargarSemana();
+    /* Y LA NECESIDAD SIGUE AL TURNO TAMBIÉN CUANDO SE ARRASTRA.
+
+       Lo encontró Pedro el 13-10 (msg 6314): movió a Joaquín de 09:00–17:00 a
+       08:00–16:00 y le quedó un «sin asignar» de 16:00 a 17:00 que no había
+       pedido nadie. El turno se movió y **la necesidad se quedó donde estaba**.
+
+       La causa era una asimetría: `alinearNecesidad()` colgaba sólo de
+       `guardarAsignacion()` —la ficha—, y estos dos caminos guardan por su
+       cuenta. Misma regla, dos puertas, y una no la aplicaba.
+
+       Es la misma clase de defecto que el salto de fecha de esta mañana: no
+       falta la regla, falta en uno de los sitios por donde se entra. */
+    return alinearNecesidad(Object.assign({}, copia, cambio))
+      .then(function () { return recargarSemana(); });
   }).catch(function (e) { alert('No se pudo cambiar la hora: ' + e.message); });
 }
 
@@ -1396,7 +1409,9 @@ function soltarTurno(id, filaId, horaNueva, soloHora) {
         trabajador_id: copia.trabajador_id, cargo_id: copia.cargo_id,
         hora_inicio: copia.hora_inicio, hora_fin: copia.hora_fin });
     });
-    return recargarSemana();
+    // Misma regla que al estirar: la necesidad sigue al turno.
+    return alinearNecesidad(Object.assign({}, copia, cambio))
+      .then(function () { return recargarSemana(); });
   }).catch(function (e) { alert('No se pudo mover: ' + e.message); });
 }
 
@@ -5579,6 +5594,12 @@ window.__app = {
   CFG_TOPE: CFG_TOPE, paso: paso, mostrar: mostrar, estadoNecesidad: estadoNecesidad,
   huecosDeNecesidad: huecosDeNecesidad, h2a: h2a, a2h: a2h,
   pintarSelectores: pintarSelectores,
+  /* Los gestos de la vista Día. La prueba los llama directo, por el mismo
+     motivo que ya vale para la planilla: un arrastre de verdad no se puede
+     fingir desde fuera, pero LO QUE CORRE ES EXACTAMENTE LO MISMO que corre al
+     soltar la barra. */
+  estirarTurno: estirarTurno, soltarTurno: soltarTurno,
+  alinearNecesidad: alinearNecesidad,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
