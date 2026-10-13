@@ -2055,6 +2055,24 @@ $('#cVista').addEventListener('click', function (ev) {
   var b = ev.target.closest('button'); if (!b) return;
   S.vista = b.dataset.v;
   if (!S.dia) S.dia = hoyTexto();
+  /* AL PASAR A DÍA SE ATERRIZA EN LO QUE SE ESTABA MIRANDO.
+
+     Lo encontró Pedro el 13-10 (msg 6170): planificando la semana del 26/10,
+     apretar «Día» lo mandaba a «martes 13», que era hoy.
+
+     La causa es una ASIMETRÍA. `mover()` en vista Día sí sincroniza las dos
+     cosas —`S.lunes = lunesDe(S.dia)`—, pero al mover la SEMANA el día se queda
+     donde estaba; y aquí solo se rellenaba `S.dia` cuando venía vacío, o sea
+     con hoy. Así que la vista Día ignoraba por completo dónde estabas.
+
+     Se CONSERVA el día si ya cae dentro de lo que se está mirando, y solo si no,
+     se aterriza en el primero. Mandar siempre al lunes borraría el día elegido
+     al ir y volver entre Día y Semana — peor que el error que arregla.
+
+     `lunesDe()` en los dos lados a propósito: en vista Mes `S.lunes` es el día 1
+     del mes y puede no ser lunes, así que se comparan SEMANAS, no textos. */
+  if (S.vista === 'dia' && S.lunes && lunesDe(S.dia) !== lunesDe(S.lunes))
+    S.dia = S.lunes;
   pintarSelectores(); recargarSemana();
 });
 /* Vuelve a ser lo que era: elegir local aquí es elegir QUÉ SE PLANIFICA, y
@@ -2691,7 +2709,27 @@ $('#aGuardar').addEventListener('click', function () { cerrarFicha(true); });
    perder. Lo pilló mirar los datos antes de escribir la regla, no después.
 
    Con dos o más personas la necesidad sigue siendo un tramo propio y «cubrir
-   solo un trozo» sigue valiendo, que es donde esa función sirve de verdad. */
+   solo un trozo» sigue valiendo, que es donde esa función sirve de verdad.
+
+   ⚠️⚠️ ESTA REGLA VALE PARA NECESIDADES DECLARADAS A MANO, Y HAY QUE APAGARLA
+   EL DIA QUE LAS CALCULE UN PRONOSTICO.
+
+   Pedro dijo el rumbo del producto el 12-10 (msg 5945): *«yo entiendo esto igual
+   que los otros, con la única diferencia que por el momento lo declaro a mano
+   porque no tenemos ventas reales ni POS, pero en esencia deberíamos funcionar
+   igual a ellos en el futuro»*. O sea la necesidad es **el pronóstico puesto a
+   mano**, y asi es como lo tienen 7shifts -Optimal Labor Tool, gente por hora
+   desde el historico de ventas- y Deputy.
+
+   Mientras el pronostico sea EL, que acortar el turno acorte la necesidad es
+   correcto: las dos cosas las decide en el mismo momento. Pero un pronostico
+   calculado es un DATO DE ENTRADA y un turno no puede reescribirlo: si Ana se va
+   a las 14:30, el historico sigue diciendo que el local necesitaba hasta las
+   16:00, y **ahi ese hueco es justo lo que se quiere ver**.
+
+   Asi que el dia que haya POS, esta funcion se limita a las necesidades de
+   origen manual o se retira. Queda escrito aqui para que nadie la extienda sin
+   darse cuenta. */
 function alinearNecesidad(fila) {
   if (!fila || !fila.necesidad_id) return Promise.resolve();
   var n = S.necesidades.filter(function (x) { return x.id === fila.necesidad_id; })[0];
