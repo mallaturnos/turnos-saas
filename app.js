@@ -2415,31 +2415,83 @@ $('#nGuardar').addEventListener('click', function () {
    error que me ha perseguido todo el día. */
 function borrarNecesidad(n, dondeElError) {
   if (!n) return;
-  var cuantas = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; }).length;
-  // Decir cuánta gente queda suelta ANTES de borrar. Lo que no se avisa se
-  // descubre cuando ya pasó. Y se dice QUÉ se borra, con nombre y hora: desde
-  // la × del bloque uno puede haberle apuntado al de al lado.
-  var que = '¿Borrar lo que hace falta en «' + nombreCargo(n.cargo_id) + '», '
-          + rangoTxt(n.hora_inicio, n.hora_fin) + '?';
-  var m = cuantas
-    ? que + '\n\nTiene ' + cuantas + ' persona(s) asignada(s). Esas quedan como '
-      + '«sin planificar», no se borran.'
-    : que;
-  if (!confirm(m)) return;
-  var copia = JSON.parse(JSON.stringify(n));
-  return DATOS.necesidades.borrar(n.id).then(function () {
-    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', n.id, 'borrar', copia, null);
-    recordar('borrar ' + nombreCargo(copia.cargo_id), function () {
-      return DATOS.necesidades.crear({
-        empresa_id: copia.empresa_id, sucursal_id: copia.sucursal_id, fecha: copia.fecha,
-        cargo_id: copia.cargo_id, hora_inicio: copia.hora_inicio, hora_fin: copia.hora_fin,
-        personas_requeridas: copia.personas_requeridas });
+  /* LA × DEL ENCABEZADO BORRA LA TARJETA ENTERA: lo pedido Y sus turnos.
+
+     Lo corrigió Pedro el 13-10 (msg 6376): *«esa x borra a los dos… la x del
+     encabezado borra todo»*. Antes borraba sólo el pedido y la gente quedaba
+     suelta, con el cartel «sin planificar» — que es justo como aparecio el
+     turno de Joaquin.
+
+     Y con su regla, dejarlos sueltos era peor que incómodo: un turno con
+     persona **vuelve a declarar que hacía falta**, así que borrar el pedido no
+     borraba nada. La × tiene que hacer lo que parece que hace.
+
+     La × de cada línea sigue quitando un turno solo. Son dos borrados
+     distintos y cada uno dice lo suyo. */
+  var suyas = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; });
+  var publicados = suyas.filter(function (a) {
+    return S.turnos.some(function (t) {
+      return t.asignacion_id === a.id && t.estado === 'publicado';
     });
-    $('#dlgNec').close(); return recargarSemana();
-  }).catch(function (e) {
-    if (dondeElError) aviso(dondeElError, e.message, 'bad'); else alert(e.message);
+  }).length;
+
+  /* SE DICE QUÉ SE VA, CON NOMBRE. Desde la × del bloque uno puede haberle
+     apuntado al de al lado, y «¿borrar?» a secas no deja comprobarlo. */
+  var quienes = suyas.map(function (a) {
+    return a.trabajador_id ? nombreTrab(a.trabajador_id) : 'pendiente';
   });
+  var m = '¿Borrar «' + nombreCargo(n.cargo_id) + '», '
+        + rangoTxt(n.hora_inicio, n.hora_fin) + '?';
+  if (suyas.length) {
+    m += '\n\nSe van también sus ' + suyas.length + ' turno(s): ' + quienes.join(', ') + '.';
+    if (publicados) m += '\n\n⚠️ ' + publicados + ' ya está(n) PUBLICADO(s): '
+                       + 'a esa gente se le borra del calendario.';
+  }
+  if (!confirm(m)) return;
+
+  var copiaN = JSON.parse(JSON.stringify(n));
+  var copias = suyas.map(function (a) { return JSON.parse(JSON.stringify(a)); });
+
+  var cadena = copias.reduce(function (pr, a) {
+    return pr.then(function () {
+      return DATOS.turnos.borrarDe([a.id]).catch(function () {})
+        .then(function () { return DATOS.asignaciones.borrar(a.id); });
+    });
+  }, Promise.resolve());
+
+  return cadena.then(function () { return DATOS.necesidades.borrar(n.id); })
+    .then(function () {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', n.id, 'borrar',
+                   { necesidad: copiaN, turnos: copias }, null);
+      /* Deshacer repone las dos cosas, y en orden: primero lo pedido —que nace
+         con otro id— y después sus turnos colgados del nuevo. Reponer sólo la
+         necesidad dejaría la tarjeta vacía: un estado que nunca existió. */
+      recordar('borrar ' + nombreCargo(copiaN.cargo_id)
+               + (copias.length ? ' y sus ' + copias.length + ' turno(s)' : ''), function () {
+        return DATOS.necesidades.crear({
+          empresa_id: copiaN.empresa_id, sucursal_id: copiaN.sucursal_id,
+          fecha: copiaN.fecha, cargo_id: copiaN.cargo_id,
+          hora_inicio: copiaN.hora_inicio, hora_fin: copiaN.hora_fin,
+          personas_requeridas: copiaN.personas_requeridas
+        }).then(function (nueva) {
+          return copias.reduce(function (pr, a) {
+            return pr.then(function () {
+              return DATOS.asignaciones.crear({
+                empresa_id: a.empresa_id, sucursal_id: a.sucursal_id,
+                necesidad_id: nueva.id, trabajador_id: a.trabajador_id,
+                fecha: a.fecha, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+                cargo_id: a.cargo_id, origen: a.origen, tocado_a_mano: true,
+                estado: a.estado });
+            });
+          }, Promise.resolve());
+        });
+      });
+      $('#dlgNec').close(); return recargarSemana();
+    }).catch(function (e) {
+      if (dondeElError) aviso(dondeElError, e.message, 'bad'); else alert(e.message);
+    });
 }
+
 
 $('#nBorrar').addEventListener('click', function () {
   borrarNecesidad(necActual, '#nMsg');
@@ -5733,6 +5785,7 @@ window.__app = {
      fingir desde fuera, pero LO QUE CORRE ES EXACTAMENTE LO MISMO que corre al
      soltar la barra. */
   estirarTurno: estirarTurno, soltarTurno: soltarTurno,
+  borrarNecesidad: borrarNecesidad,
   alinearNecesidad: alinearNecesidad,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
