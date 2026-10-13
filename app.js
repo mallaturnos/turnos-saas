@@ -2851,10 +2851,68 @@ function revisarChoque(d) {
 
 /* DEVUELVE SU PROMESA. Antes no la devolvía y quien la llamaba no tenía forma de
    saber si había terminado — ni de decir algo después, como el aviso del cruce. */
+/* ====================================================================
+   PONER A ALGUIEN YA ES DECLARAR QUE HACÍA FALTA
+   ====================================================================
+   Pedro, 13-10 (msgs 6239–6245): *«si sé que necesito a Ana a tal hora, tal
+   día, ¿por qué debería agregarle un paso extra?»* · *«al poner a Ana ahí,
+   implícitamente declaré que hacía falta»*.
+
+   DOS CAMINOS, NO UN ORDEN OBLIGATORIO. Declarar la necesidad primero sigue
+   existiendo y sirve para lo que de verdad sirve: pedir gente que todavía no
+   tienes —«faltan 3 cajeros y no sé quiénes»—. Pero **no es un peaje**: si ya
+   sabes a quién pones, lo pones.
+
+   Y esto hace desaparecer «sin planificar» como estado corriente, que es lo que
+   le extrañó al verlo (msg 6235) — con razón: la etiqueta describía un trámite
+   pendiente que él nunca había querido hacer.
+
+   SE BUSCA ANTES DE CREAR, por día + cargo + las dos horas. Si Ana y Beto
+   quedan los dos en Caja de 09:00 a 17:00, eso es UNA necesidad de dos
+   personas y no dos necesidades de una — que es como lo diría cualquiera. */
+function necesidadQueCalza(fecha, cargo_id, hi, hf) {
+  return S.necesidades.filter(function (x) {
+    return x.fecha === fecha && x.cargo_id === cargo_id
+        && hhmm(x.hora_inicio) === hhmm(hi) && hhmm(x.hora_fin) === hhmm(hf);
+  })[0] || null;
+}
+
+function necesidadImplicita(a, avisarCreada) {
+  /* Un turno PENDIENTE no declara nada: justamente no sabes a quién poner, y
+     ese es el caso en que la necesidad se declara aparte. */
+  if (!a || a.necesidad_id || !a.trabajador_id) return Promise.resolve(a);
+
+  var ya = necesidadQueCalza(a.fecha, a.cargo_id, a.hora_inicio, a.hora_fin);
+  var p = ya ? Promise.resolve(ya) : DATOS.necesidades.crear({
+    empresa_id: a.empresa_id, sucursal_id: a.sucursal_id, fecha: a.fecha,
+    cargo_id: a.cargo_id, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+    personas_requeridas: 1
+  }).then(function (fila) { if (avisarCreada) avisarCreada(fila.id); return fila; });
+
+  return p.then(function (n) {
+    return DATOS.asignaciones.guardar(a.id, { necesidad_id: n.id }).then(function () {
+      a.necesidad_id = n.id;
+      /* Y SI AHORA HAY MÁS GENTE QUE LO PEDIDO, SUBE LO PEDIDO. Sin esto, el
+         segundo que pones en el mismo tramo deja la tarjeta diciendo «Sobra 1»
+         — y no sobra nadie: lo pusiste tú, o sea que hacía falta. */
+      var cubren = S.asignaciones.filter(function (x) {
+        return x.necesidad_id === n.id && x.trabajador_id && x.id !== a.id;
+      }).length + 1;
+      if (cubren > (n.personas_requeridas || 1))
+        return DATOS.necesidades.guardar(n.id, { personas_requeridas: cubren });
+    });
+  }).catch(function () { /* que falle esto no puede botar el turno ya guardado */ });
+}
+
 function guardarAsignacion(d) {
   aviso('#aMsg', 'Guardando…');
   var p = asigActual ? DATOS.asignaciones.guardar(asigActual.id, d) : DATOS.asignaciones.crear(d);
   var antesA = asigActual && JSON.parse(JSON.stringify(asigActual));
+  /* Se declara aquí y se rellena después: el deshacer se registra antes de que
+     la necesidad exista, pero la función de deshacer corre más tarde y para
+     entonces ya está puesta. Sin esto, deshacer dejaría el día pidiendo gente
+     que nadie pidió. */
+  var necCreada = null;
   return p.then(function (fila) {
     DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', fila.id, asigActual ? 'editar' : 'crear', asigActual, fila);
     if (antesA) recordar('el cambio en el turno', function () {
@@ -2863,12 +2921,19 @@ function guardarAsignacion(d) {
         hora_fin: antesA.hora_fin, cargo_id: antesA.cargo_id });
     });
     else recordar('asignar a ' + (fila.trabajador_id ? nombreTrab(fila.trabajador_id) : 'pendiente'),
-      function () { return DATOS.asignaciones.borrar(fila.id); });
+      function () {
+        return DATOS.asignaciones.borrar(fila.id).then(function () {
+          // y la necesidad que nació de este turno se va con él
+          return necCreada ? DATOS.necesidades.borrar(necCreada).catch(function () {}) : null;
+        });
+      });
     fichaBase = null;
     $('#dlgAsig').close();
-    return alinearNecesidad(fila).then(function () {
-      return recargarSemana().then(function () { return true; });
-    });
+    return necesidadImplicita(fila, function (id) { necCreada = id; })
+      .then(function () { return alinearNecesidad(fila); })
+      .then(function () {
+        return recargarSemana().then(function () { return true; });
+      });
   }).catch(function (e) {
     /* DEVUELVE false Y DEJA LA FICHA ABIERTA. Lo segundo es lo que importa: si
        se cerrara, la persona perdería lo que escribió por un choque que todavía
@@ -3225,21 +3290,41 @@ function copiarSeleccion(cortar) {
   if (!fs.length) return;
   var f1 = Math.min.apply(null, fs), f2 = Math.max.apply(null, fs);
   var c1 = Math.min.apply(null, cs), c2 = Math.max.apply(null, cs);
-  var celdas = [];
+  var celdas = [], necs = {};
   for (var f = f1; f <= f2; f++) {
     var linea = [];
     for (var c = c1; c <= c2; c++) {
       var td = g.filas[f] && g.filas[f][c];
       /* `turnosMarcadosEn` y no `turnosDeClave`: si marcaste UN turno de una
          casilla que tiene tres, se copia ese y no los tres. */
+      /* SE COPIA TAMBIÉN LO QUE HACÍA FALTA, no solo quién trabajaba.
+
+         Pedro eligió esto el 13-10 (msg 6237, opción B) después de preguntar
+         por qué un día pegado salía «sin planificar»: el portapapeles llevaba
+         los turnos y **no** la necesidad, así que todo lo pegado nacía sin
+         nadie que hubiera declarado que hiciera falta.
+
+         Se guarda el `necesidad_id` de origen y, aparte, la necesidad entera.
+         Al pegar se vuelve a crear en el día de destino. Con el POS esto habrá
+         que revisarlo —copiar un pronóstico no tendrá sentido— y él lo dijo
+         con todas sus letras: *«cuando el POS calcule, revisamos todas esas
+         cosas… pero ahora B queda mejor»*. */
       linea.push(!td ? [] : turnosMarcadosEn(claveCel(td)).map(function (a) {
+        if (a.necesidad_id && !necs[a.necesidad_id]) {
+          var n = S.necesidades.filter(function (x) { return x.id === a.necesidad_id; })[0];
+          if (n) necs[a.necesidad_id] = { cargo_id: n.cargo_id, hora_inicio: n.hora_inicio,
+                                          hora_fin: n.hora_fin,
+                                          personas_requeridas: n.personas_requeridas };
+        }
         return { hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
-                 cargo_id: a.cargo_id, trabajador_id: a.trabajador_id };
+                 cargo_id: a.cargo_id, trabajador_id: a.trabajador_id,
+                 necesidad_id: a.necesidad_id || null };
       }));
     }
     celdas.push(linea);
   }
-  PORTA = { agrupar: S.agrupar, alto: f2 - f1 + 1, ancho: c2 - c1 + 1, celdas: celdas };
+  PORTA = { agrupar: S.agrupar, alto: f2 - f1 + 1, ancho: c2 - c1 + 1,
+            celdas: celdas, necesidades: necs };
   if (cortar) return borrarSeleccion(true);
   avisarSeleccion();
 }
@@ -3334,6 +3419,9 @@ function pegarSeleccion() {
         }
         crear.push({
           empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal,
+          // Se resuelve justo antes de crearlo: hay que saber qué necesidad
+          // quedó en el día de destino, y eso depende de lo que ya hubiera.
+          _necOrigen: t.necesidad_id || null,
           necesidad_id: null,
           // La cara que manda es la de la FILA de destino; la otra viaja con
           // lo copiado. Pegar en la fila de Ana hace que el turno sea de Ana.
@@ -3360,12 +3448,55 @@ function pegarSeleccion() {
         .then(function () { return DATOS.asignaciones.borrar(a.id); });
     });
   }, Promise.resolve());
+  /* LA NECESIDAD EN EL DÍA DE DESTINO: se busca y solo si no está, se crea.
+
+     Buscar primero no es un adorno. Sin eso, pegar dos veces sobre el mismo
+     día duplicaría la demanda —«hacen falta 2» pasaría a «hacen falta 4»— sin
+     que nada en la pantalla explicara de dónde salió. Se considera la misma si
+     coinciden el día, el cargo y las dos horas. */
+  var necNuevas = [], mapaNec = {};
+  /* `base` sale de dos sitios y el resto es idéntico:
+       · del PORTAPAPELES, si lo copiado ya colgaba de una necesidad — así una
+         de 3 personas sigue siendo de 3 en el destino y el hueco no se pierde;
+       · del PROPIO TURNO, si venía suelto — por la regla de Pedro, ponerlo ya
+         declara que hacía falta, así que nace con una de 1.
+     Un turno PENDIENTE no declara nada y se queda sin necesidad. */
+  function asegurarNecesidad(fecha, idOrigen, suelto) {
+    var base = idOrigen ? (PORTA.necesidades && PORTA.necesidades[idOrigen])
+                        : suelto;
+    if (!base) return Promise.resolve(null);
+    var k = fecha + '|' + base.cargo_id + '|' + hhmm(base.hora_inicio) + '|' + hhmm(base.hora_fin);
+    if (mapaNec[k]) return Promise.resolve(mapaNec[k]);
+    var ya = S.necesidades.filter(function (x) {
+      return x.fecha === fecha && x.cargo_id === base.cargo_id
+          && hhmm(x.hora_inicio) === hhmm(base.hora_inicio)
+          && hhmm(x.hora_fin)    === hhmm(base.hora_fin);
+    })[0];
+    if (ya) { mapaNec[k] = ya.id; return Promise.resolve(ya.id); }
+    return DATOS.necesidades.crear({
+      empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal, fecha: fecha,
+      cargo_id: base.cargo_id, hora_inicio: base.hora_inicio,
+      hora_fin: base.hora_fin, personas_requeridas: base.personas_requeridas
+    }).then(function (fila) {
+      mapaNec[k] = fila.id; necNuevas.push(fila.id); return fila.id;
+    }).catch(function () { return null; });   // sin necesidad el turno igual entra
+  }
+
   crear.forEach(function (d) {
     cadena = cadena.then(function () {
+      var orig = d._necOrigen; delete d._necOrigen;
+      // Suelto y con persona: la necesidad la declara el propio turno.
+      var suelto = (!orig && d.trabajador_id)
+        ? { cargo_id: d.cargo_id, hora_inicio: d.hora_inicio,
+            hora_fin: d.hora_fin, personas_requeridas: 1 }
+        : null;
       // Un choque con el índice único no bota el pegado entero: se cuenta y
       // se sigue. Parar a la mitad dejaría la semana por la mitad, que es peor
       // que pegar casi todo y decir cuántos no entraron.
-      return DATOS.asignaciones.crear(d)
+      return ((orig || suelto) ? asegurarNecesidad(d.fecha, orig, suelto)
+                              : Promise.resolve(null))
+        .then(function (nid) { if (nid) d.necesidad_id = nid; })
+        .then(function () { return DATOS.asignaciones.crear(d); })
         .then(function (fila) { nacidos.push(fila); })
         .catch(function () { fuera++; });
     });
@@ -3382,6 +3513,14 @@ function pegarSeleccion() {
         var v = nacidos.reduce(function (pr, fila) {
           return pr.then(function () { return DATOS.asignaciones.borrar(fila.id); });
         }, Promise.resolve());
+        /* Y SE VAN TAMBIÉN LAS NECESIDADES QUE NACIERON DEL PEGADO. Si solo se
+           borraran los turnos, deshacer dejaría el día pidiendo gente que nadie
+           pidió — un estado que nunca existió, que es el mismo defecto que ya
+           se corrigió en `alinearNecesidad()`. Solo las nuevas: una que ya
+           estaba ahí no la trajo este pegado y no le toca irse. */
+        necNuevas.forEach(function (id) {
+          v = v.then(function () { return DATOS.necesidades.borrar(id).catch(function () {}); });
+        });
         borrar.forEach(function (a) {
           v = v.then(function () {
             return DATOS.asignaciones.crear({
