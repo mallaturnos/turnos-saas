@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=38">
+<link rel="stylesheet" href="estilo.css?v=39">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v98</span></p>
+      <span style="float:right;opacity:.55" id="ver">v99</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v98</span>
+    <span class="hint" id="ver2" title="Versión publicada">v99</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -272,7 +272,7 @@
 <!-- Necesidad: qué hace falta, sin nombres todavía. -->
 <dialog id="dlgNec" class="dlg">
   <form method="dialog">
-    <h3 id="nTit">Qué hace falta</h3>
+    <h3 id="nTit">Agregar</h3>
     <div class="fldrow">
       <div class="fld"><label for="nFecha">Día</label><input type="date" id="nFecha"></div>
       <div class="fld"><label for="nCargo">Cargo</label><select id="nCargo"></select></div>
@@ -284,7 +284,15 @@
       <div class="fld corta"><label for="nCuantos">Personas</label>
         <input type="number" id="nCuantos" min="1" max="50" value="1"></div>
     </div>
-    <div class="fld"><label for="nHorario">Copiar horas de…</label><select id="nHorario"></select></div>
+    <!-- A QUIÉN es OPCIONAL, y ese «opcional» es todo el diseño: en blanco
+         queda el pedido, con nombre queda el turno de esa persona. Antes eran
+         dos botones distintos («+ qué hace falta» y «+ turno suelto») y con las
+         reglas del 13-10 llevaban al mismo sitio por dos caminos. -->
+    <div class="fldrow">
+      <div class="fld"><label for="nQuien">A quién <span class="opc">(opcional)</span></label>
+        <select id="nQuien"></select></div>
+      <div class="fld"><label for="nHorario">Copiar horas de…</label><select id="nHorario"></select></div>
+    </div>
     <p class="hint" id="nMedia" hidden>Cruza la medianoche: termina al día siguiente.</p>
     <p class="msg" id="nMsg"></p>
     <div class="acciones">
@@ -494,6 +502,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>

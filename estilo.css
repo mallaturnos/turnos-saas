@@ -1004,3 +1004,7 @@ table.mesb .mini { cursor: pointer; }
              color:var(--verde); font-style:normal; font-weight:700; font-size:.78rem;
              display:flex; align-items:center; justify-content:center; cursor:default; }
 .cobtira i.mal { background:var(--amar); border:1px solid var(--amar-borde); color:#8a6d1f; }
+
+/* El «(opcional)» de «A quién». Va en la etiqueta y no en un aviso aparte:
+   que el campo se pueda dejar vacío ES la función, no una nota al pie. */
+.fld label .opc { color:var(--gris); font-weight:400; font-size:.78rem; }

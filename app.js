@@ -786,8 +786,15 @@ function celdaDia(f, hoy, compacta) {
     + bandaAusencias(f);
   necs.forEach(function (n) { html += pintarNecesidad(n); });
   sueltas.forEach(function (a) { html += pintarSuelta(a); });
-  html += '<button class="mas" data-nueva="' + f + '">+ qué hace falta</button>';
-  if (!compacta) html += '<button class="mas" data-suelta="' + f + '">+ turno suelto</button>';
+  /* UN SOLO BOTÓN. Antes eran dos —«+ qué hace falta» y «+ turno suelto»— y
+     Pedro preguntó en qué se diferenciaban (msg 6382). Con las reglas del 13-10
+     ya no se diferenciaban en nada: un turno suelto sin nadie declara que hace
+     falta 1, o sea lo mismo que el otro con un 1.
+
+     Ahora el diálogo pregunta CUÁNTOS y, si quieres, A QUIÉN. En blanco es el
+     pedido; con nombre es el turno. La diferencia se eligió, no se adivina
+     apretando el botón correcto. */
+  html += '<button class="mas" data-nueva="' + f + '">+ agregar</button>';
   if (!compacta && S.hayAusencias)
     html += '<button class="mas" data-ausencia="' + f + '">+ ausencia / permiso</button>';
   return html + '</div></div>';
@@ -2262,7 +2269,6 @@ $('#malla').addEventListener('click', function (ev) {
                               : { cargoId: quien,      fijo: quien ? 'cargo'   : null });
   }
   if (t.dataset.nueva)  return abrirNecesidad(null, t.dataset.nueva);
-  if (t.dataset.suelta) return abrirAsignacion(null, null, t.dataset.suelta);
   if (t.dataset.ausencia) return abrirAusencia(null, t.dataset.ausencia, null);
   var chip = t.closest && t.closest('.aus[data-ausid]');
   if (chip) {
@@ -2286,7 +2292,14 @@ var necActual = null;
 function abrirNecesidad(n, fecha) {
   if (!S.cargos.length) return alert('Primero crea al menos un cargo en Equipo.');
   necActual = n || null;
-  $('#nTit').textContent = n ? 'Qué hace falta' : 'Qué hace falta';
+  /* UN SOLO DIÁLOGO PARA LAS DOS COSAS. Lo pidió Pedro el 13-10 (msg 6386)
+     después de preguntar en qué se diferenciaban «+ qué hace falta» y «+ turno
+     suelto»: con las reglas de hoy —poner gente ya declara— los dos llevaban al
+     mismo sitio por dos caminos.
+
+     A QUIÉN va vacío por defecto, y ahí está todo el diseño: en blanco queda el
+     pedido; con nombre, el turno de esa persona. */
+  $('#nTit').textContent = n ? 'Qué hace falta' : 'Agregar';
   $('#nCargo').innerHTML = S.cargos.map(function (q) {
     return '<option value="' + q.id + '">' + esc(q.nombre) + '</option>';
   }).join('');
@@ -2300,6 +2313,18 @@ function abrirNecesidad(n, fecha) {
   $('#nEntra').value   = n ? hhmm(n.hora_inicio) : '09:00';
   $('#nSale').value    = n ? hhmm(n.hora_fin)    : '17:00';
   $('#nCuantos').value = n ? n.personas_requeridas : 1;
+  /* Al EDITAR una necesidad que ya existe no se ofrece poner gente: para eso
+     está «+ quién lo cubre» en su tarjeta, que sabe de cuál cuelga. Ofrecerlo
+     aquí dejaría dos sitios para lo mismo, que es justo lo que se vino a
+     quitar. */
+  var fQuien = $('#nQuien').closest('.fld');
+  if (fQuien) fQuien.hidden = !!n;
+  $('#nQuien').innerHTML = '<option value="">— nadie por ahora —</option>'
+    + S.trabajadores.filter(function (t) { return t.activo !== false; })
+        .map(function (t) {
+          return '<option value="' + t.id + '">' + esc(t.nombre) + '</option>';
+        }).join('');
+  $('#nQuien').value = '';
   $('#nBorrar').hidden = !n;
   aviso('#nMsg', '');
   pintarMedia();
@@ -2405,7 +2430,40 @@ $('#nGuardar').addEventListener('click', function () {
     else recordar('crear ' + nombreCargo(fila.cargo_id), function () {
       return DATOS.necesidades.borrar(fila.id);
     });
-    $('#dlgNec').close(); return recargarSemana();
+    $('#dlgNec').close();
+
+    /* Y SI ELIGIÓ A ALGUIEN, su turno nace aquí mismo, colgado de lo que acaba
+       de pedir. Uno solo, aunque haya pedido 3: los otros dos quedan como lo
+       que son —puestos que todavía no tienen a nadie— y se ven como «Falta 2».
+       Poner a la misma persona tres veces sería absurdo, y preguntar por los
+       tres nombres convertiría un diálogo de diez segundos en un formulario. */
+    var quien = necActual ? '' : ($('#nQuien') ? $('#nQuien').value : '');
+    if (!quien) return recargarSemana();
+    return DATOS.asignaciones.crear({
+      empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal,
+      necesidad_id: fila.id, trabajador_id: quien,
+      fecha: fila.fecha, hora_inicio: fila.hora_inicio, hora_fin: fila.hora_fin,
+      cargo_id: fila.cargo_id, origen: 'mano', tocado_a_mano: true,
+      estado: 'confirmada'
+    }).then(function (asig) {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', asig.id, 'crear', null, asig);
+      /* Deshacer se lleva las dos cosas, y el turno primero: si se fuera antes
+         lo pedido, el turno quedaría colgando de algo que ya no está. */
+      recordar('agregar ' + nombreTrab(quien) + ' en ' + nombreCargo(fila.cargo_id),
+        function () {
+          return DATOS.asignaciones.borrar(asig.id).then(function () {
+            return DATOS.necesidades.borrar(fila.id).catch(function () {});
+          });
+        });
+      return recargarSemana();
+    }).catch(function (e) {
+      /* El pedido ya quedó creado: eso NO se deshace solo. Se dice qué pasó y
+         qué quedó, en vez de dejar media operación sin explicar. */
+      avisoPlan('Quedó creado lo que hace falta en <b>' + esc(nombreCargo(fila.cargo_id))
+        + '</b>, pero no se pudo poner a ' + esc(nombreTrab(quien)) + ': ' + esc(e.message)
+        + ' Ponlo con «+ quién lo cubre».');
+      return recargarSemana();
+    });
   }).catch(function (e) { aviso('#nMsg', e.message, 'bad'); });
 });
 
