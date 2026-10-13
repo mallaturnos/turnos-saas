@@ -2982,7 +2982,7 @@ function quitarTurno(a) {
    cada una. Sin el prefijo, lo copiado en Personas se podría pegar en Cargos,
    donde querría decir otra cosa. */
 
-var SEL = { claves: [], ancla: null, pintando: false, arrastro: false, tragarClic: false, ctrlClic: false };
+var SEL = { claves: [], ancla: null, foco: null, pintando: false, arrastro: false, tragarClic: false, ctrlClic: false };
 var PORTA = null;   // lo copiado: { agrupar, alto, ancho, celdas: [[ [turnos] ]] }
 
 function esPlanilla() { return S.agrupar === 'persona' || S.agrupar === 'cargo'; }
@@ -3689,6 +3689,12 @@ $('#malla').addEventListener('mousedown', function (ev) {
   var td = ev.target.closest && ev.target.closest('td.cel');
   if (!td) return;
   var k = claveCel(td);
+  /* El ratón también mueve el foco: si aprietas una casilla y después usas las
+     flechas, tienen que seguir DESDE AHÍ. Sin esta línea el teclado continuaba
+     desde la última casilla que habían tocado las flechas, que es un sitio que
+     la persona ya no tiene en la cabeza. */
+  SEL.foco = k;
+
   // Con Mayús se extiende desde donde estaba; sin nada, se empieza de cero.
   if (ev.shiftKey && SEL.ancla) { marcarRango(SEL.ancla, k); return; }
 
@@ -3774,9 +3780,71 @@ function escribiendo(ev) {
   return t === 'input' || t === 'textarea' || t === 'select' || e.isContentEditable
       || !!(e.closest && e.closest('dialog[open]'));
 }
+/* ====================================================================
+   MOVERSE CON EL TECLADO — flechas y Mayús+flechas
+   ====================================================================
+   Pedro, 13-10 (msg 6221): *«lo más importante es que eso se pueda marcar
+   ennegreciendo, o con la función shift+clic o shift+flechas, como en cualquier
+   planilla»*. De las tres, dos ya estaban: arrastrar y Mayús+clic. **Las
+   flechas no hacían nada**, ni solas.
+
+   DOS EXTREMOS, NO UNO. Una planilla tiene el ANCLA —donde empezó lo marcado,
+   que no se mueve— y el FOCO —el extremo que viaja—. Hasta aquí solo existía
+   `SEL.ancla`, que hacía los dos papeles porque Mayús+clic traía el otro
+   extremo en el propio clic. Con el teclado hay que recordarlo.
+
+   Y NO HACE FALTA UN ESTILO NUEVO: la casilla activa ya se dibuja, es la clase
+   `.ancla`. Conviene que siga siendo así: pintar un recuadro en una casilla NO
+   marcada ya le molestó en la v75 —«igual ennegrece la casilla completa»—, y
+   aquí el foco siempre cae dentro de lo marcado. */
+function focoDePartida(g) {
+  if (SEL.foco  && g.mapa[SEL.foco])  return SEL.foco;
+  if (SEL.ancla && g.mapa[SEL.ancla]) return SEL.ancla;
+  return g.filas[0] && g.filas[0][0] ? claveCel(g.filas[0][0]) : null;
+}
+
+function moverFoco(df, dc, extender) {
+  var g = rejilla(); if (!g) return false;
+  var k = focoDePartida(g); if (!k) return false;
+  var p = g.mapa[k]; if (!p) return false;
+
+  // Se topa en los bordes en vez de dar la vuelta: aparecer al otro lado de la
+  // semana cuando querías salir por la derecha es de las cosas que hacen soltar
+  // el teclado y volver al ratón.
+  var f = Math.max(0, Math.min(g.filas.length - 1, p.f + df));
+  var c = Math.max(0, Math.min((g.filas[f] || []).length - 1, p.c + dc));
+  var td = g.filas[f] && g.filas[f][c]; if (!td) return false;
+
+  var nk = claveCel(td);
+  SEL.foco = nk;
+  if (extender && SEL.ancla && g.mapa[SEL.ancla]) {
+    marcarRango(SEL.ancla, nk);
+  } else {
+    SEL.ancla = nk; SEL.claves = [nk]; pintarSeleccion();
+  }
+  /* Que la casilla se vea. Sin esto, con el mes o una semana ancha el foco se
+     va fuera de la pantalla y parece que las flechas no hacen nada. */
+  if (td.scrollIntoView) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  return true;
+}
+
+var FLECHAS = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+
 document.addEventListener('keydown', function (ev) {
   if (escribiendo(ev)) return;
   if (ev.key === 'Escape' && SEL.claves.length) { limpiarSeleccion(); return; }
+
+  /* Las flechas van ANTES del guardia de «hay algo marcado»: con la pantalla
+     recién abierta no hay nada marcado, y es justo cuando hace falta poder
+     empezar a moverse. */
+  if (FLECHAS[ev.key] && esPlanilla() && S.vista === 'semana') {
+    cerrarMenu();
+    if (moverFoco(FLECHAS[ev.key][0], FLECHAS[ev.key][1], ev.shiftKey)) {
+      ev.preventDefault();   // si no, la página entera se desplaza
+      return;
+    }
+  }
+
   if (!esPlanilla() || !SEL.claves.length) return;
   var ctrl = ev.ctrlKey || ev.metaKey;
   if (ctrl && (ev.key === 'c' || ev.key === 'C')) { ev.preventDefault(); copiarSeleccion(false); }
