@@ -1000,77 +1000,59 @@ function pintarDia() {
            + (muda ? '' : String(h % 24).padStart(2, '0')) + '</span>';
   }
 
-  /* EL GRÁFICO DE NECESIDAD POR HORA.
+  /* LA FRANJA DE COBERTURA — CUÁNTA GENTE HAY, HORA POR HORA, DE TODOS LOS CARGOS
 
-     Una línea con lo que hace falta y barras con lo que hay puesto, hora por
-     hora. Es lo que Skello pone sobre la línea de tiempo, y resuelve algo que
-     las bandas no podían: la banda dice «hacen falta 3» para todo el tramo,
-     pero si una persona se va a las 13:00 el hueco cambia de tamaño a esa hora
-     y la banda sigue diciendo lo mismo.
+     Reemplaza al gráfico de un solo cargo con su selector. Pedro lo encontró el
+     13-10 a las 10:54: la pantalla le mostraba «Caja» plana en cero mientras lo
+     único que había ese día era Cocina. No estaba rota — es que el selector
+     caía en el primer cargo del catálogo, que justo no tenía nada.
 
-     LO PUESTO NO SE ESCRIBE: se cuenta de los turnos asignados. Lo único que se
-     teclea es la necesidad. Si se escribieran los dos, el día que no coincidan
-     habría que decidir cuál miente.
+     EL DEFECTO DE FONDO ERA PEDIR QUE ELIGIERA. Una vista de día contesta
+     «¿cómo voy hoy?», y para eso hay que mirar el día entero, no un cargo. Así
+     lo hace 7shifts: el número de gente por hora arriba del todo para todos, y
+     el desglose por cargo sólo si lo pides —ahí, al pasar el cursor—.
 
-     Y es de UN CARGO a la vez: mezclar todos en una línea no dice nada — que
-     falte un cocinero no es lo mismo que falte un cajero. */
-  /* Ojo con el id: de la necesidad se toma su CARGO, no su propio identificador.
-     La primera versión ponía `necsDia[0].id` —el id de la necesidad— como cargo
-     elegido. El selector no encontraba esa opción, el navegador mostraba la
-     primera de la lista, y el gráfico salía plano en cero contando turnos de un
-     cargo que no existe. En el código se veía perfecto. */
-  if (!S.cargoGraf || !S.cargos.some(function (q) { return q.id === S.cargoGraf; }))
-    S.cargoGraf = (necsDia[0] ? necsDia[0].cargo_id : (S.cargos[0] || {}).id) || null;
+     EL ÁMBAR MARCA LA HORA CON HUECO, y es el punto: una cifra dice cuántos
+     faltan, el color dice CUÁNDO. Es lo que una banda por tramo no podía dar,
+     porque si alguien se va a las 13:00 el hueco cambia de tamaño a esa hora.
 
+     Lo puesto NO se escribe: se cuenta de los turnos. Lo único que se teclea es
+     la necesidad; si se escribieran los dos, el día que no coincidan habría que
+     decidir cuál miente. */
   var html = '';
-  if (S.cargoGraf) {
-    var cuenta = function (lista, h) {
-      return lista.filter(function (x) {
-        var i = a2h(x.hora_inicio), f = a2h(x.hora_fin); if (f <= i) f += 24;
-        return x.cargo_id === S.cargoGraf && i <= h && h < f;
-      });
-    };
-    var necH = [], pueH = [], tope = 1;
-    for (var h = ini; h < fin; h++) {
-      var n = cuenta(necsDia, h).reduce(function (t, x) { return t + x.personas_requeridas; }, 0);
-      var p = cuenta(delDia.filter(function (x) { return x.trabajador_id; }), h).length;
-      necH.push(n); pueH.push(p);
-      tope = Math.max(tope, n, p);
-    }
-    var alto = 92, y = function (v) { return alto - (v / tope) * (alto - 14); };
-    var anchoH = 100 / ancho, g = '';
-    for (var v = 0; v <= tope; v++) {
-      g += '<span class="guia" style="top:' + y(v) + 'px"></span>'
-         + '<span class="guian" style="top:' + (y(v) - 8) + 'px">' + v + '</span>';
-    }
-    necH.forEach(function (n, k) {
-      if (pueH[k]) g += '<span class="gb" style="left:' + (pct(ini + k) + anchoH * 0.1)
-        + '%;width:' + (anchoH * 0.8) + '%;top:' + y(pueH[k]) + 'px;height:'
-        + (alto - y(pueH[k])) + 'px"></span>';
+  var enHora = function (x, h) {
+    var i = a2h(x.hora_inicio), f = a2h(x.hora_fin); if (f <= i) f += 24;
+    return i <= h && h < f;
+  };
+  var conPersona = delDia.filter(function (x) { return x.trabajador_id; });
+  var franja = '', hayAlgo = false;
+  for (var h = ini; h < fin; h++) {
+    var puestos = 0, falta = 0, detalle = [];
+    S.cargos.forEach(function (q) {
+      var pide = necsDia.filter(function (n) {
+        return n.cargo_id === q.id && enHora(n, h);
+      }).reduce(function (t, n) { return t + (n.personas_requeridas || 0); }, 0);
+      var hay = conPersona.filter(function (x) {
+        return x.cargo_id === q.id && enHora(x, h);
+      }).length;
+      puestos += hay;
+      if (pide > hay) falta += pide - hay;
+      if (pide || hay) detalle.push(q.nombre + ': ' + hay + (pide > hay ? ' de ' + pide : ''));
     });
-    var ant = null;
-    necH.forEach(function (n, k) {
-      g += '<span class="gl" style="left:' + pct(ini + k) + '%;width:' + anchoH
-         + '%;top:' + (y(n) - 1) + 'px"></span>';
-      if (ant !== null && ant !== n) {
-        var arr = Math.min(y(ant), y(n)), aba = Math.max(y(ant), y(n));
-        g += '<span class="glv" style="left:' + pct(ini + k) + '%;top:' + arr
-           + 'px;height:' + (aba - arr) + 'px"></span>';
-      }
-      ant = n;
-    });
-
-    html += '<div class="linea grafcaja">'
-      + '<div class="gtop"><select id="cCargoGraf">'
-      + S.cargos.map(function (q) {
-          return '<option value="' + q.id + '"' + (q.id === S.cargoGraf ? ' selected' : '') + '>'
-               + esc(q.nombre) + '</option>';
-        }).join('')
-      + '</select><span class="gley"><i><span class="mu"></span>hacen falta</i>'
-      + '<i><span class="mb"></span>hay puestos</i></span></div>'
-      + '<div class="gcaja"><span class="lrot"></span>'
-      + '<div class="graf" style="height:' + alto + 'px">' + g + '</div></div>'
-      + '<div class="lcab"><span class="lrot"></span><div class="lhoras">' + horas + '</div></div>'
+    if (puestos || falta) hayAlgo = true;
+    franja += '<i' + (falta ? ' class="mal"' : '')
+            + ' title="' + esc(String(h % 24).padStart(2, '0') + ':00 · '
+                + (detalle.length ? detalle.join(' · ') : 'nadie')
+                + (falta ? ' · falta ' + falta : '')) + '">'
+            + puestos + '</i>';
+  }
+  if (hayAlgo) {
+    html += '<div class="linea cobcaja">'
+      + '<div class="cobtit"><span class="lrot"></span>'
+      + '<b>Cuánta gente hay, hora por hora</b>'
+      + '<span class="cobley"><i class="mal"></i> hora con algún hueco</span></div>'
+      + '<div class="cobfila"><span class="lrot"></span>'
+      + '<div class="cobtira">' + franja + '</div></div>'
       + '</div>';
   }
 

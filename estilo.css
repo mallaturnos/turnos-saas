@@ -983,3 +983,24 @@ table.mesb .mini { cursor: pointer; }
                                                          font-weight:400; }
 .menucel button:disabled .k { color:#cfd6d8; }
 .menucel hr { border:0; border-top:1px solid var(--borde); margin:5px 4px; }
+
+/* ---------- la franja de cobertura de la vista Día (13-10-2026) ----------
+   Reemplaza al gráfico de un solo cargo. Las celdas siguen la misma rejilla de
+   horas que la línea de tiempo de abajo, así que una hora cae justo encima de
+   su columna: si no coincidieran, el color diría una hora y las barras otra. */
+.cobcaja { background:var(--blanco); border:1px solid var(--borde);
+           border-radius:var(--radio); padding:10px 12px; margin-bottom:.6rem; }
+.cobtit { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.cobtit b { font-size:.9rem; }
+.cobley { margin-left:auto; color:var(--gris); font-size:.8rem;
+          display:flex; align-items:center; gap:6px; }
+.cobley i { width:15px; height:15px; border-radius:3px; background:var(--amar);
+            border:1px solid var(--amar-borde); display:inline-block; }
+.cobfila { display:flex; align-items:center; }
+.cobtira { display:flex; gap:2px; flex:1; }
+/* `flex:1` en cada celda y no un ancho fijo: las horas tienen que repartirse el
+   mismo espacio que la línea de abajo, sea cual sea la franja del día. */
+.cobtira i { flex:1; height:26px; border-radius:4px; background:var(--verde-claro);
+             color:var(--verde); font-style:normal; font-weight:700; font-size:.78rem;
+             display:flex; align-items:center; justify-content:center; cursor:default; }
+.cobtira i.mal { background:var(--amar); border:1px solid var(--amar-borde); color:#8a6d1f; }
