@@ -3419,6 +3419,187 @@ function borrarSeleccion(callado) {
   }).catch(function (e) { decirSel('No pude quitar: ' + e.message); });
 }
 
+/* ====================================================================
+   DEJAR SIN ASIGNAR — quitarle la persona al turno sin borrar el turno
+   ====================================================================
+   Es la opción que Skello tiene como «Unassigned» (verificado en su manual el
+   11-10). Importa porque el caso corriente no es «este turno sobra», es «este
+   turno sigue haciendo falta y esta persona ya no puede». Borrarlo y volver a
+   crearlo pierde el turno; esto conserva el hueco, que es justo lo que la
+   pantalla sabe mostrar. */
+function dejarSinAsignar() {
+  var todos = [];
+  SEL.claves.forEach(function (k) {
+    turnosDeClave(k).forEach(function (a) { if (a.trabajador_id) todos.push(a); });
+  });
+  if (!todos.length) return nada('En lo que marcaste no hay turnos con persona.');
+
+  /* El publicado se avisa, igual que al borrar: a esa persona ya se le dijo que
+     trabajaba, y quitarle el nombre se lo deshace. */
+  var publicados = todos.filter(function (a) {
+    return S.turnos.some(function (t) {
+      return t.asignacion_id === a.id && t.estado === 'publicado';
+    });
+  }).length;
+  if (publicados && !confirm(
+        'Vas a dejar sin asignar ' + todos.length + ' turno(s), y ' + publicados
+        + ' ya están PUBLICADOS.\n\n'
+        + 'A esas personas se les quita de su calendario, pero el turno se queda '
+        + 'en la malla esperando a alguien. ¿Lo hago?')) return nada();
+
+  avisarSeleccion('Dejando sin asignar…');
+  var antes = todos.map(function (a) { return { id: a.id, quien: a.trabajador_id }; });
+  var cadena = todos.reduce(function (pr, a) {
+    return pr.then(function () {
+      return DATOS.turnos.borrarDe([a.id]).catch(function () {})
+        .then(function () {
+          return DATOS.asignaciones.guardar(a.id, { trabajador_id: null });
+        });
+    });
+  }, Promise.resolve());
+
+  return cadena.then(function () {
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'editar',
+                 { sin_asignar: antes.length }, null);
+    recordar('dejar sin asignar ' + antes.length + ' turno(s)', function () {
+      return antes.reduce(function (pr, x) {
+        return pr.then(function () {
+          return DATOS.asignaciones.guardar(x.id, { trabajador_id: x.quien });
+        });
+      }, Promise.resolve());
+    });
+    return recargarSemana();
+  }).then(function () {
+    decirSel(antes.length + ' turno(s) quedaron esperando a alguien');
+  }).catch(function (e) { decirSel('No pude: ' + e.message); });
+}
+
+/* ====================================================================
+   EL MENÚ DEL BOTÓN DERECHO
+   ====================================================================
+   Pedro, 13-10-2026 (msgs 6180–6191), tras ver la maqueta.
+
+   LO QUE HACE QUE VALGA LA PENA no es tener las acciones del teclado en un
+   menú: es que SE VEAN. Copiar, cortar, pegar y borrar existen desde la v75 y
+   solo por teclado — él mismo escribió «no pude copiar pegar» con la función
+   entera hecha. El botón derecho es donde la gente va a BUSCAR qué se puede
+   hacer con lo que tiene delante.
+
+   Tres reglas, las dos primeras heredadas del menú de la malla:
+
+   · Si lo que se aprieta está FUERA de la selección, se selecciona eso primero
+     —como Excel y como cualquier explorador de archivos—. Abrir un menú que
+     opera sobre otra cosa es la forma más rápida de borrar lo que no era.
+   · Lo que no se puede hacer sale APAGADO, no escondido. Un menú que cambia de
+     largo según el caso no se aprende nunca; uno que siempre tiene las mismas
+     filas, sí. Y «Pegar» apagado además ENSEÑA que existe.
+   · Cada fila lleva su atajo a la derecha. Esa es la otra mitad: el menú no
+     reemplaza al teclado, lo enseña.
+
+   SOLO EN LA REJILLA Y EN LA SEMANA, que es donde vive la selección. En las
+   tarjetas no hay casillas, así que «pegar aquí» no tendría dónde. */
+var MENU = { td: null };
+
+function menuEl() {
+  var m = $('#menuCel');
+  if (m) return m;
+  m = document.createElement('div');
+  m.id = 'menuCel'; m.className = 'menucel'; m.hidden = true;
+  m.setAttribute('role', 'menu');
+  document.body.appendChild(m);
+  /* Un solo escuchador y la acción en el propio botón: el menú se vuelve a
+     dibujar entero cada vez que se abre, así que colgarle escuchadores a cada
+     fila sería acumular basura. */
+  m.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-acc]');
+    if (!b || b.disabled) return;
+    var td = MENU.td;                 // se guarda ANTES de cerrar
+    cerrarMenu();
+    switch (b.dataset.acc) {
+      case 'agregar':
+        if (!td) return;
+        var quien = td.dataset.fila || null;
+        return abrirAsignacion(null, null, td.dataset.fecha,
+          S.agrupar === 'persona' ? { trabajadorId: quien, fijo: quien ? 'persona' : null }
+                                  : { cargoId: quien,      fijo: quien ? 'cargo'   : null });
+      case 'copiar':  return copiarSeleccion(false);
+      case 'cortar':  return copiarSeleccion(true);
+      case 'pegar':   return pegarSeleccion();
+      case 'soltar':  return dejarSinAsignar();
+      case 'borrar':  return borrarSeleccion(false);
+    }
+  });
+  return m;
+}
+
+function cerrarMenu() {
+  var m = $('#menuCel');
+  if (m) { m.hidden = true; m.innerHTML = ''; }
+  MENU.td = null;
+}
+
+function abrirMenu(ev, td, idTurno) {
+  /* REGLA 1: lo apretado entra en la selección si estaba fuera. */
+  var k = idTurno ? claveTurno(idTurno) : claveCel(td);
+  if (SEL.claves.indexOf(k) < 0) {
+    SEL.ancla = claveCel(td); SEL.claves = [k]; SEL.pintando = false;
+    pintarSeleccion();
+  }
+
+  var marcados = [];
+  SEL.claves.forEach(function (c) { turnosDeClave(c).forEach(function (a) { marcados.push(a); }); });
+  var conPersona = marcados.filter(function (a) { return a.trabajador_id; }).length;
+
+  var fila = function (acc, txt, tecla, puede, clase) {
+    return '<button data-acc="' + acc + '"' + (puede ? '' : ' disabled') + ''
+         + (clase ? ' class="' + clase + '"' : '') + '>'
+         + '<span>' + txt + '</span>'
+         + (tecla ? '<span class="k">' + tecla + '</span>' : '') + '</button>';
+  };
+
+  var m = menuEl();
+  MENU.td = td;
+  m.innerHTML =
+      fila('agregar', 'Agregar turno aquí', '', true)
+    + fila('copiar',  'Copiar',  'Ctrl+C', marcados.length > 0)
+    + fila('cortar',  'Cortar',  'Ctrl+X', marcados.length > 0)
+    + fila('pegar',   'Pegar',   'Ctrl+V', !!PORTA)
+    + '<hr>'
+    + fila('soltar',  'Dejar sin asignar', '', conPersona > 0)
+    + fila('borrar',  'Borrar',  'Supr',  marcados.length > 0, 'mal');
+  m.hidden = false;
+
+  /* Se mide DESPUÉS de dibujarlo y se corrige si se sale: un menú cortado por
+     el borde de la ventana deja opciones que existen y no se pueden apretar. */
+  var an = m.offsetWidth, al = m.offsetHeight;
+  var x = ev.pageX, y = ev.pageY;
+  var maxX = window.scrollX + document.documentElement.clientWidth  - an - 8;
+  var maxY = window.scrollY + document.documentElement.clientHeight - al - 8;
+  m.style.left = Math.max(window.scrollX + 8, Math.min(x, maxX)) + 'px';
+  m.style.top  = Math.max(window.scrollY + 8, Math.min(y, maxY)) + 'px';
+}
+
+$('#malla').addEventListener('contextmenu', function (ev) {
+  if (!esPlanilla() || S.vista !== 'semana') return;   // sólo donde hay rejilla
+  var td = ev.target.closest && ev.target.closest('td.cel');
+  if (!td) return;
+  ev.preventDefault();
+  var blq = ev.target.closest('.blq');
+  abrirMenu(ev, td, blq && blq.dataset ? blq.dataset.asigid : null);
+});
+
+/* Se cierra con cualquier cosa que signifique «ya no». El `mousedown` va en
+   captura para ganarle al de la malla, que empieza a pintar una selección. */
+document.addEventListener('mousedown', function (ev) {
+  var m = $('#menuCel');
+  if (m && !m.hidden && !ev.target.closest('#menuCel')) cerrarMenu();
+}, true);
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Escape') cerrarMenu();
+});
+window.addEventListener('scroll', cerrarMenu, true);
+window.addEventListener('resize', cerrarMenu);
+
 // ---------- los gestos ----------
 $('#malla').addEventListener('mousedown', function (ev) {
   if (!esPlanilla()) return;
@@ -5109,6 +5290,11 @@ window.__app = {
   // porque los gestos de ratón y las teclas no se pueden fingir de verdad
   // desde fuera, pero lo que corre es exactamente lo que corre al apretarlas.
   SEL: SEL, marcarRango: marcarRango, limpiarSeleccion: limpiarSeleccion,
+  /* Solo para la prueba de humo: `PORTA` es de este archivo y no hay forma de
+     vaciarlo desde fuera. Hace falta para comprobar que «Pegar» sale APAGADO
+     cuando no hay nada copiado — y eso no se puede comprobar al final de una
+     corrida donde ya se copió, que es justo donde el menú cae en la lista. */
+  olvidarCopiado: function () { PORTA = null; },
   claveTurno: claveTurno, esClaveTurno: esClaveTurno, turnosDeClave: turnosDeClave,
   pintarMalla: pintarMalla, porHoraTurno: porHoraTurno, hhmm: hhmm, avisoPlan: avisoPlan,
   CFG_TOPE: CFG_TOPE, paso: paso, mostrar: mostrar, estadoNecesidad: estadoNecesidad,

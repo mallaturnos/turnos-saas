@@ -959,3 +959,27 @@ table.mesb .mini { cursor: pointer; }
 .lhueco b { font-weight: 600; }
 .lhueco i { font-style: normal; font-weight: 700; }
 .lhueco:hover { filter: brightness(.97); }
+
+/* ---------- el menú del botón derecho (13-10-2026) ----------
+   Mismo aspecto que la maqueta que aprobó Pedro. Lo apagado se ve apagado y
+   sigue ocupando su fila: que una opción desaparezca según el caso es lo que
+   impide aprenderse el menú. */
+.menucel { position:absolute; z-index:60; min-width:238px; padding:6px;
+           background:var(--blanco); border:1px solid var(--borde);
+           border-radius:var(--radio); box-shadow:0 10px 26px rgba(19,52,59,.18);
+           font-size:.92rem; }
+.menucel button { display:flex; width:100%; gap:10px; align-items:center;
+                  justify-content:space-between; background:transparent; border:0;
+                  padding:7px 10px; border-radius:7px; cursor:pointer;
+                  color:var(--tinta); text-align:left; font:inherit; }
+.menucel button:hover:not(:disabled) { background:var(--verde-claro); color:var(--verde);
+                                       font-weight:600; }
+.menucel button.mal { color:var(--rojo); }
+.menucel button.mal:hover:not(:disabled) { background:var(--rojo-claro); color:var(--rojo); }
+.menucel button .k { color:var(--gris); font-size:.82rem; }
+/* Lo apagado gana a `.mal`: un «Borrar» en rojo y deshabilitado se lee como
+   disponible, que es justo lo contrario de lo que dice. */
+.menucel button:disabled, .menucel button.mal:disabled { color:#b9c3c6; cursor:default;
+                                                         font-weight:400; }
+.menucel button:disabled .k { color:#cfd6d8; }
+.menucel hr { border:0; border-top:1px solid var(--borde); margin:5px 4px; }
