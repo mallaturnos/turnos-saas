@@ -3262,17 +3262,49 @@ function pegarSeleccion() {
   if (!SEL.claves.length) return nada('Marca primero dónde quieres pegar.');
   var g = rejilla(); if (!g) return nada();
 
-  // El destino es la esquina de arriba a la izquierda de lo marcado, aunque
-  // haya marcado un rango más grande: igual que una planilla.
-  var fs = [], cs = [];
-  SEL.claves.forEach(function (k) { var p = posDeClave(g, k); if (p) { fs.push(p.f); cs.push(p.c); } });
+  /* SI LO MARCADO ES MÁS GRANDE QUE LO COPIADO, SE REPITE HASTA LLENARLO.
+
+     Lo encontró Pedro el 13-10 a los diez minutos de usar el menú (msg 6201):
+     copió el lunes, marcó la semana entera y **solo le pegó el martes**.
+
+     Y el código lo hacía A PROPÓSITO: aquí decía que se pega en la esquina de
+     arriba a la izquierda «igual que una planilla». Pero una planilla, cuando
+     copias UNA casilla y marcas un rango, RELLENA EL RANGO. La regla se había
+     justificado con una comparación que no se sostiene justo en el caso más
+     corriente — copiar un día y repartirlo en la semana.
+
+     Dos condiciones para repetir, y las dos son por prudencia:
+
+     · Lo marcado tiene que ser un RECTÁNGULO LLENO. Con Ctrl+clic se puede
+       marcar en damero, y ahí rellenar el rectángulo que los contiene
+       escribiría en casillas que nadie marcó.
+     · Y múltiplo exacto en las dos direcciones. Si no calza, se pega una vez
+       y SE DICE: hacer a medias algo que parece completo es peor que no
+       hacerlo. */
+  var fs = [], cs = [], marcadas = {};
+  SEL.claves.forEach(function (k) {
+    var p = posDeClave(g, k);
+    if (p) { fs.push(p.f); cs.push(p.c); marcadas[p.f + '|' + p.c] = true; }
+  });
   if (!fs.length) return nada();
   var f0 = Math.min.apply(null, fs), c0 = Math.min.apply(null, cs);
+  var altoSel  = Math.max.apply(null, fs) - f0 + 1;
+  var anchoSel = Math.max.apply(null, cs) - c0 + 1;
+
+  var lleno = Object.keys(marcadas).length === altoSel * anchoSel;
+  var calza = lleno && altoSel % PORTA.alto === 0 && anchoSel % PORTA.ancho === 0;
+  var vecesF = calza ? altoSel / PORTA.alto  : 1;
+  var vecesC = calza ? anchoSel / PORTA.ancho : 1;
+  // Marcó más de lo que cabe y no se pudo repetir: hay que avisarlo al final.
+  var noCalzo = !calza && (altoSel > PORTA.alto || anchoSel > PORTA.ancho);
 
   var crear = [], borrar = [], fuera = 0, dormidos = 0, revividos = 0;
+  for (var rf = 0; rf < vecesF; rf++) {
+  for (var rc = 0; rc < vecesC; rc++) {
   for (var i = 0; i < PORTA.alto; i++) {
     for (var j = 0; j < PORTA.ancho; j++) {
-      var td = g.filas[f0 + i] && g.filas[f0 + i][c0 + j];
+      var ff = f0 + rf * PORTA.alto + i, cc = c0 + rc * PORTA.ancho + j;
+      var td = g.filas[ff] && g.filas[ff][cc];
       if (!td) { fuera++; continue; }
       var k = claveCel(td), p = partesClave(k);
 
@@ -3313,6 +3345,7 @@ function pegarSeleccion() {
       });
     }
   }
+  } }
 
   if (!crear.length && !borrar.length) {
     return nada(dormidos ? 'Ahí hay ausencias: no le pego turnos encima.'
@@ -3364,6 +3397,12 @@ function pegarSeleccion() {
     return recargarSemana();
   }).then(function () {
     var dice = 'Pegados ' + nacidos.length + ' turno(s)';
+    if (vecesF * vecesC > 1) dice += ' · repetido ' + (vecesF * vecesC) + ' veces para llenar lo marcado';
+    /* Se dice POR QUÉ no se repitió. Sin esto, marcar cinco días y ver que se
+       llenó uno solo parece un fallo —que es exactamente lo que le pareció a
+       Pedro, y tenía razón—. El aviso convierte una sorpresa en una regla. */
+    if (noCalzo) dice += ' · marcaste más de lo copiado, pero no calza un número'
+                       + ' entero de veces: pegué una sola';
     if (revividos) dice += ' · ' + revividos + ' quedaron sin asignar: esa persona ya no trabaja aquí';
     if (dormidos) dice += ' · ' + dormidos + ' casilla(s) con ausencia, intactas';
     if (fuera)    dice += ' · ' + fuera + ' no entraron';
