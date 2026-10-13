@@ -553,6 +553,24 @@ function pintarSelectores() {
     b.hidden = porDia && soloUnDia;
     b.setAttribute('aria-selected', String(b.dataset.g === S.agrupar));
   });
+
+  /* EL BOTÓN «HOY» SE ENCIENDE CUANDO NO ESTÁS MIRANDO HOY.
+
+     Pedro lo pidió el 13-10 (msg 6175) preguntando si hacía falta un botón para
+     volver al día actual. Ya existía: lo que faltaba era que DIJERA ALGO. Esa
+     misma mañana se había perdido en la semana del 26/10 sin que nada en la
+     pantalla se lo advirtiera — el botón se veía igual estando en hoy que a dos
+     meses de distancia.
+
+     Así que no lleva de vuelta solamente: avisa. Es el mismo patrón del botón
+     «Today» de First Due, que cambia de color cuando te sales de la semana.
+
+     Se pregunta por `rangoVista()`, que es lo que la pantalla está mostrando de
+     verdad, y no por `S.lunes`: en la vista Mes el rango incluye los días de
+     relleno, así que si hoy se ve en pantalla el botón NO se enciende. Lo que
+     importa es si hoy está a la vista, no en qué variable cayó. */
+  var r = rangoVista(), h = hoyTexto();
+  $('#btnHoy').classList.toggle('lejos', h < r.desde || h > r.hasta);
 }
 
 function recargarSemana() {

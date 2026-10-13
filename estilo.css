@@ -58,6 +58,12 @@ button:disabled { opacity:.5; cursor:default; }
 .primario:hover:not(:disabled) { filter:brightness(1.08); }
 .plano { background:transparent; color:var(--tinta); border-color:var(--borde); }
 .plano:hover:not(:disabled) { background:var(--verde-claro); }
+/* «Hoy» ENCENDIDO cuando no estás mirando hoy (lo pidió Pedro, 13-10).
+   Borde y texto en verde sobre fondo claro, y NO relleno sólido: el único botón
+   sólido de esa barra es «Publicar», y dos sólidos compiten por la misma
+   atención. Aquí basta con que se note que hay algo distinto. */
+.plano.lejos { border-color:var(--verde); color:var(--verde);
+               background:var(--verde-claro); font-weight:600; }
 .acciones { display:flex; gap:.5rem; align-items:center; margin-top:1rem; flex-wrap:wrap; }
 
 .msg { min-height:1.1rem; font-size:.85rem; margin:.5rem 0 0; color:var(--gris); }
