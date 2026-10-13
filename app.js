@@ -2878,9 +2878,12 @@ function necesidadQueCalza(fecha, cargo_id, hi, hf) {
 }
 
 function necesidadImplicita(a, avisarCreada) {
-  /* Un turno PENDIENTE no declara nada: justamente no sabes a quién poner, y
-     ese es el caso en que la necesidad se declara aparte. */
-  if (!a || a.necesidad_id || !a.trabajador_id) return Promise.resolve(a);
+  /* UN TURNO PENDIENTE TAMBIÉN DECLARA. Lo eligió Pedro el 13-10 (msg 6260)
+     cuando se le planteó el caso que su regla no cubría: *«un turno sin dueño
+     ES un hueco que alguien abrió»*. Así que no hace falta que tenga persona —
+     basta con que el turno exista—. Queda «Falta 1» hasta que alguien lo tome,
+     que es justo lo que se quiere ver. */
+  if (!a || a.necesidad_id) return Promise.resolve(a);
 
   var ya = necesidadQueCalza(a.fecha, a.cargo_id, a.hora_inicio, a.hora_fin);
   var p = ya ? Promise.resolve(ya) : DATOS.necesidades.crear({
@@ -2892,14 +2895,20 @@ function necesidadImplicita(a, avisarCreada) {
   return p.then(function (n) {
     return DATOS.asignaciones.guardar(a.id, { necesidad_id: n.id }).then(function () {
       a.necesidad_id = n.id;
-      /* Y SI AHORA HAY MÁS GENTE QUE LO PEDIDO, SUBE LO PEDIDO. Sin esto, el
-         segundo que pones en el mismo tramo deja la tarjeta diciendo «Sobra 1»
-         — y no sobra nadie: lo pusiste tú, o sea que hacía falta. */
-      var cubren = S.asignaciones.filter(function (x) {
-        return x.necesidad_id === n.id && x.trabajador_id && x.id !== a.id;
+      /* LO PEDIDO ES, AL MENOS, CUÁNTOS TURNOS CUELGAN. Se cuentan TODOS, con
+         persona y sin ella, y ahí está el porqué: si Ana ya creó una necesidad
+         de 1 y después abres un turno pendiente en el mismo tramo, pedir 1
+         diría «Completo» con un hueco abierto debajo. Son dos puestos: uno
+         cubierto y uno no. Contando los pendientes queda «Falta 1», que es lo
+         que pasa de verdad.
+
+         Y por eso se cuentan turnos y no personas: el que está vacío también
+         ocupa un puesto. Lo cubierto lo calcula `estadoNecesidad()` aparte. */
+      var colgados = S.asignaciones.filter(function (x) {
+        return x.necesidad_id === n.id && x.id !== a.id;
       }).length + 1;
-      if (cubren > (n.personas_requeridas || 1))
-        return DATOS.necesidades.guardar(n.id, { personas_requeridas: cubren });
+      if (colgados > (n.personas_requeridas || 1))
+        return DATOS.necesidades.guardar(n.id, { personas_requeridas: colgados });
     });
   }).catch(function () { /* que falle esto no puede botar el turno ya guardado */ });
 }
@@ -3485,8 +3494,8 @@ function pegarSeleccion() {
   crear.forEach(function (d) {
     cadena = cadena.then(function () {
       var orig = d._necOrigen; delete d._necOrigen;
-      // Suelto y con persona: la necesidad la declara el propio turno.
-      var suelto = (!orig && d.trabajador_id)
+      // Suelto, con persona o sin ella: el turno mismo declara el puesto.
+      var suelto = (!orig)
         ? { cargo_id: d.cargo_id, hora_inicio: d.hora_inicio,
             hora_fin: d.hora_fin, personas_requeridas: 1 }
         : null;
