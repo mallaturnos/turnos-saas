@@ -3537,7 +3537,7 @@ function dejarSinAsignar() {
 
    SOLO EN LA REJILLA Y EN LA SEMANA, que es donde vive la selección. En las
    tarjetas no hay casillas, así que «pegar aquí» no tendría dónde. */
-var MENU = { td: null };
+var MENU = { td: null, x: 0, y: 0 };
 
 function menuEl() {
   var m = $('#menuCel');
@@ -3561,6 +3561,23 @@ function menuEl() {
         return abrirAsignacion(null, null, td.dataset.fecha,
           S.agrupar === 'persona' ? { trabajadorId: quien, fijo: quien ? 'persona' : null }
                                   : { cargoId: quien,      fijo: quien ? 'cargo'   : null });
+      /* Marcar no cierra la conversación: se vuelve a abrir el menú en el
+         mismo sitio, ya con lo nuevo marcado. Si se cerrara, marcar y copiar
+         serían dos clics derechos seguidos sobre lo mismo — y el menú está
+         justo para ahorrar ese tipo de paso que hay que adivinar. */
+      case 'marcarcel':
+        if (!td) return;
+        SEL.claves = [claveCel(td)]; SEL.ancla = SEL.claves[0]; SEL.pintando = false;
+        pintarSeleccion();
+        return abrirMenu(MENU.x, MENU.y, td, null);
+      case 'marcarfila':
+        if (!td) return;
+        SEL.claves = [].slice.call($$('#malla td.cel')).filter(function (x) {
+          return (x.dataset.fila || '') === (td.dataset.fila || '');
+        }).map(claveCel);
+        SEL.ancla = SEL.claves[0]; SEL.pintando = false;
+        pintarSeleccion();
+        return abrirMenu(MENU.x, MENU.y, td, null);
       case 'copiar':  return copiarSeleccion(false);
       case 'cortar':  return copiarSeleccion(true);
       case 'pegar':   return pegarSeleccion();
@@ -3577,7 +3594,7 @@ function cerrarMenu() {
   MENU.td = null;
 }
 
-function abrirMenu(ev, td, idTurno) {
+function abrirMenu(x, y, td, idTurno) {
   /* REGLA 1: lo apretado entra en la selección si estaba fuera. */
   var k = idTurno ? claveTurno(idTurno) : claveCel(td);
   if (SEL.claves.indexOf(k) < 0) {
@@ -3598,8 +3615,33 @@ function abrirMenu(ev, td, idTurno) {
 
   var m = menuEl();
   MENU.td = td;
+  /* MARCAR LA CASILLA Y MARCAR LA FILA.
+
+     Pedro perdió trabajo con esto el 13-10 (msg 6209): marcó dos turnos de una
+     misma casilla apretándolos uno tras otro, y el segundo REEMPLAZA al primero
+     —hay que usar Ctrl+clic—, así que copió uno creyendo que copiaba dos.
+
+     El comportamiento era el correcto y estaba documentado. Daba igual: la
+     diferencia entre apretar EL TURNO y apretar EL FONDO de la casilla no se ve
+     en ninguna parte. Es exactamente lo que este menú existe para destapar.
+
+     ⚠️ SE LLAMA «los turnos de esta casilla» Y NO «la casilla entera», y el
+     nombre lo corrigió Pedro (msg 6218): *«lo que tiene sentido es marcar el
+     turno, más que la casilla»*. Tiene razón en el fondo — para copiar y para
+     borrar la unidad YA es el turno—; la casilla solo es imprescindible como
+     DESTINO al pegar. Así que la función se queda y lo que cambió es la
+     palabra: la fila habla de turnos, que es como lo piensa quien la usa. */
+  var kCel = claveCel(td);
+  var tdsFila = [].slice.call($$('#malla td.cel')).filter(function (x) {
+    return (x.dataset.fila || '') === (td.dataset.fila || '');
+  });
   m.innerHTML =
       fila('agregar', 'Agregar turno aquí', '', true)
+    + '<hr>'
+    + fila('marcarcel',  'Marcar los turnos de esta casilla', '',
+           !(SEL.claves.length === 1 && SEL.claves[0] === kCel))
+    + fila('marcarfila', 'Marcar toda la fila', '', tdsFila.length > 1)
+    + '<hr>'
     + fila('copiar',  'Copiar',  'Ctrl+C', marcados.length > 0)
     + fila('cortar',  'Cortar',  'Ctrl+X', marcados.length > 0)
     + fila('pegar',   'Pegar',   'Ctrl+V', !!PORTA)
@@ -3611,7 +3653,7 @@ function abrirMenu(ev, td, idTurno) {
   /* Se mide DESPUÉS de dibujarlo y se corrige si se sale: un menú cortado por
      el borde de la ventana deja opciones que existen y no se pueden apretar. */
   var an = m.offsetWidth, al = m.offsetHeight;
-  var x = ev.pageX, y = ev.pageY;
+  MENU.x = x; MENU.y = y;        // para poder reabrirlo donde estaba
   var maxX = window.scrollX + document.documentElement.clientWidth  - an - 8;
   var maxY = window.scrollY + document.documentElement.clientHeight - al - 8;
   m.style.left = Math.max(window.scrollX + 8, Math.min(x, maxX)) + 'px';
@@ -3624,7 +3666,7 @@ $('#malla').addEventListener('contextmenu', function (ev) {
   if (!td) return;
   ev.preventDefault();
   var blq = ev.target.closest('.blq');
-  abrirMenu(ev, td, blq && blq.dataset ? blq.dataset.asigid : null);
+  abrirMenu(ev.pageX, ev.pageY, td, blq && blq.dataset ? blq.dataset.asigid : null);
 });
 
 /* Se cierra con cualquier cosa que signifique «ya no». El `mousedown` va en
