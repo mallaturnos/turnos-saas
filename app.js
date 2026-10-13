@@ -2321,6 +2321,46 @@ $('#nGuardar').addEventListener('click', function () {
     personas_requeridas: Math.max(1, Number($('#nCuantos').value) || 1),
   };
   if (!d.fecha || !d.hora_inicio || !d.hora_fin) return aviso('#nMsg', 'Faltan el día y las horas.', 'bad');
+
+  /* PEDIR LO MISMO DOS VECES SE JUNTA EN UNA — Y SE DICE.
+
+     Lo pidió Pedro el 13-10 (msg 6337). Antes de esto había dos puertas que
+     dejaban formas distintas: poner dos personas directo creaba UNA necesidad
+     de 2 —por la regla implícita—, y declarar dos veces «hace falta 1» dejaba
+     DOS tarjetas iguales. El mismo deseo guardado de dos maneras según por
+     dónde se entró.
+
+     SE JUNTA SÓLO LO IDÉNTICO: mismo día, mismo cargo y las dos horas iguales.
+     Una de Limpieza 08:00–16:00 y otra 09:00–17:00 son dos demandas distintas y
+     siguen separadas. Esa precisión es lo que hace que juntar sea seguro.
+
+     ⚠️ Y SE AVISA, no se hace a escondidas. Juntar en silencio cambiaría lo que
+     la persona acaba de escribir sin que se entere — peor que la inconsistencia
+     que viene a arreglar. El aviso dice cuánto pide ahora. */
+  var gemela = necActual ? null
+    : necesidadQueCalza(d.fecha, d.cargo_id, d.hora_inicio, d.hora_fin);
+  if (gemela) {
+    var eran = gemela.personas_requeridas || 1;
+    var total = eran + d.personas_requeridas;
+    aviso('#nMsg', 'Guardando…');
+    return DATOS.necesidades.guardar(gemela.id, { personas_requeridas: total })
+      .then(function () {
+        DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', gemela.id, 'editar',
+                     { personas_requeridas: eran }, { personas_requeridas: total });
+        recordar('juntar con la de ' + nombreCargo(gemela.cargo_id), function () {
+          return DATOS.necesidades.guardar(gemela.id, { personas_requeridas: eran });
+        });
+        $('#dlgNec').close();
+        return recargarSemana();
+      })
+      .then(function () {
+        avisoPlan('Ya había una igual en <b>' + esc(nombreCargo(gemela.cargo_id)) + '</b> '
+          + rangoTxt(gemela.hora_inicio, gemela.hora_fin)
+          + '. No se creó otra: <b>ahora pide ' + total + '</b>.');
+      })
+      .catch(function (e) { aviso('#nMsg', e.message, 'bad'); });
+  }
+
   aviso('#nMsg', 'Guardando…');
   var p = necActual ? DATOS.necesidades.guardar(necActual.id, d) : DATOS.necesidades.crear(d);
   var antes = necActual && JSON.parse(JSON.stringify(necActual));
