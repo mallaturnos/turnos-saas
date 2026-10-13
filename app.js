@@ -1113,11 +1113,19 @@ function pintarDia() {
              hueco, que es taparlo. La barra pálida no hacía ni eso. */
           return '<span class="lhueco" data-asig="' + n.id + '"'
                + ' style="left:' + pct(h.desde) + '%;width:' + (pct(h.hasta) - pct(h.desde)) + '%"'
-               + ' title="' + esc('Sin asignar · ' + nombreCargo(n.cargo_id) + ' · '
+               /* SE LLAMA «sin cubrir» Y NO «sin asignar», y la diferencia la pidió
+                  Pedro el 13-10 (msgs 6345–6351) mirando tres cocineros que
+                  entraban escalonados: *«esos sin asignar… horas sin cubrir»*.
+
+                  Tenía razón y el nombre viejo mentía: ahí **no falta nadie** —los
+                  tres están— lo que falta es que alguien esté A ESA HORA. «Sin
+                  asignar» es un turno que existe y no tiene dueño; esto es un rato
+                  del día que nadie cubre. Dos cosas distintas que se llamaban igual. */
+               + ' title="' + esc('Sin cubrir · ' + nombreCargo(n.cargo_id) + ' · '
                    + rangoTxt(h2a(h.desde), h2a(h.hasta))
                    + (h.falta > 1 ? ' · faltan ' + h.falta + ' personas' : ' · falta 1 persona')
                    + ' · aprieta para cubrirlo') + '">'
-               + '<b>sin asignar</b>' + (h.falta > 1 ? ' <i>×' + h.falta + '</i>' : '')
+               + '<b>sin cubrir</b>' + (h.falta > 1 ? ' <i>×' + h.falta + '</i>' : '')
                + '</span>';
         }).join('');
         html += '<div class="lfila" data-fila="' + (f.id || '') + '">'
@@ -1602,8 +1610,31 @@ function estadoNecesidad(n) {
     return a.necesidad_id === n.id && a.trabajador_id;
   }).length;
   var falta = n.personas_requeridas - cubren;
+
+  /* ⚠️ «COMPLETO» NO PUEDE CONTAR SÓLO CABEZAS.
+
+     Lo encontró Pedro el 13-10 (msg 6340) y su propia pantalla lo probaba: la
+     tarjeta decía «Cocina 09:00–17:00 · Completo» con Beto 09–17, Diego 10–18 y
+     Matías 11–19 dentro, mientras la línea de tiempo dibujaba el hueco de 09:00
+     a 11:00. **Las dos cosas en el mismo cuadro.**
+
+     Son 3 de 3 personas, sí — pero de 9 a 10 hay UNA. La etiqueta miraba la
+     lista de nombres y no el reloj, así que decía que estaba todo bien justo
+     encima del dibujo que decía lo contrario.
+
+     Ahora «Completo» exige las dos cosas: que estén todos Y que no quede hora
+     descubierta. Lo de contar personas para «Falta N» no se toca — eso lo
+     decidió él y tiene su comprobación. */
+  var huecos = (falta === 0) ? huecosDeNecesidad(n) : [];
+  if (falta === 0 && huecos.length) {
+    var d = huecos[0], h = huecos[huecos.length - 1];
+    return {
+      cubren: cubren, falta: 0, huecos: huecos, clase: 'cob-falta',
+      texto: 'Sin cubrir ' + rangoTxt(h2a(d.desde), h2a(h.hasta)),
+    };
+  }
   return {
-    cubren: cubren, falta: falta,
+    cubren: cubren, falta: falta, huecos: huecos,
     clase: falta === 0 ? 'cob-completo' : (falta > 0 ? 'cob-falta' : 'cob-sobra'),
     texto: falta === 0 ? 'Completo'
          : (falta > 0 ? 'Falta ' + falta : 'Sobra ' + (-falta)),
@@ -2785,18 +2816,81 @@ $('#aGuardar').addEventListener('click', function () { cerrarFicha(true); });
    Asi que el dia que haya POS, esta funcion se limita a las necesidades de
    origen manual o se retira. Queda escrito aqui para que nadie la extienda sin
    darse cuenta. */
+/* ====================================================================
+   CUANDO LA PERSONA SE SEPARA DE LO PEDIDO, SE LLEVA SU PARTE
+   ====================================================================
+   La regla la dictó Pedro el 13-10 (msgs 6352–6364) y la dejó en una frase:
+
+     «Una necesidad sin nadie es un pedido. En cuanto le pones a una persona,
+      esa parte deja de ser un pedido y pasa a ser el turno de ella.»
+
+   Por eso, al cambiarle las horas a alguien que cuelga de una necesidad de
+   VARIAS personas, su parte **se desprende**: nace una necesidad suya de 1 con
+   sus horas, y la de origen baja en uno. La cuenta total no se mueve.
+
+   POR QUÉ SÓLO AL DIVERGIR, y no al asignar: mientras sus horas son las mismas
+   que las pedidas no hay nada que separar —y partirla ahí dejaría dos tarjetas
+   con el mismo horario, que es justo lo que le molestó el 13-10 («¿está bien
+   que existan dos Cocina?»). Se parte cuando la realidad se aparta de lo
+   pedido, que es cuando aparecían los huecos inventados.
+
+   ⚠️ ESTO VALE MIENTRAS LA NECESIDAD LA PONGA ÉL. Lo dijo él mismo (msg 6361):
+   con POS «la necesidad me va a decir qué necesito, pero yo veo si los pongo o
+   no» — ahí son dos carriles y no se funden. */
+function desprenderSuParte(fila, n) {
+  var quedan = (n.personas_requeridas || 1) - 1;
+  if (quedan < 1) return Promise.resolve();   // no se deja una pidiendo cero
+
+  var antes = { id: n.id, personas_requeridas: n.personas_requeridas };
+  return DATOS.necesidades.crear({
+    empresa_id: n.empresa_id, sucursal_id: n.sucursal_id, fecha: fila.fecha,
+    cargo_id: fila.cargo_id || n.cargo_id,
+    hora_inicio: fila.hora_inicio, hora_fin: fila.hora_fin,
+    personas_requeridas: 1
+  }).then(function (suya) {
+    return DATOS.asignaciones.guardar(fila.id, { necesidad_id: suya.id })
+      .then(function () {
+        return DATOS.necesidades.guardar(n.id, { personas_requeridas: quedan });
+      })
+      .then(function () {
+        /* Deshacer repone LAS TRES COSAS: el turno vuelve a su necesidad, la de
+           origen recupera su número y la que nació se va. Reponer sólo una
+           dejaría la pantalla en un estado que nunca existió — el mismo defecto
+           que ya se corrigió aquí mismo con las horas. */
+        recordar('separar el turno de ' + nombreCargo(n.cargo_id), function () {
+          return DATOS.asignaciones.guardar(fila.id, { necesidad_id: n.id })
+            .then(function () {
+              return DATOS.necesidades.guardar(n.id, antes);
+            })
+            .then(function () { return DATOS.necesidades.borrar(suya.id); });
+        });
+      });
+  }).catch(function () { /* que falle esto no puede botar el cambio ya guardado */ });
+}
+
 function alinearNecesidad(fila) {
   if (!fila || !fila.necesidad_id) return Promise.resolve();
   var n = S.necesidades.filter(function (x) { return x.id === fila.necesidad_id; })[0];
-  if (!n || n.personas_requeridas !== 1) return Promise.resolve();
+  if (!n) return Promise.resolve();
+
+  var mismaHora = hhmm(n.hora_inicio) === hhmm(fila.hora_inicio)
+               && hhmm(n.hora_fin) === hhmm(fila.hora_fin);
+
+  /* Varias personas en la misma necesidad: la que cambió se lleva su parte.
+     Antes aquí se devolvía sin hacer nada, y de ahí salían las rayitas que
+     Pedro no entendía: lo pedido seguía diciendo 09:00–17:00 mientras ella
+     trabajaba 10:00–18:00. */
+  if ((n.personas_requeridas || 1) > 1) {
+    if (mismaHora || !fila.trabajador_id) return Promise.resolve();
+    return desprenderSuParte(fila, n);
+  }
 
   var hermanas = S.asignaciones.filter(function (a) {
     return a.necesidad_id === n.id && a.id !== fila.id;
   });
   if (hermanas.length) return Promise.resolve();
 
-  if (hhmm(n.hora_inicio) === hhmm(fila.hora_inicio)
-   && hhmm(n.hora_fin) === hhmm(fila.hora_fin)) return Promise.resolve();
+  if (mismaHora) return Promise.resolve();
 
   var antes = { hora_inicio: n.hora_inicio, hora_fin: n.hora_fin };
   return DATOS.necesidades.guardar(n.id, {
