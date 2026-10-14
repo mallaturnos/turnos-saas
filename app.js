@@ -251,7 +251,7 @@ function pintarDeshacer() {
   var b = $('#btnDeshacer'); if (!b) return;
   var u = hist[hist.length - 1];
   b.disabled = !u;
-  b.title = u ? 'Deshacer: ' + u.texto : 'No hay nada que deshacer';
+  b.title = u ? 'Deshacer: ' + u.texto + ' (Ctrl+Z)' : 'No hay nada que deshacer';
 }
 
 function aviso(sel, texto, clase) {
@@ -2060,9 +2060,13 @@ function mover(n) {
 }
 $('#btnAntes').addEventListener('click',    function () { mover(-1); });
 $('#btnDespues').addEventListener('click',  function () { mover(1); });
-$('#btnDeshacer').addEventListener('click', function () {
+/* El boton y el atajo Ctrl+Z entran los dos por aqui. Vive en una funcion y no
+   dentro del `click` porque colgar la logica de UN camino es lo que hace que el
+   otro la ignore en silencio: el atajo tiene que deshacer exactamente lo mismo
+   que el boton, no una copia que se va quedando atras. */
+function deshacerUltimo() {
   var u = hist.pop(); if (!u) return;
-  var b = this; b.disabled = true;
+  var b = $('#btnDeshacer'); if (b) b.disabled = true;
   pintarDeshacer();
   Promise.resolve().then(u.deshacer).then(function () {
     return recargarSemana();
@@ -2072,7 +2076,8 @@ $('#btnDeshacer').addEventListener('click', function () {
     hist.push(u); pintarDeshacer();
     alert('No pude deshacer «' + u.texto + '»: ' + e.message);
   }).then(function () { pintarDeshacer(); });
-});
+}
+$('#btnDeshacer').addEventListener('click', deshacerUltimo);
 $('#btnHoy').addEventListener('click',      function () {
   S.dia = hoyTexto(); S.lunes = lunesDe(S.dia); pintarSelectores(); recargarSemana();
 });
@@ -4232,6 +4237,18 @@ document.addEventListener('keydown', function (ev) {
       ev.preventDefault();   // si no, la página entera se desplaza
       return;
     }
+  }
+
+  /* Ctrl+Z va ANTES del guardia de «hay algo marcado», y a proposito: deshacer no
+     necesita que haya nada marcado —el caso normal es justo ese, acabas de hacer
+     algo y te arrepientes—. Colgarlo del mismo guardia que copiar y pegar lo
+     habria dejado mudo casi siempre, y sin dar error, que es peor.
+     Se excluye Ctrl+Mayus+Z porque en todos lados es rehacer, y rehacer no existe
+     aqui: mejor que no pase nada a que deshaga una segunda cosa sin querer. */
+  if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z')) {
+    ev.preventDefault();
+    if (hist.length) deshacerUltimo();
+    return;
   }
 
   if (!esPlanilla() || !SEL.claves.length) return;
