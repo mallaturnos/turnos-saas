@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v100</span></p>
+      <span style="float:right;opacity:.55" id="ver">v101</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v100</span>
+    <span class="hint" id="ver2" title="Versión publicada">v101</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -347,6 +347,35 @@
   </form>
 </dialog>
 
+<!-- CAMBIAR VARIOS DE UNA VEZ. Lo pidio Pedro (14-10) para corregir una semana
+     ya armada: «estos ocho entran una hora mas tarde».
+
+     EL DIALOGO NACE VACIO, Y ESO ES TODO EL DISENO. Si apareciera relleno con
+     los datos del primer turno marcado, apretar Guardar pisaria los otros siete
+     sin que nadie lo pidiera. Vacio significa «no cambies esto».
+
+     Y NO SE APLICA A LO QUE SE VE, SE APLICA A LO MARCADO. La edicion en lote de
+     Deputy toca todo lo visible en pantalla y se acota filtrando la vista: eso
+     es que la pantalla afirme una cosa y la accion toque otra. -->
+<dialog id="dlgLote" class="dlg">
+  <form method="dialog">
+    <h3 id="loTit">Cambiar los marcados</h3>
+    <p class="hint">Lo que dejes <b>en blanco no se toca</b>.</p>
+    <div class="fld"><label for="loQuien">Persona</label><select id="loQuien"></select></div>
+    <div class="fldrow">
+      <div class="fld"><label for="loEntra">Entra</label><input type="time" id="loEntra"></div>
+      <div class="fld"><label for="loSale">Sale</label><input type="time" id="loSale"></div>
+    </div>
+    <p class="hint" id="loVarios" hidden></p>
+    <p class="hint" id="loPub" hidden></p>
+    <p class="msg" id="loMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="loGuardar">Cambiar</button>
+      <button type="button" class="plano" id="loCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- Uno solo para trabajador / cargo / local / horario: son formularios de
      dos o tres campos y cuatro diálogos casi iguales es cuatro sitios donde
      arreglar el mismo defecto. -->
@@ -502,6 +531,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=47"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>

@@ -669,6 +669,18 @@ function minutosQueSePisan(a, b) {
   var x = tramoAbs(a), y = tramoAbs(b);
   return Math.max(0, Math.min(x.fin, y.fin) - Math.max(x.ini, y.ini));
 }
+/* ¿Este turno se pisa con OTRO de la misma persona, entre lo que hay en pantalla?
+   Vive aqui y no dentro del pintado porque la usan dos sitios: la marca «se cruza»
+   de cada turno y el resumen que se da despues de un cambio en lote. Si cada uno
+   llevara su copia, el dia que la regla cambie solo cambiaria una — y la pantalla
+   y el resumen dirian cosas distintas del mismo turno. */
+function sePisaConOtro(a) {
+  if (!a || !a.trabajador_id) return false;
+  return S.asignaciones.some(function (o) {
+    return o.id !== a.id && o.trabajador_id === a.trabajador_id
+        && minutosQueSePisan(a, o) > 0;
+  });
+}
 function minTexto(m) {
   var h = Math.floor(m / 60), mm = Math.round(m % 60);
   return (h ? h + ' h ' : '') + (mm ? mm + ' min' : (h ? '' : '0 min'));
@@ -1764,10 +1776,7 @@ function pintarAsignacion(a) {
      pregunta a la base, que es mas caro y mas exacto; para pintar la semana
      alcanza con lo que ya se trajo, y asi la malla no hace una consulta por
      cada turno que dibuja. */
-  var pisa = a.trabajador_id && S.asignaciones.some(function (o) {
-    return o.id !== a.id && o.trabajador_id === a.trabajador_id
-        && minutosQueSePisan(a, o) > 0;
-  });
+  var pisa = sePisaConOtro(a);
 
   var choca = a.trabajador_id && ausenciasDe(a.trabajador_id, a.fecha).length > 0;
   var ausTxt = choca
@@ -3908,6 +3917,158 @@ function dejarSinAsignar() {
 }
 
 /* ====================================================================
+   CAMBIAR VARIOS TURNOS DE UNA VEZ  (Pedro, 14-10, msgs 6561-6571)
+   ====================================================================
+
+   QUE RESUELVE. Corregir una semana ya armada. «Estos ocho entran una hora mas
+   tarde» son hoy ocho fichas abiertas y cerradas, una por una.
+
+   TRES DECISIONES, Y LAS TRES SON DE PEDRO:
+
+   1. EL DIALOGO NACE VACIO. Vacio = «no cambies esto». Relleno con los datos
+      del primer turno, Guardar pisaria los otros siete sin que nadie lo pidiera.
+
+   2. SE APLICA A LO MARCADO, NUNCA A LO QUE SE VE. La edicion en lote de Deputy
+      toca todos los turnos visibles y se acota filtrando la vista antes; eso es
+      que la pantalla diga una cosa y la accion haga otra.
+
+   3. AVISA, NO BLOQUEA — y esto corrige lo que yo mismo le habia dibujado.
+      Mi maqueta decia que los turnos que se cruzan «quedarian fuera». Pero el
+      12-10 Pedro cambio justamente eso en la ficha de un turno: antes se negaba
+      a guardar y ahora avisa y guarda. Y el 14-10 lo dijo con un caso: «tengo a
+      beto, y luego selecciono a otra persona y a beto, y quiero dejar a beto en
+      los dos». Si el lote bloqueara, la MISMA accion se comportaria distinta
+      segun se haga de a uno o de a ocho. Se aplica a todos y se avisa cuantos
+      quedaron cruzados — porque de a ocho es facil crear tres cruces sin mirar.
+
+   Y POR QUE NO HAY «dejar pendiente» AQUI: ya existe «Dejar sin asignar» en el
+   mismo menu. Dos puertas a lo mismo es lo que este trabajo vino a quitar. */
+var LOTE = [];
+
+function marcadosDeSeleccion() {
+  var todos = [];
+  SEL.claves.forEach(function (k) {
+    turnosDeClave(k).forEach(function (a) { todos.push(a); });
+  });
+  return todos;
+}
+
+function abrirLote() {
+  LOTE = marcadosDeSeleccion();
+  if (!LOTE.length) return nada('En lo que marcaste no hay turnos.');
+
+  $('#loTit').textContent = 'Cambiar los ' + LOTE.length + ' marcados';
+  $('#loQuien').innerHTML = '<option value="">— sin cambios —</option>'
+    + activos().map(function (p) {
+        return '<option value="' + p.id + '">' + esc(nombreTrab(p.id)) + '</option>';
+      }).join('');
+  $('#loQuien').value = ''; $('#loEntra').value = ''; $('#loSale').value = '';
+  $('#loMsg').textContent = '';
+
+  /* «(varios)» NO ES DECORACION. Avisa de que los marcados no coinciden en ese
+     campo, o sea de que escribir ahi los aplana todos a un mismo valor. Sin esa
+     palabra, cambiar ocho personas distintas por una sola se hace sin querer. */
+  var distintos = function (f) {
+    var v = LOTE.map(f);
+    return v.some(function (x) { return x !== v[0]; });
+  };
+  var mezcla = [];
+  if (distintos(function (a) { return a.trabajador_id || ''; })) mezcla.push('la persona');
+  if (distintos(function (a) { return hhmm(a.hora_inicio) + '-' + hhmm(a.hora_fin); })) mezcla.push('el horario');
+  $('#loVarios').hidden = !mezcla.length;
+  if (mezcla.length) {
+    $('#loVarios').innerHTML = 'Los marcados <b>no coinciden</b> en ' + mezcla.join(' ni en ')
+      + ' <i>(varios)</i>. Lo que escribas los deja a todos igual.';
+  }
+
+  /* Editar NO despublica — igual que al cambiar un turno suelto. Pero entonces
+     el calendario de esa persona sigue mostrando lo viejo hasta que se vuelva a
+     publicar, y callarlo de a ocho es peor que de a uno. */
+  var pub = LOTE.filter(function (a) {
+    return S.turnos.some(function (t) {
+      return t.asignacion_id === a.id && t.estado === 'publicado';
+    });
+  }).length;
+  $('#loPub').hidden = !pub;
+  if (pub) {
+    $('#loPub').innerHTML = '⚠️ <b>' + pub + '</b> ya está(n) <b>publicado(s)</b>. '
+      + 'El cambio no les llega hasta que <b>vuelvas a publicar</b>.';
+  }
+  $('#dlgLote').showModal();
+}
+
+$('#loCancelar').addEventListener('click', function () { $('#dlgLote').close(); });
+
+$('#loGuardar').addEventListener('click', function () {
+  var cambios = {}, dicho = [];
+  var quien = $('#loQuien').value, entra = $('#loEntra').value, sale = $('#loSale').value;
+  if (quien) { cambios.trabajador_id = quien; dicho.push('persona'); }
+  if (entra) { cambios.hora_inicio = entra;   dicho.push('entrada'); }
+  if (sale)  { cambios.hora_fin    = sale;    dicho.push('salida');  }
+
+  // Sin esto, «Cambiar» sin tocar nada escribiria ocho veces para dejar todo igual.
+  if (!dicho.length) { aviso('#loMsg', 'No elegiste ningún cambio.', 'bad'); return; }
+
+  var todos = LOTE.slice();
+  /* La foto de ANTES se saca ahora y solo de los campos que se van a tocar: un
+     Deshacer que reponga campos que nadie cambio es un segundo cambio disfrazado. */
+  var antes = todos.map(function (a) {
+    var f = { id: a.id };
+    if (cambios.trabajador_id !== undefined) f.trabajador_id = a.trabajador_id;
+    if (cambios.hora_inicio  !== undefined) f.hora_inicio  = a.hora_inicio;
+    if (cambios.hora_fin     !== undefined) f.hora_fin     = a.hora_fin;
+    return f;
+  });
+
+  $('#dlgLote').close();
+  avisarSeleccion('Cambiando ' + todos.length + ' turno(s)…');
+
+  var fallaron = [];
+  var cadena = todos.reduce(function (pr, a) {
+    return pr.then(function () {
+      return DATOS.asignaciones.guardar(a.id, cambios).then(function (fila) {
+        /* LO MISMO QUE HACE GUARDAR UN TURNO SUELTO. Si el lote no realinea la
+           necesidad, lo pedido sigue diciendo 09:00-17:00 mientras la gente
+           trabaja 10:00-18:00 — son las rayitas que Pedro no entendia. */
+        return alinearNecesidad(fila || a).catch(function () {});
+      }).catch(function (e) {
+        // Uno que falla no bota a los otros siete: se anota y se sigue.
+        fallaron.push({ a: a, e: e });
+      });
+    });
+  }, Promise.resolve());
+
+  return cadena.then(function () {
+    var ok = todos.length - fallaron.length;
+    DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'editar',
+                 { en_lote: ok, campos: dicho.join(', ') }, null);
+    if (ok) recordar('el cambio en ' + ok + ' turno(s)', function () {
+      return antes.reduce(function (pr, f) {
+        var d = {};
+        if (f.trabajador_id !== undefined) d.trabajador_id = f.trabajador_id;
+        if (f.hora_inicio  !== undefined) d.hora_inicio  = f.hora_inicio;
+        if (f.hora_fin     !== undefined) d.hora_fin     = f.hora_fin;
+        return pr.then(function () { return DATOS.asignaciones.guardar(f.id, d); });
+      }, Promise.resolve());
+    });
+    return recargarSemana().then(function () { return ok; });
+  }).then(function (ok) {
+    /* EL RESUMEN ES LO QUE COMPENSA NO BLOQUEAR. De a uno ves el aviso del cruce
+       y reaccionas; de a ocho puedes crear tres sin mirar. Se cuenta DESPUES de
+       recargar, sobre los datos de verdad, y con la MISMA regla que pinta la
+       marca «se cruza» en la malla. */
+    var ids = {}; todos.forEach(function (a) { ids[a.id] = true; });
+    var cruzados = S.asignaciones.filter(function (a) {
+      return ids[a.id] && sePisaConOtro(a);
+    }).length;
+    var txt = 'Cambiados ' + ok + ' turno(s): ' + dicho.join(' y ');
+    if (cruzados) txt += ' · ⚠️ ' + cruzados + ' quedaron cruzados';
+    if (fallaron.length) txt += ' · ' + fallaron.length + ' no se pudo: ' + fallaron[0].e.message;
+    decirSel(txt);
+  }).catch(function (e) { decirSel('No pude: ' + e.message); });
+});
+
+/* ====================================================================
    EL MENÚ DEL BOTÓN DERECHO
    ====================================================================
    Pedro, 13-10-2026 (msgs 6180–6191), tras ver la maqueta.
@@ -3975,6 +4136,7 @@ function menuEl() {
       case 'copiar':  return copiarSeleccion(false);
       case 'cortar':  return copiarSeleccion(true);
       case 'pegar':   return pegarSeleccion();
+      case 'lote':    return abrirLote();
       case 'soltar':  return dejarSinAsignar();
       case 'borrar':  return borrarSeleccion(false);
     }
@@ -4040,6 +4202,7 @@ function abrirMenu(x, y, td, idTurno) {
     + fila('cortar',  'Cortar',  'Ctrl+X', marcados.length > 0)
     + fila('pegar',   'Pegar',   'Ctrl+V', !!PORTA)
     + '<hr>'
+    + fila('lote',    'Cambiar los ' + marcados.length + ' marcados…', '', marcados.length > 1)
     + fila('soltar',  'Dejar sin asignar', '', conPersona > 0)
     + fila('borrar',  'Borrar',  'Supr',  marcados.length > 0, 'mal');
   m.hidden = false;
@@ -5862,6 +6025,8 @@ window.__app = {
   estirarTurno: estirarTurno, soltarTurno: soltarTurno,
   borrarNecesidad: borrarNecesidad,
   alinearNecesidad: alinearNecesidad,
+  // El lote: la prueba abre el diálogo y aprieta, igual que haría una persona.
+  abrirLote: abrirLote, sePisaConOtro: sePisaConOtro,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
