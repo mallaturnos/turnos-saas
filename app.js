@@ -3967,14 +3967,22 @@ $('#btnMasSem').addEventListener('click', function (ev) {
   // sus botones, o queda un titulo encabezando la nada.
   var g = $('#grModelos');
   if (g) g.hidden = $('#btnGuardarModelo').hidden && $('#btnAplicarModelo').hidden;
-  /* Limpiar la semana solo tiene sentido MIRANDO una semana. En Dia o en Mes
-     «la semana» no es lo que tienes delante, y borrar lo que no se ve es la
-     peor cosa que puede hacer un boton. Connecteam hace lo mismo: su duplicar
-     solo esta en la vista semanal. */
+  /* LA ACCION SIGUE A LO QUE MIRAS, y esto lo corrigio Pedro (msg 6637: «pero
+     ahi deberia tener en la vista dia es borrar el dia?»). Yo lo habia apagado
+     en Dia y en Mes con el argumento de «no borrar lo que no se ve» — y en la
+     vista Dia el dia SI se ve. El argumento era flojo: lo que habia que hacer
+     no era apagar el boton, era que dijera lo que corresponde.
+
+     El Mes se queda apagado por OTRA razon, y conviene no confundirlas: ahi no
+     es que no lo veas, es que deshacerlo seria reponer cientos de turnos de a
+     uno. La red de Deshacer existe, pero no da para tanto. */
   var b = $('#btnLimpiarSem');
-  b.disabled = S.vista !== 'semana';
-  b.title = b.disabled ? 'Cámbiate a la vista Semana para limpiarla'
-                       : 'Borra todos los turnos de la semana que estás viendo';
+  var queVes = { dia: 'el día', semana: 'la semana', mes: 'el mes' }[S.vista] || 'la semana';
+  b.textContent = 'Limpiar ' + queVes;
+  b.disabled = S.vista === 'mes';
+  b.title = b.disabled
+    ? 'Cámbiate a Semana o a Día: limpiar un mes entero no se podría deshacer con seguridad'
+    : 'Borra todos los turnos de ' + queVes + ' que estás viendo';
   m.hidden = !abrir;
   this.setAttribute('aria-expanded', abrir ? 'true' : 'false');
 });
@@ -4005,18 +4013,19 @@ $('#menuSem').addEventListener('click', function (ev) {
    Soigne directamente NO deja limpiar si hay algo publicado. No se copia: la
    app de Pedro avisa y deja decidir ([[malla-principio-libertad]]). */
 function limpiarSemana() {
-  if (S.vista !== 'semana') return;
+  if (S.vista === 'mes') return;
+  var queVes = S.vista === 'dia' ? 'este día' : 'esta semana';
   var r = rangoVista();
   var todos = S.asignaciones.filter(function (a) {
     return a.fecha >= r.desde && a.fecha <= r.hasta;
   });
-  if (!todos.length) return nada('Esta semana no tiene ningún turno.');
+  if (!todos.length) return nada('No hay ningún turno en ' + queVes + '.');
   var pub = todos.filter(function (a) {
     return S.turnos.some(function (t) {
       return t.asignacion_id === a.id && t.estado === 'publicado';
     });
   }).length;
-  var msg = 'Vas a borrar los ' + todos.length + ' turnos de esta semana.';
+  var msg = 'Vas a borrar los ' + todos.length + ' turnos de ' + queVes + '.';
   if (pub) msg += '\n\n⚠️ ' + pub + ' ya está(n) PUBLICADO(s): a esas personas se '
                 + 'les borra de su calendario.';
   msg += '\n\nSe puede deshacer. ¿Lo hago?';
