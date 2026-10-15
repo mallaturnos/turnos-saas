@@ -4983,17 +4983,31 @@ function abrirFicha(tipo, dato) {
            + (S.hayAtajoPorLocal === false
                ? '<p class="hint">⚠️ Todavía no se puede elegir el local: falta pegar '
                  + '<code>arreglo-horarios-por-local.sql</code>.</p>'
-               : '<label for="fSucH">¿De qué local?</label>'
-                 + '<select id="fSucH" class="fld">'
-                 + S.sucursales.map(function (x) {
-                     var elegido = (dato && dato.sucursal_id) || tramoPara;
-                     var m = elegido === x.id ? ' selected' : '';
-                     return '<option value="' + x.id + '"' + m + '>' + esc(x.nombre) + '</option>';
-                   }).join('')
-                 + '</select>'
-                 + '<p class="hint">El tramo sale del horario del local, así que es de uno '
-                 + 'solo. Si el mismo rango te sirve en otro, créalo también allá: quedan '
-                 + 'separados y cambiar uno no toca al otro.</p>');
+               /* EL LOCAL SE ESCRIBE, NO SE ELIGE. Lo encontró Pedro usándolo
+                  (msg 6742): «al estar en la casilla de un local se asume que es
+                  solo para ese local», y lo remató él mismo (msg 6750): «¿qué
+                  sentido tiene fijar un tramo en la tarjeta del local 1
+                  seleccionando el local 2? eso lo debería hacer en la tarjeta
+                  del local 2».
+
+                  Tiene razón y además ES SU PROPIA REGLA, la misma del 11-10
+                  con el + de la fila de una persona: donde entraste YA ES la
+                  respuesta, y volver a preguntarla solo deja contradecirla.
+
+                  El local nunca hizo falta preguntarlo: `tramoPara` lo trae en
+                  los dos caminos —del botón de la tarjeta al crear, y del propio
+                  tramo al editar—. El desplegable no agregaba una capacidad,
+                  agregaba una forma de equivocarse. */
+               : '<p class="fijo" id="fSucFijo">Local: <b>'
+                 + esc((S.sucursales.filter(function (x) {
+                     return x.id === ((dato && dato.sucursal_id) || tramoPara);
+                   })[0] || {}).nombre || '—')
+                 + '</b></p>'
+                 + '<input type="hidden" id="fSucH" value="'
+                 + esc((dato && dato.sucursal_id) || tramoPara || '') + '">'
+                 + '<p class="hint">El tramo es <b>de este local</b>. Si el mismo rango te '
+                 + 'sirve en otro, créalo en la tarjeta de ese otro: quedan separados y '
+                 + 'cambiar uno no toca al otro.</p>');
   }
   $('#fCampos').innerHTML = campos;
   aviso('#fMsg', '');
@@ -5091,9 +5105,11 @@ $('#fGuardar').addEventListener('click', function () {
     var h = { nombre: nombre, hora_inicio: $('#fEntra').value, hora_fin: $('#fSale').value };
     // Igual que siempre: sin la columna, no se manda.
     if (S.hayAtajoPorLocal) h.sucursal_id = ($('#fSucH') || {}).value || null;
-    // Antes editar no hacia nada (`Promise.resolve`). Con el local como campo,
-    // editar si tiene sentido: es como se corrige un tramo puesto en el local
-    // equivocado.
+    /* Antes editar no hacia nada (`Promise.resolve`). Sigue teniendo sentido
+       —se corrige el nombre y las horas—, pero YA NO sirve para mover el tramo
+       a otro local: desde el 15-10 el local se escribe y no se elige. Si quedo
+       en la tarjeta equivocada se borra y se crea en la correcta, que es lo que
+       Pedro describio como lo natural. */
     p = d ? DATOS.horarios.guardar(d.id, h) : DATOS.horarios.crear(emp, h);
   } else {
     var w = { nombre: nombre, valor_hora: Number($('#fValor').value) || null };
