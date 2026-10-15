@@ -1045,3 +1045,53 @@ table.mesb .mini { cursor: pointer; }
 /* Limpiar la semana borra TODO lo de esa semana: se ve que es distinta. */
 .menusem button.mal { color:var(--rojo); }
 .menusem button.mal:hover { background:var(--rojo-claro); }
+
+/* ====================================================================
+   QUE AUSENCIAS USO — la cara simple del catalogo (15-10-2026)
+   Una fila, un interruptor. El candado NO es un interruptor apagado: es
+   otra cosa, y por eso se dibuja distinto.
+   ==================================================================== */
+.usofila { display:flex; align-items:center; gap:.7rem; padding:.42rem .2rem; }
+.usofila + .usofila { border-top:1px solid var(--borde-suave, #f0ede7); }
+.usofila .nom { flex:1; }
+.usofila .ley { color:var(--gris); font-size:.8rem; text-align:right; }
+/* Apagado: se ve apagado, pero SE SIGUE LEYENDO. Si se desvanece del todo,
+   el encargado no encuentra lo que quiere volver a encender. */
+.usofila.apagado .nom { color:var(--gris); }
+
+.usofila .sw { width:38px; height:21px; border-radius:11px; border:none;
+  background:#d6d2c9; position:relative; flex:none; cursor:pointer;
+  transition:background .12s; padding:0; }
+.usofila .sw::after { content:""; position:absolute; top:3px; left:3px;
+  width:15px; height:15px; border-radius:50%; background:#fff;
+  transition:left .12s; }
+.usofila .sw.on { background:var(--verde); }
+.usofila .sw.on::after { left:20px; }
+.usofila .sw:disabled { opacity:.5; cursor:default; }
+.usofila .sw:focus-visible { outline:2px solid var(--verde); outline-offset:2px; }
+
+.usofila .candado { width:38px; flex:none; text-align:center; font-size:.95rem;
+  cursor:default; }
+.usofila .candado svg { width:15px; height:15px; color:var(--gris); display:block; margin:0 auto; }
+/* El rotulo del candado solo para lectores de pantalla: en la fila ya se
+   entiende por el dibujo, y escrito ocuparia el ancho del nombre. */
+.usofila .candado .ellos { position:absolute; width:1px; height:1px; overflow:hidden;
+  clip:rect(0 0 0 0); white-space:nowrap; }
+/* Aire antes de la seccion siguiente: sin esto «Días bloqueados» queda pegado
+   a la ultima fila y las dos listas se leen como una sola. */
+#listaTipos:not(:empty) { margin-bottom:1.4rem; }
+
+/* ====================================================================
+   PESTAÑAS DENTRO DEL DIALOGO — Turno | Ausencia (15-10-2026)
+   La activa va deshabilitada a proposito: apretarla no hace nada, y un
+   boton que no hace nada no deberia parecer apretable.
+   ==================================================================== */
+.pestdlg { display:flex; gap:1.3rem; margin:.1rem 0 .9rem;
+  border-bottom:1px solid var(--borde, #dfdcd5); }
+.pestdlg-t { background:none; border:none; padding:0 0 .45rem; cursor:pointer;
+  font-size:.95rem; font-weight:600; color:var(--gris);
+  border-bottom:2.5px solid transparent; margin-bottom:-1px; }
+.pestdlg-t:hover:not(:disabled) { color:var(--tinta); }
+.pestdlg-t.on { color:var(--verde); border-bottom-color:var(--verde);
+  cursor:default; opacity:1; }
+.pestdlg-t:focus-visible { outline:2px solid var(--verde); outline-offset:3px; }

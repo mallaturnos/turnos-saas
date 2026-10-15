@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=41">
+<link rel="stylesheet" href="estilo.css?v=42">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v106</span></p>
+      <span style="float:right;opacity:.55" id="ver">v107</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v106</span>
+    <span class="hint" id="ver2" title="Versión publicada">v107</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -204,13 +204,22 @@
          comporta el sistema. Y existe para que Pedro pueda mantener las reglas
          SOLO: la regulacion cambia, y un producto donde haya que llamar al
          programador para subir un permiso de 10 a 20 dias no se puede vender. -->
+    <!-- DOS CARAS DE LA MISMA LISTA, y la que se ve primero es la simple.
+         Lo pidio Pedro el 15-10 (msgs 6696-6698): «una pantalla donde el usuario
+         pueda decidir que ausencia quiere dejar». La de definir lo legal «es mas
+         del proyecto que del usuario final» — sus palabras—, asi que deja de ser
+         lo primero que se encuentra y pasa a estar detras de un enlace.
+
+         NO SE ESCONDE DEL TODO, y es a proposito: todavia no existe un nivel
+         «plataforma» que la separe de verdad (el rol mas alto, `dueno`, es el
+         cliente). Esconderla con un `hidden` y llamarlo privado seria prometer
+         una puerta cerrada que no esta cerrada. -->
     <div class="controles" id="ctrlTipos" hidden>
-      <h2>Permisos y ausencias</h2><span class="espacio"></span>
-      <button class="primario" id="btnTipo">+ Nuevo tipo</button>
+      <h2 id="tituloTipos">Qué ausencias uso</h2><span class="espacio"></span>
+      <button class="plano" id="btnCatalogo">Editar el catálogo…</button>
+      <button class="primario" id="btnTipo" hidden>+ Nuevo tipo</button>
     </div>
-    <p class="hint" id="hintTipos" hidden>Cada fila dice cómo se comporta su tipo.
-      <b>El trato</b> es quién decide: lo que se acuerda se puede rechazar, lo que
-      la ley no deja negar no tiene ese botón.</p>
+    <p class="hint" id="hintTipos" hidden></p>
     <div id="listaTipos" class="lista"></div>
 
 
@@ -328,6 +337,15 @@
 <dialog id="dlgAsig" class="dlg">
   <form method="dialog">
     <h3 id="aTit">Quién lo cubre</h3>
+    <!-- LAS DOS PESTAÑAS, como Skello (capturas de Pedro, msgs 6704-6706).
+         SOLO AL CREAR: editando un turno que ya existe, «Ausencia» no es otra
+         pestaña de lo mismo — seria abandonar el registro que abriste. Por eso
+         `aPest` nace oculto y lo destapa `abrirAsignacion` cuando no hay turno
+         detras. -->
+    <div class="pestdlg" id="aPest" hidden>
+      <button type="button" class="pestdlg-t on" disabled>Turno</button>
+      <button type="button" class="pestdlg-t" id="aPestAus">Ausencia</button>
+    </div>
     <p class="hint" id="aDe"></p>
     <!-- EL CARGO SOLO SE PREGUNTA CUANDO NO HAY NADA PLANIFICADO DETRAS.
          Si el turno nace de una necesidad, el cargo lo manda ella y preguntarlo
@@ -476,6 +494,10 @@
 <dialog id="dlgAus" class="dlg">
   <form method="dialog">
     <h3 id="usTit">Ausencia</h3>
+    <div class="pestdlg" id="usPest" hidden>
+      <button type="button" class="pestdlg-t" id="usPestTur">Turno</button>
+      <button type="button" class="pestdlg-t on" disabled>Ausencia</button>
+    </div>
     <div class="fldrow">
       <div class="fld"><label for="usQuien">Persona</label><select id="usQuien"></select></div>
       <div class="fld"><label for="usTipo">Tipo</label><select id="usTipo"></select></div>
@@ -621,6 +643,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=53"></script>
+<script src="app.js?v=54"></script>
 </body>
 </html>

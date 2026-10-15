@@ -2626,6 +2626,11 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
 
   $('#aTit').textContent = a ? 'Quién lo cubre' : 'Quién lo cubre';
 
+  /* Las pestañas solo cuando se esta CREANDO, y solo si las ausencias existen
+     en esta base. Editando un turno guardado, saltar a «Ausencia» dejaria a
+     medias lo que viniste a tocar. */
+  $('#aPest').hidden = !!a || !S.hayAusencias;
+
   /* El cargo: lo manda la necesidad si la hay; si no, se PREGUNTA. Antes se
      tomaba el primero del catálogo en silencio. */
   /* Si sabemos PARA QUIEN es, el cargo por omisión sale de lo que esa persona
@@ -2703,6 +2708,20 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   fichaBase = leerFicha();
   pintarSalida();
   $('#dlgAsig').showModal();
+
+  /* EL FOCO VA AL PRIMER CAMPO, NO A LA PESTAÑA.
+
+     Al poner la tira de pestañas, «Turno» quedo `disabled` —es la activa— y el
+     primer elemento enfocable del dialogo paso a ser «Ausencia». El navegador
+     le daba el foco al abrir: un Enter de mas y te ibas a otra pantalla sin
+     haberlo pedido, en el dialogo que mas se usa. Se vio MIRANDO el render: el
+     recuadro del foco estaba sobre la pestaña.
+
+     Esto no inventa un comportamiento nuevo: devuelve el que habia antes de las
+     pestañas, cuando lo primero enfocable era el primer campo. */
+  var primero = !$('#aCargoCaja').hidden ? $('#aCargo')
+              : (!$('#aQuienCaja').hidden ? $('#aQuien') : $('#aEntra'));
+  if (primero && primero.focus) primero.focus();
 }
 
 /* EL SUBTÍTULO DICE DÓNDE VA A CAER EL TURNO, y se vuelve a escribir cada vez
@@ -2880,6 +2899,22 @@ $('#aCargo').addEventListener('change', alCambiarFicha);
 /* DESCARTAR es lo único que cierra sin escribir. Cerrar de cualquier otra forma
    guarda, que es lo que pidió Pedro. */
 $('#aCancelar').addEventListener('click', function () { fichaBase = null; $('#dlgAsig').close(); });
+
+/* SALTAR A LA PESTAÑA DE AUSENCIA, llevandose la persona y el dia.
+   Eso es lo que hace que sirva: en Skello lo unico que cambia entre pestañas
+   es el titulo y los campos; a quien y que dia se quedan quietos.
+
+   CERRAR AQUI NO ESCRIBE NADA, y por eso el salto es seguro: en un turno
+   NUEVO cerrar no crea nada —esta dicho en `pintarSalida`, y el boton dice
+   «Cerrar» justamente para que se vea—. Las pestañas no aparecen cuando el
+   turno ya existe, que es el unico caso donde cerrar si guardaria. */
+$('#aPestAus').addEventListener('click', function () {
+  var quien = $('#aQuien') && $('#aQuien').value;
+  var dia = asigFecha;
+  fichaBase = null;
+  $('#dlgAsig').close();
+  abrirAusencia(null, dia, quien || undefined);
+});
 
 /* ESCAPE TAMBIÉN GUARDA. Si Escape descartara y «Listo» guardara, habría dos
    formas de cerrar con resultados distintos, y la persona no tendría cómo saber
@@ -5708,6 +5743,8 @@ function abrirAusencia(a, fecha, trabajadorId) {
      licencia medica —que nadie concede— o a una falta. */
   $('#usTit').textContent = a ? 'Ausencia / permiso' : 'Registrar una ausencia / permiso';
 
+  $('#usPest').hidden = !!a;
+
   $('#usQuien').innerHTML = activos().map(opcion).join('');
   $('#usQuien').value = a ? a.trabajador_id : (trabajadorId || activos()[0].id);
 
@@ -5743,6 +5780,8 @@ function abrirAusencia(a, fecha, trabajadorId) {
   aviso('#usMsg', '');
   pintarFormaAusencia();
   $('#dlgAus').showModal();
+  // Mismo caso que en el turno: sin esto el foco cae en la pestaña «Turno».
+  if ($('#usQuien').focus) $('#usQuien').focus();
 }
 
 /* El formulario SE ARMA con la fila del tipo. Aqui se ve en una funcion lo que
@@ -5916,6 +5955,14 @@ function pintarOjoAusencia() {
 });
 $('#usCancelar').addEventListener('click', function () { $('#dlgAus').close(); });
 
+/* Y la vuelta. `dlgAus` no guarda al cerrar —solo escribe el boton Guardar—,
+   asi que saltar desde aqui tampoco deja una ausencia a medias. */
+$('#usPestTur').addEventListener('click', function () {
+  var quien = $('#usQuien').value, dia = $('#usDesde').value || hoyTexto();
+  $('#dlgAus').close();
+  abrirAsignacion(null, null, dia, quien ? { trabajadorId: quien } : null);
+});
+
 /* El detalle por dia, calculado CON LA MALLA DEL MOMENTO.
 
    Es la razon de ser de la tabla: dentro de seis meses la malla cambio y esto
@@ -6088,6 +6135,7 @@ $('#usAnular').addEventListener('click', function () {
 // saldos de vacaciones habra que agregar `vigente_desde` — que es agregar una
 // columna, no rehacer esto.
 // ====================================================================
+var modoCatalogo = false;   // false = «Qué ausencias uso»; true = el catálogo entero
 var tipoActual = null;
 var catalogo = [];
 
@@ -6124,10 +6172,101 @@ function cargarCatalogo() {
   });
 }
 
+/* QUE AUSENCIAS USO · la cara simple del catalogo.
+
+   Una fila, un interruptor, y nada mas. Lo apagado deja de ofrecerse al
+   registrar —`DATOS.ausencias.tipos()` ya filtra por `activo`, asi que esto no
+   inventa comportamiento: le pone una puerta a uno que ya existia y que solo se
+   podia abrir entrando al formulario de catorce campos.
+
+   LOS OBLIGATORIOS NO LLEVAN INTERRUPTOR. No va deshabilitado: va un candado
+   con su norma al lado. Un interruptor apagado invita a apretarlo y deja al
+   encargado preguntandose por que no responde; el candado contesta antes de que
+   pregunte. (Es lo mismo que se hizo con los campos grises del tipo del
+   sistema: no se esconden, se explican.)
+
+   Y la marca viene de `obligatorio`, NO de «tiene base_legal». Deducirlo del
+   texto legal fallaba en los dos bordes del propio catalogo: la licencia medica
+   no tiene norma escrita y no se puede apagar, y la falta injustificada si la
+   tiene y es un registro, no un derecho. */
+function pintarQueUso() {
+  var html = '';
+  Object.keys(TRATOS).forEach(function (tr) {
+    var ts = catalogo.filter(function (t) { return t.trato === tr; });
+    if (!ts.length) return;
+    html += '<p class="grupoTipo"><b>' + esc(TRATOS[tr]) + '</b></p>';
+    ts.forEach(function (t) {
+      /* «del local» al lado de un candado se lee como una contradiccion, y la
+         licencia medica es justo ese caso: no tiene norma escrita y aun asi no
+         se puede apagar. Se dice lo que es. */
+      var ley = t.base_legal
+        ? esc(t.base_legal) + (t.dias_legales ? ' · ' + esc(diasTexto(t.dias_legales, t.dias_base)) : '')
+        : (t.obligatorio ? 'lo exige la ley' : 'del local');
+      html += '<div class="usofila' + (t.activo ? '' : ' apagado') + '">'
+        + (t.obligatorio
+            /* DIBUJADO, NO UN EMOJI. Con 🔒 la prueba pasaba —el `.candado`
+               existia— y en pantalla salia un CUADRO VACIO: la fuente del
+               navegador no tenia ese glifo. Medir no es mirar. */
+            ? '<span class="candado" title="La ley no deja dejar de ofrecerlo">'
+              + '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor"'
+              + ' stroke-width="1.6" stroke-linecap="round"><rect x="3" y="7" width="10" height="7" rx="1.6"/>'
+              + '<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>'
+              + '<span class="ellos">obligatorio</span></span>'
+            : '<button type="button" class="sw' + (t.activo ? ' on' : '')
+              + '" data-usoid="' + t.id + '"'
+              + ' aria-pressed="' + (t.activo ? 'true' : 'false') + '"'
+              + ' title="' + (t.activo ? 'Apagar: deja de ofrecerse al registrar'
+                                       : 'Encender: vuelve a ofrecerse') + '"></button>')
+        + '<span class="nom">' + esc(t.nombre) + '</span>'
+        + '<span class="ley">' + ley + '</span></div>';
+    });
+  });
+  $('#listaTipos').innerHTML = html || '<p class="vacio">No hay tipos todavía.</p>';
+}
+
+/* El interruptor escribe UNA columna y vuelve a leer los activos, porque el
+   desplegable de registrar sale de `S.tiposAusencia` y no del catalogo: sin
+   releerlo, apagar un tipo no se notaria hasta recargar la pagina y pareceria
+   que el boton no hizo nada. */
+$('#listaTipos').addEventListener('click', function (ev) {
+  var sw = ev.target.closest('.sw'); if (!sw) return;
+  ev.stopPropagation();
+  var t = catalogo.filter(function (x) { return x.id === sw.dataset.usoid; })[0];
+  if (!t || sw.disabled) return;
+  sw.disabled = true;
+  DATOS.ausencias.guardarTipo(t.id, { activo: !t.activo }).then(function () {
+    t.activo = !t.activo;
+    return DATOS.ausencias.tipos().then(function (f) { S.tiposAusencia = f; });
+  }).then(function () {
+    pintarCatalogo();
+    nada(t.activo ? '«' + t.nombre + '» vuelve a ofrecerse.'
+                  : '«' + t.nombre + '» deja de ofrecerse al registrar.');
+  }).catch(function (e) {
+    sw.disabled = false;
+    nada('No pude cambiarlo: ' + e.message);
+  });
+});
+
+$('#btnCatalogo').addEventListener('click', function () {
+  modoCatalogo = !modoCatalogo;
+  pintarCatalogo();
+});
+
 function pintarCatalogo() {
   $('#ctrlTipos').hidden = !S.hayAusencias;
   $('#hintTipos').hidden = !S.hayAusencias;
   if (!S.hayAusencias) { $('#listaTipos').innerHTML = ''; return; }
+
+  $('#tituloTipos').textContent = modoCatalogo ? 'Permisos y ausencias' : 'Qué ausencias uso';
+  $('#btnCatalogo').textContent = modoCatalogo ? '← Volver' : 'Editar el catálogo…';
+  $('#btnTipo').hidden = !modoCatalogo;
+  $('#hintTipos').innerHTML = modoCatalogo
+    ? 'Cada fila dice cómo se comporta su tipo. <b>El trato</b> es quién decide: lo que se'
+      + ' acuerda se puede rechazar, lo que la ley no deja negar no tiene ese botón.'
+    : 'Lo que apagues <b>deja de aparecer</b> al registrar una ausencia. Lo que lleva'
+      + ' <b>candado</b> lo exige la ley y no se puede apagar.';
+
+  if (!modoCatalogo) return pintarQueUso();
 
   var html = '';
   Object.keys(TRATOS).forEach(function (tr) {
