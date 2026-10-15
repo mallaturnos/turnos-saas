@@ -2580,6 +2580,7 @@ function borrarNecesidad(n, dondeElError) {
                 empresa_id: a.empresa_id, sucursal_id: a.sucursal_id,
                 necesidad_id: nueva.id, trabajador_id: a.trabajador_id,
                 fecha: a.fecha, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+                colacion_min: a.colacion_min || 0,
                 cargo_id: a.cargo_id, origen: a.origen, tocado_a_mano: true,
                 estado: a.estado });
             });
@@ -3384,7 +3385,8 @@ function quitarTurno(a) {
           empresa_id: copia.empresa_id, sucursal_id: copia.sucursal_id,
           necesidad_id: copia.necesidad_id, trabajador_id: copia.trabajador_id,
           fecha: copia.fecha, hora_inicio: copia.hora_inicio,
-          hora_fin: copia.hora_fin, cargo_id: copia.cargo_id,
+          hora_fin: copia.hora_fin, colacion_min: copia.colacion_min || 0,
+          cargo_id: copia.cargo_id,
           origen: copia.origen, tocado_a_mano: true,
           propuesta_id: copia.propuesta_id, estado: copia.estado });
       });
@@ -3907,6 +3909,7 @@ function pegarSeleccion() {
               empresa_id: a.empresa_id, sucursal_id: a.sucursal_id,
               necesidad_id: a.necesidad_id, trabajador_id: a.trabajador_id,
               fecha: a.fecha, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+              colacion_min: a.colacion_min || 0,
               cargo_id: a.cargo_id, origen: a.origen, tocado_a_mano: true,
               estado: a.estado });
           });
@@ -3975,6 +3978,7 @@ function quitarTurnos(todos) {
             empresa_id: a.empresa_id, sucursal_id: a.sucursal_id,
             necesidad_id: a.necesidad_id, trabajador_id: a.trabajador_id,
             fecha: a.fecha, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+            colacion_min: a.colacion_min || 0,
             cargo_id: a.cargo_id, origen: a.origen, tocado_a_mano: true,
             estado: a.estado });
         });
@@ -4415,6 +4419,11 @@ $('#rpGuardar').addEventListener('click', function () {
         sucursal_id: a.sucursal_id, fecha: f, cargo_id: a.cargo_id,
         trabajador_id: a.trabajador_id,
         hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+        /* LA COLACION VIAJA CON LA COPIA. Lo encontro Pedro repitiendo un turno
+           (msg 6795, «esto no funcionó»): el original decia 7:30 y las copias
+           8:00. Agregue la columna y NO revise los caminos que COPIAN — que
+           eran cinco. Es «la mitad de los sitios» otra vez. */
+        colacion_min: a.colacion_min || 0,
       }).then(function (fila) { creadas.push(fila.id); })
         .catch(function (e) { fallaron.push({ f: f, e: e }); });
     });
@@ -5438,6 +5447,7 @@ function lineasDeLaSemana() {
     if (!dentro(a.fecha)) return;
     lineas.push({ tipo: 'turno', dow: diaDeSemana(a.fecha), cargo_id: a.cargo_id,
                   hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+                  colacion_min: a.colacion_min || 0,
                   trabajador_id: a.trabajador_id || null });
   });
   return lineas;
@@ -5493,6 +5503,7 @@ function planDeAplicar(lineas, lunes, traer) {
         && S.trabajadores.some(function (t) { return t.id === l.trabajador_id; });
       asigs.push({ empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal, fecha: fecha,
                    cargo_id: l.cargo_id, hora_inicio: l.hora_inicio, hora_fin: l.hora_fin,
+                   colacion_min: l.colacion_min || 0,
                    trabajador_id: (traer === 'con-gente' && sigue) ? l.trabajador_id : null,
                    origen: 'plantilla', necesidad_id: null,
                    __perdida: traer === 'con-gente' && l.trabajador_id && !sigue });
