@@ -4022,13 +4022,21 @@ function abrirCopiarSem() {
   if (S.vista === 'mes') return;
   var lineas = lineasDeLaSemana();
   if (!lineas.length) return nada('Esta semana no tiene nada que copiar.');
-  $('#cpDe').innerHTML = 'Vas a copiar <b>' + lineas.length + '</b> cosa(s) de la semana '
-    + 'del <b>' + esc(diaMes(S.lunes)) + '</b>.';
+  /* EL NUMERO DE SEMANA, Y NO SOLO LA FECHA. Lo pidio Pedro usando esto mismo
+     (msg 6650): «estas copiando la semana 47 en la 48... me explico?». Tiene
+     razon y el argumento es mas fuerte de lo que parece: LA APP YA HABLA ASI EN
+     EL MES —ahi las columnas dicen S40, S41, S42—. Que este dialogo dijera solo
+     «12/10» obligaba a traducir de una pantalla a otra, y quien planifica piensa
+     en «la 47», no en «la del 12». La fecha se queda al lado, porque es la que
+     confirma que es la semana que crees. */
+  $('#cpDe').innerHTML = 'Vas a copiar <b>' + lineas.length + '</b> cosa(s) de la '
+    + '<b>semana ' + semanaISO(S.lunes) + '</b> <i>(del ' + esc(diaMes(S.lunes)) + ')</i>.';
   // Hacia adelante y nunca al pasado, igual que el aplicar de los modelos.
   $('#cpSemanas').innerHTML = [1, 2, 3, 4].map(function (i) {
     var l = masDias(S.lunes, i * 7);
     return '<label class="op"><input type="checkbox" value="' + l + '"'
-         + (i === 1 ? ' checked' : '') + '> Semana del <b>' + esc(diaMes(l)) + '</b></label>';
+         + (i === 1 ? ' checked' : '') + '> <b>Semana ' + semanaISO(l) + '</b>'
+         + ' <i>(del ' + esc(diaMes(l)) + ')</i></label>';
   }).join('');
   aviso('#cpMsg', '');
   $('#dlgCopiarSem').showModal();
@@ -4076,7 +4084,10 @@ function aplicarLineasEn(lineas, semanas, traer, etiqueta) {
     return Promise.all([
       DATOS.asignaciones.listar(S.sucursal, l, hasta),
       DATOS.necesidades.listar(S.sucursal, l, hasta),
-    ]).then(function (r) { return ((r[0] || []).length + (r[1] || []).length) ? l : null; });
+    ]).then(function (r) {
+      var t = (r[0] || []).length, n = (r[1] || []).length;
+      return (t + n) ? { l: l, turnos: t, necs: n } : null;
+    });
   };
 
   var escribir = function () {
@@ -4121,10 +4132,32 @@ function aplicarLineasEn(lineas, semanas, traer, etiqueta) {
   return Promise.all(semanas.map(mirar)).then(function (r) {
     var ocupadas = r.filter(Boolean);
     if (!ocupadas.length) return escribir();
+
+    /* EL AVISO DICE QUÉ ENCONTRÓ, NO «cosas puestas».
+
+       Lo encontró Pedro usándolo (msg 6653): borró los turnos de la semana
+       destino y el aviso seguía saliendo, asi que lo leyó como un error.
+       No lo era —es este aviso—, pero el mensaje decía «ya tiene cosas puestas»
+       SIN DECIR CUÁLES, y ahí estaba el defecto: lo planificado y los turnos son
+       dos cosas distintas, y BORRAR EL TURNO NO BORRA LA NECESIDAD que lo pedía.
+       El contaba turnos, el aviso contaba las dos, y ninguno de los dos lo decía.
+
+       Es el mismo defecto que ya se arregló en Deshacer: un aviso que no nombra
+       lo que encontró deja adivinando justo cuando hay que decidir. */
+    var detalle = function (o) {
+      var p = [];
+      if (o.turnos) p.push('<n> turno(s)'.replace('<n>', o.turnos));
+      if (o.necs) p.push('<n> necesidad(es)'.replace('<n>', o.necs));
+      return p.join(' y ');
+    };
+    var cab = ocupadas.length === 1
+      ? 'La semana ' + semanaISO(ocupadas[0].l) + ' (del ' + diaMes(ocupadas[0].l) + ') '
+        + 'ya tiene ' + detalle(ocupadas[0]) + '.'
+      : ocupadas.map(function (o) {
+          return '· Semana ' + semanaISO(o.l) + ' (del ' + diaMes(o.l) + '): ' + detalle(o);
+        }).join('\n');
     // No se borra nada nunca: lo que entra SE SUMA, y se dice con esas palabras.
-    var ok = confirm((ocupadas.length === 1
-        ? 'La semana del ' + diaMes(ocupadas[0]) + ' ya tiene cosas puestas.'
-        : ocupadas.length + ' de las semanas elegidas ya tienen cosas puestas.')
+    var ok = confirm(cab
       + '\n\nLo que copies SE SUMA a lo que ya hay: no se borra nada, pero pueden '
       + 'quedar turnos repetidos.\n\nSe puede deshacer. ¿Sigo?');
     return ok ? escribir() : null;
