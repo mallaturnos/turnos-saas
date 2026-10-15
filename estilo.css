@@ -1027,3 +1027,21 @@ table.mesb .mini { cursor: pointer; }
 .rpdias .rpd.este { border-style:dashed; border-color:var(--verde);
   background:var(--verde-claro); cursor:default; }
 .rpdias .rpd.este .l, .rpdias .rpd.este .n { opacity:1; }
+
+/* EL CAJÓN DE LA SEMANA. Los botones de dentro son los MISMOS que estaban en la
+   barra —mismo id, mismo manejador—: aquí solo cambian de sitio y de aspecto. */
+.menucaja { position:relative; display:inline-block; }
+#btnMasSem { font-weight:700; letter-spacing:.09em; padding:.45rem .7rem; }
+.menusem { position:absolute; right:0; top:calc(100% + .35rem); z-index:40;
+  min-width:15rem; background:var(--blanco); border:1px solid var(--borde);
+  border-radius:10px; box-shadow:0 10px 30px rgba(19,52,59,.16); padding:.35rem; }
+.menusem .gr { font-size:.66rem; color:var(--gris); text-transform:uppercase;
+  letter-spacing:.1em; font-weight:700; padding:.55rem .7rem .25rem; }
+.menusem .sep { height:1px; background:var(--borde); margin:.3rem .45rem; }
+.menusem button { display:block; width:100%; text-align:left; border:0;
+  background:none; padding:.5rem .7rem; border-radius:6px; font-size:.86rem;
+  color:var(--tinta); }
+.menusem button:hover:not(:disabled) { background:var(--verde-claro); }
+/* Limpiar la semana borra TODO lo de esa semana: se ve que es distinta. */
+.menusem button.mal { color:var(--rojo); }
+.menusem button.mal:hover { background:var(--rojo-claro); }

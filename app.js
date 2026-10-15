@@ -3837,6 +3837,15 @@ function borrarSeleccion(callado) {
   var todos = [];
   SEL.claves.forEach(function (k) { turnosDeClave(k).forEach(function (a) { todos.push(a); }); });
   if (!todos.length) return nada(callado ? null : 'No hay turnos en lo que marcaste.');
+  return quitarTurnos(todos);
+}
+
+/* EL BORRADO, UNA SOLA VEZ. Lo usan «Borrar» sobre lo marcado y «Limpiar la
+   semana» del menu de tres puntos. Vive aparte porque si cada camino llevara su
+   copia, el dia que cambie el aviso de los publicados —o el deshacer— cambiaria
+   solo uno, y la misma accion se comportaria distinto segun por donde entraste.
+   Es lo mismo que paso con el Ctrl+Z y el boton Deshacer. */
+function quitarTurnos(todos) {
   var publicados = todos.filter(function (a) {
     return S.turnos.some(function (t) {
       return t.asignacion_id === a.id && t.estado === 'publicado';
@@ -3930,6 +3939,91 @@ function dejarSinAsignar() {
     decirSel(antes.length + ' turno(s) quedaron esperando a alguien');
   }).catch(function (e) { decirSel('No pude: ' + e.message); });
 }
+
+/* ====================================================================
+   EL CAJON DE LA SEMANA — el menu de tres puntos  (Pedro, 14-10, msg 6629)
+   ====================================================================
+
+   AL IR A MIRARLO CAMBIO EL MOTIVO DE HACERLO. Estaba anotado como «faltan
+   botones de semana». Pero la barra ya tenia NUEVE cosas y mezclaba tres
+   alcances que pesaban igual a la vista: moverse por el calendario, deshacer UN
+   turno, y cosas que tocan LA SEMANA ENTERA. Asi que el menu no es para
+   agregar: es para ORDENAR lo que ya habia, y de paso deja sitio a lo que falta.
+   Es el patron verificado en Connecteam, Soigne, Veras y 7shifts: un cajon por
+   ALCANCE, no por tema.
+
+   FUERA SE QUEDA LO DE TODOS LOS DIAS —moverse, deshacer, publicar, agregar—
+   porque meter en un cajon lo que se usa cien veces al dia es esconderlo. */
+function cerrarMenuSem() {
+  var m = $('#menuSem'); if (!m) return;
+  m.hidden = true;
+  var b = $('#btnMasSem'); if (b) b.setAttribute('aria-expanded', 'false');
+}
+$('#btnMasSem').addEventListener('click', function (ev) {
+  ev.stopPropagation();
+  var m = $('#menuSem');
+  var abrir = m.hidden;
+  // Los modelos solo existen si la base los tiene: el rotulo del grupo sigue a
+  // sus botones, o queda un titulo encabezando la nada.
+  var g = $('#grModelos');
+  if (g) g.hidden = $('#btnGuardarModelo').hidden && $('#btnAplicarModelo').hidden;
+  /* Limpiar la semana solo tiene sentido MIRANDO una semana. En Dia o en Mes
+     «la semana» no es lo que tienes delante, y borrar lo que no se ve es la
+     peor cosa que puede hacer un boton. Connecteam hace lo mismo: su duplicar
+     solo esta en la vista semanal. */
+  var b = $('#btnLimpiarSem');
+  b.disabled = S.vista !== 'semana';
+  b.title = b.disabled ? 'Cámbiate a la vista Semana para limpiarla'
+                       : 'Borra todos los turnos de la semana que estás viendo';
+  m.hidden = !abrir;
+  this.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+});
+document.addEventListener('click', function (ev) {
+  if (!$('#menuSem') || $('#menuSem').hidden) return;
+  if (ev.target.closest && ev.target.closest('.menucaja')) return;
+  cerrarMenuSem();
+});
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Escape') cerrarMenuSem();
+});
+// Cualquier cosa que se elija cierra el cajon: dejarlo abierto encima de lo que
+// acabas de cambiar tapa justo el resultado que fuiste a ver.
+$('#menuSem').addEventListener('click', function (ev) {
+  if (ev.target.closest('button')) cerrarMenuSem();
+});
+
+/* LIMPIAR LA SEMANA. Reusa `quitarTurnos()`, que es el MISMO borrado del boton
+   «Borrar» sobre lo marcado: mismo aviso de publicados, mismo Deshacer. Si
+   llevara su propia copia, el dia que cambie una de las dos la misma accion se
+   comportaria distinto segun por donde entraste.
+
+   Y PREGUNTA SIEMPRE, no solo cuando hay publicados — lo pidio Pedro («que
+   pregunte…», msg 6633). El borrado de lo marcado solo pregunta si hay algo
+   publicado, y ahi tiene sentido porque marcaste tu lo que se va. Aqui no
+   marcaste nada: se lleva la semana entera, y eso se confirma siempre.
+
+   Soigne directamente NO deja limpiar si hay algo publicado. No se copia: la
+   app de Pedro avisa y deja decidir ([[malla-principio-libertad]]). */
+function limpiarSemana() {
+  if (S.vista !== 'semana') return;
+  var r = rangoVista();
+  var todos = S.asignaciones.filter(function (a) {
+    return a.fecha >= r.desde && a.fecha <= r.hasta;
+  });
+  if (!todos.length) return nada('Esta semana no tiene ningún turno.');
+  var pub = todos.filter(function (a) {
+    return S.turnos.some(function (t) {
+      return t.asignacion_id === a.id && t.estado === 'publicado';
+    });
+  }).length;
+  var msg = 'Vas a borrar los ' + todos.length + ' turnos de esta semana.';
+  if (pub) msg += '\n\n⚠️ ' + pub + ' ya está(n) PUBLICADO(s): a esas personas se '
+                + 'les borra de su calendario.';
+  msg += '\n\nSe puede deshacer. ¿Lo hago?';
+  if (!confirm(msg)) return;
+  return quitarTurnos(todos);
+}
+$('#btnLimpiarSem').addEventListener('click', limpiarSemana);
 
 /* ====================================================================
    REPETIR UN TURNO EN OTROS DIAS  (Pedro, 14-10, msgs 6582-6593)
@@ -6171,6 +6265,8 @@ window.__app = {
   // El lote: la prueba abre el diálogo y aprieta, igual que haría una persona.
   abrirLote: abrirLote, sePisaConOtro: sePisaConOtro,
   abrirRepetir: abrirRepetir, porQueNoRepetir: porQueNoRepetir,
+  limpiarSemana: limpiarSemana, cerrarMenuSem: cerrarMenuSem,
+  rangoVista: rangoVista,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,

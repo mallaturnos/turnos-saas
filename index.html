@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=40">
+<link rel="stylesheet" href="estilo.css?v=41">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v102</span></p>
+      <span style="float:right;opacity:.55" id="ver">v103</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v102</span>
+    <span class="hint" id="ver2" title="Versión publicada">v103</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -103,7 +103,6 @@
       <button class="plano" id="btnDespues" title="Siguiente">›</button>
       <button class="plano" id="btnHoy">Hoy</button>
       <button class="plano" id="btnDeshacer" disabled title="No hay nada que deshacer">↶ Deshacer</button>
-      <button class="plano" id="btnImprimir" title="Imprimir la malla que estás viendo">Imprimir</button>
       <span class="espacio"></span>
       <span class="hint" id="cEstado"></span>
       <!-- La leyenda de los puntitos. Estaban ahi desde hace semanas sin que
@@ -114,8 +113,29 @@
         <span class="pub">●</span> publicado
         <span class="bor">○</span> borrador
       </span>
-<button class="plano" id="btnGuardarModelo" hidden>Guardar como modelo</button>
-      <button class="plano" id="btnAplicarModelo" hidden>Aplicar un modelo</button>
+      <!-- EL CAJON DE LA SEMANA. No nace para AGREGAR botones: nace para ORDENAR
+           los que ya habia. La barra tenia nueve cosas y mezclaba tres alcances
+           que pesaban igual a la vista: moverse por el calendario, deshacer UN
+           turno, y cosas que tocan LA SEMANA ENTERA. Aqui dentro va solo lo
+           tercero. Es el patron verificado en Connecteam, Soigne, Veras y
+           7shifts: un cajon por ALCANCE, no por tema.
+
+           Imprimir y los dos de modelos se MUDARON aqui con su marcado intacto
+           —mismos id, mismos manejadores, misma logica de mostrarse—. Mover el
+           marcado y no la logica es lo que hace que esto no rompa nada. -->
+      <div class="menucaja">
+        <button class="plano" id="btnMasSem" title="Más, sobre esta semana"
+                aria-haspopup="true" aria-expanded="false">···</button>
+        <div id="menuSem" class="menusem" hidden>
+          <div class="gr">Esta semana</div>
+          <button class="plano mal" id="btnLimpiarSem">Limpiar la semana</button>
+          <div class="gr" id="grModelos">Modelos</div>
+          <button class="plano" id="btnGuardarModelo" hidden>Guardar como modelo</button>
+          <button class="plano" id="btnAplicarModelo" hidden>Aplicar un modelo</button>
+          <div class="sep"></div>
+          <button class="plano" id="btnImprimir" title="Imprimir la malla que estás viendo">Imprimir</button>
+        </div>
+      </div>
             <button class="primario" id="btnPublicar">Publicar</button>
     </div>
 
@@ -572,6 +592,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=49"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>
