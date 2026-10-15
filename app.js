@@ -4024,8 +4024,24 @@ $('#btnMasSem').addEventListener('click', function (ev) {
     c.disabled = S.vista === 'mes';
     c.title = c.disabled ? 'Cámbiate a Semana o a Día' : 'Copia lo de esta semana a las siguientes';
   }
+  /* La ausencia suelta solo si esta base tiene ausencias, igual que el boton
+     de la celda. Y NO se deshabilita en ninguna vista: justamente existe para
+     el Mes, donde la celda compacta no dibuja el suyo. */
+  var au = $('#btnAusenciaSuelta');
+  if (au) au.hidden = !S.hayAusencias;
   m.hidden = !abrir;
   this.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+});
+
+/* REGISTRAR UNA AUSENCIA SIN PASAR POR UN DIA. Lo pidio Pedro (msg 6757).
+
+   QUE FECHA TRAE. Dije «hoy por omision» y al escribirlo quedo flojo: si estas
+   mirando el mes de noviembre, abrirlo en el 15 de octubre te obliga a cambiar
+   la fecha siempre. Trae HOY si hoy esta en lo que estas viendo, y si no, el
+   primer dia del rango. Asi la fecha que propone es del periodo que miras. */
+$('#btnAusenciaSuelta').addEventListener('click', function () {
+  var r = rangoVista(), hoy = hoyTexto();
+  abrirAusencia(null, (hoy >= r.desde && hoy <= r.hasta) ? hoy : r.desde);
 });
 document.addEventListener('click', function (ev) {
   if (!$('#menuSem') || $('#menuSem').hidden) return;

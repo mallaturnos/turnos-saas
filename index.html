@@ -134,6 +134,17 @@
           <button class="plano" id="btnGuardarModelo" hidden>Guardar como modelo</button>
           <button class="plano" id="btnAplicarModelo" hidden>Aplicar un modelo</button>
           <div class="sep"></div>
+          <!-- FUERA DEL GRUPO «Esta semana» A PROPOSITO. Una ausencia no es algo
+               que le hagas a la semana, y meterla bajo ese titulo haria que el
+               titulo mienta. Va abajo, con Imprimir, que tampoco es de la semana.
+
+               POR QUE EXISTE ESTA SEGUNDA PUERTA: el «+ ausencia / permiso» de la
+               celda solo se dibuja en Dia y Semana —el Mes usa la celda compacta y
+               ahi no sale—, asi que desde el Mes no habia NINGUNA forma de
+               registrar una. Y unas vacaciones del 1 al 15 no son de ningun dia en
+               particular: entrar por el «+» de uno cualquiera para despues cambiar
+               las fechas era el camino torcido. Lo pregunto Pedro (msg 6757). -->
+          <button class="plano" id="btnAusenciaSuelta" hidden>+ Ausencia / permiso</button>
           <button class="plano" id="btnImprimir" title="Imprimir la malla que estás viendo">Imprimir</button>
         </div>
       </div>
@@ -643,6 +654,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=56"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>
