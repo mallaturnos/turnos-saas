@@ -160,19 +160,43 @@ function h2a(h) {
    Por eso el par de horas se arma SIEMPRE con estas funciones y no a mano.
    Es el mismo criterio que la lista de paneles: no dejar nada que haya que
    acordarse de mantener. */
-function durTexto(ini, fin) {
-  var h = horasDe(hhmm(ini), hhmm(fin));
+function durTexto(ini, fin, colacionMin) {
+  var h = horasDe(hhmm(ini), hhmm(fin)) - (Number(colacionMin) || 0) / 60;
+  if (h < 0) h = 0;
   var hh = Math.floor(h + 1e-9), mm = Math.round((h - hh) * 60);
   if (mm === 60) { hh += 1; mm = 0; }
   return hh + ':' + String(mm).padStart(2, '0');
 }
 // Para atributos (title=) y <option>: sin etiquetas, que ahí no se pintan.
-function rangoTxt(ini, fin) {
-  return hhmm(ini) + '–' + hhmm(fin) + ' · ' + durTexto(ini, fin);
+function rangoTxt(ini, fin, colacionMin) {
+  return hhmm(ini) + '–' + hhmm(fin) + ' · ' + durTexto(ini, fin, colacionMin);
 }
 // Para la pantalla: la duración en su propia etiqueta, más apagada.
-function rangoHtml(ini, fin) {
-  return hhmm(ini) + '–' + hhmm(fin) + ' <span class="dur">' + durTexto(ini, fin) + '</span>';
+function rangoHtml(ini, fin, colacionMin) {
+  return hhmm(ini) + '–' + hhmm(fin) + ' <span class="dur">'
+       + durTexto(ini, fin, colacionMin) + '</span>';
+}
+
+/* HORAS TRABAJADAS DE UN TURNO — con la colacion ya descontada.
+
+   EXISTE SEPARADA DE `horasDe` A PROPOSITO, y esa es la decision de fondo de
+   este cambio. En la app hay DOS preguntas distintas que antes daban el mismo
+   numero:
+
+     · «¿CUANTO TRABAJA?»  -> horas netas. Aqui va la colacion.
+     · «¿DONDE ESTA en el dia?» -> reloj completo. Aqui NO va.
+
+   Lo segundo es geometria: si dos turnos se pisan, donde cae la barra, a que
+   hora es la mitad de la jornada, cuanto dura al arrastrarlo. Restarle la
+   colacion a eso moveria barras y romperia la deteccion de solapes — una
+   persona en colacion SIGUE ocupando su puesto de 09:00 a 17:00.
+
+   Por eso no se toco `horasDe`: se agrego esta al lado. Un reemplazo global
+   habria arreglado cinco sitios y roto cuatro. */
+function horasNetas(a) {
+  var h = horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin))
+        - (Number(a && a.colacion_min) || 0) / 60;
+  return h > 0 ? h : 0;
 }
 
 function horasDe(entra, sale) {
@@ -852,7 +876,7 @@ function pintarSemana() {
 function horasDeDia(f) {
   return S.asignaciones.reduce(function (t, a) {
     if (a.fecha !== f || !a.trabajador_id) return t;
-    return t + horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin));
+    return t + horasNetas(a);
   }, 0);
 }
 function numero(h) {
@@ -1175,8 +1199,9 @@ function pintarDia() {
             + '" data-asigid="' + x.id + '"'
             + ' style="left:' + pct(i) + '%;width:' + (pct(ff) - pct(i)) + '%"'
             + ' title="' + esc(quien) + ' · ' + esc(nombreCargo(x.cargo_id)) + ' · '
-            + rangoTxt(x.hora_inicio, x.hora_fin) + '">'
-            + '<b>' + esc(rotulo) + '</b> <i>' + rangoHtml(x.hora_inicio, x.hora_fin) + '</i>'
+            + rangoTxt(x.hora_inicio, x.hora_fin, x.colacion_min) + '">'
+            + '<b>' + esc(rotulo) + '</b> <i>'
+            + rangoHtml(x.hora_inicio, x.hora_fin, x.colacion_min) + '</i>'
             // Una tira a cada borde para estirar. Van DENTRO de la barra para
             // que se muevan con ella sin tener que recalcular nada.
             + '<span class="tirador izq"></span><span class="tirador der"></span>'
@@ -1529,7 +1554,7 @@ function pintarMesB() {
           return a.fecha === d && deQuien(a) === fila.id;
         }).sort(porHoraTurno);
         suyas.forEach(function (a) {
-          if (a.trabajador_id) semHoras += horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin));
+          if (a.trabajador_id) semHoras += horasNetas(a);
         });
         /* `data-semana` es lo que convierte el mes en una puerta: el clic lleva
            a ESA semana en vez de dejarte donde estabas. */
@@ -1807,7 +1832,8 @@ function pintarAsignacion(a) {
        + (choca ? ' choca' : '') + (pisa ? ' sepisa' : '')
        + '" data-asigid="' + a.id + '"' + titulo + '>'
        + quien + marcaPisa + marca
-       + '<span class="hs">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span>'
+       + '<span class="hs">'
+       + rangoHtml(a.hora_inicio, a.hora_fin, a.colacion_min) + '</span>'
        + botonQuitar(a) + '</li>';
 }
 
@@ -1840,7 +1866,8 @@ function botonQuitar(a) {
 function pintarSuelta(a) {
   return '<div class="nec suelta ' + colorCargo(a.cargo_id) + '">'
     + '<div class="cab"><span class="cargo">' + esc(nombreCargo(a.cargo_id)) + '</span>'
-    + '<span class="horas">' + rangoHtml(a.hora_inicio, a.hora_fin) + '</span>'
+    + '<span class="horas">'
+    + rangoHtml(a.hora_inicio, a.hora_fin, a.colacion_min) + '</span>'
     + '<span class="espacio"></span><span class="cobertura cob-falta">sin planificar</span></div>'
     + '<ul class="gente">' + pintarAsignacion(a) + '</ul></div>';
 }
@@ -1891,7 +1918,7 @@ function pintarBloqueSemana(a, abajo) {
        + '<b>' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</b>'
        // Mismo formato H:MM que en todo el resto: dos maneras de escribir lo
        // mismo obligan a traducir mentalmente, y eso ya es un costo.
-       + '<span class="dur">' + durTexto(a.hora_inicio, a.hora_fin) + '</span>'
+       + '<span class="dur">' + durTexto(a.hora_inicio, a.hora_fin, a.colacion_min) + '</span>'
        + '<em' + (seFue && abajo === 'persona'
             ? ' class="sefue" title="' + esc(pie + ' ya no trabaja aquí'
                 + (quienEs.fecha_salida ? ' · su último día fue el '
@@ -1975,7 +2002,7 @@ function pintarGirada() {
          a un `<td>` se queda apuntando a algo que ya no está en la página. */
       // Solo lo que tiene persona, igual que `horasDeDia()`.
       suyas.forEach(function (a) {
-        if (a.trabajador_id) suma += horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin));
+        if (a.trabajador_id) suma += horasNetas(a);
       });
       html += '<td class="cel' + (f === hoy ? ' hoy' : '') + '"'
         + ' data-fila="' + esc(String(fila.id || '')) + '" data-fecha="' + f + '">'
@@ -2349,11 +2376,12 @@ function abrirNecesidad(n, fecha) {
 
    Es donde más falta hace: al teclear las horas uno quiere saber cuánto le
    está dando a alguien ANTES de guardar, no después de mirar la malla. */
-function pintarDuracion(idEntra, idSale, idDonde) {
+function pintarDuracion(idEntra, idSale, idDonde, idColacion) {
   var e = $(idEntra), x = $(idSale), d = $(idDonde);
   if (!e || !x || !d) return;
   if (!e.value || !x.value) { d.textContent = ''; return; }
-  d.textContent = durTexto(e.value, x.value);
+  var c = idColacion ? $(idColacion) : null;
+  d.textContent = durTexto(e.value, x.value, c ? c.value : 0);
 }
 function pintarMedia() {
   $('#nMedia').hidden = !($('#nSale').value && $('#nEntra').value
@@ -2366,8 +2394,8 @@ function pintarMedia() {
   $(sel).addEventListener('input', pintarMedia);
   $(sel).addEventListener('change', pintarMedia);
 });
-['#aEntra', '#aSale'].forEach(function (sel) {
-  var f = function () { pintarDuracion('#aEntra', '#aSale', '#aDur'); };
+['#aEntra', '#aSale', '#aColacion'].forEach(function (sel) {
+  var f = function () { pintarDuracion('#aEntra', '#aSale', '#aDur', '#aColacion'); };
   $(sel).addEventListener('input', f);
   $(sel).addEventListener('change', f);
 });
@@ -2604,6 +2632,11 @@ function leerFicha() {
     hora_inicio: $('#aEntra').value,
     hora_fin: $('#aSale').value,
     cargo_id: $('#aCargo').value || null,
+    /* LA COLACION TAMBIEN, o cambiarla sola y cerrar la perderia EN SILENCIO:
+       `cerrarFicha` no guarda si `fichaCambiada()` dice que no cambio nada. Es
+       el tipo de agujero que ninguna prueba en verde destapa, porque lo que
+       falla es lo que NO se pregunta. */
+    colacion_min: Number($('#aColacion').value) || 0,
   };
 }
 function fichaCambiada() {
@@ -2612,7 +2645,8 @@ function fichaCambiada() {
   return h.trabajador_id !== fichaBase.trabajador_id
       || h.hora_inicio !== fichaBase.hora_inicio
       || h.hora_fin !== fichaBase.hora_fin
-      || h.cargo_id !== fichaBase.cargo_id;
+      || h.cargo_id !== fichaBase.cargo_id
+      || h.colacion_min !== fichaBase.colacion_min;
 }
 /* `preset` lo manda la tabla por Personas o Cargos: dice de qué fila salió el
    clic, para que el turno nazca con la persona —o el cargo— de esa fila ya
@@ -2678,7 +2712,12 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
                      : ((preset && preset.trabajadorId) || '');
   $('#aEntra').value = a ? hhmm(a.hora_inicio) : (n ? hhmm(n.hora_inicio) : '09:00');
   $('#aSale').value  = a ? hhmm(a.hora_fin)    : (n ? hhmm(n.hora_fin)    : '17:00');
-  pintarDuracion('#aEntra', '#aSale', '#aDur');
+  /* La colacion de un turno NUEVO arranca en 0, no en 30. El 30 llega cuando
+     se copia de un tramo frecuente, que es donde el local ya declaro la suya.
+     Poner 30 por omision seria decidir por el encargado que este turno tiene
+     colacion — y hay trabajos donde no la hay. */
+  $('#aColacion').value = a ? (Number(a.colacion_min) || 0) : 0;
+  pintarDuracion('#aEntra', '#aSale', '#aDur', '#aColacion');
   $('#aBorrar').hidden = !a;
   // Solo para un turno que YA existe: repetir uno que aun no se ha creado no
   // significa nada, y el dialogo necesita su fecha y su gente para mirar ausencias.
@@ -2802,10 +2841,31 @@ function pintarOjo() {
      está puesto en el desplegable. */
   var cargoId = n ? n.cargo_id : ($('#aCargo').value || null);
   var e = $('#aOjo');
-  if (!pid) { e.hidden = true; return; }
+  var avisos = [];
+
+  /* LOS DOS AVISOS DE LA COLACION, y van ANTES del corte de «no hay persona»:
+     un turno sin dueño tambien tiene horas, y la colacion es del TURNO.
+
+     NINGUNO BLOQUEA, igual que todos los de aqui. No es pereza: la ley le da
+     la razon al encargado en los dos casos —proceso continuo en el primero,
+     acuerdo de partes en el segundo— y la app no sabe en cual esta. */
+  var ent = $('#aEntra').value, sal = $('#aSale').value;
+  var col = Number($('#aColacion').value) || 0;
+  if (ent && sal) {
+    var brutas = horasDe(ent, sal);
+    if (brutas >= 8 && col === 0)
+      avisos.push('⚠️ <b>' + numero(brutas) + ' horas sin colación.</b> La ley pide al menos'
+        + ' <b>30 min</b> — salvo trabajos de proceso continuo. Puedes guardarlo igual.');
+    if (col > 30)
+      avisos.push('⚠️ <b>Colación de ' + col + ' min.</b> En atención de público,'
+        + ' lo que pase de <b>30 min</b> se paga <i>(art. 34 bis)</i>. Fuera de ese caso la'
+        + ' Dirección del Trabajo ha dicho que no puede alargarse más allá de lo necesario'
+        + ' para comer.');
+  }
+
+  if (!pid) { e.hidden = !avisos.length; e.innerHTML = avisos.join('<br>'); return; }
   var p = S.trabajadores.filter(function (x) { return x.id === pid; })[0];
   var quien = esc(p ? p.nombre : '');
-  var avisos = [];
 
   if (cargoId) {
     var tiene = (p && (p.trabajador_cargos || []).some(function (x) { return x.cargo_id === cargoId; }));
@@ -2888,6 +2948,11 @@ function alCambiarFicha() {
   pintarSalida();
 }
 $('#aQuien').addEventListener('change', alCambiarFicha);
+// Los avisos de colacion dependen de las horas y de la colacion, no de quien.
+['#aEntra', '#aSale', '#aColacion'].forEach(function (sel) {
+  $(sel).addEventListener('input', pintarOjo);
+  $(sel).addEventListener('change', pintarOjo);
+});
 // Cambiar el cargo también: el aviso depende de los dos, no solo de la persona.
 $('#aCargo').addEventListener('change', alCambiarFicha);
 // Y las horas, que son los otros dos campos que cuentan como cambio.
@@ -3089,6 +3154,7 @@ function guardarFicha() {
     trabajador_id: $('#aQuien').value || null,
     fecha: asigFecha,
     hora_inicio: $('#aEntra').value, hora_fin: $('#aSale').value,
+    colacion_min: Math.max(0, Math.min(240, Number($('#aColacion').value) || 0)),
     // Sin necesidad detrás, el cargo es el que eligió la persona en el
     // desplegable — no el primero del catálogo, que era lo de antes.
     cargo_id: n ? n.cargo_id : ($('#aCargo').value || (S.cargos[0] || {}).id),
@@ -6014,7 +6080,7 @@ function desgloseAusencia(trabajadorId, desde, hasta, unidad, entra, sale) {
       return a.trabajador_id === trabajadorId && a.fecha === f;
     });
     var horas = 0;
-    turnos.forEach(function (a) { horas += horasDe(hhmm(a.hora_inicio), hhmm(a.hora_fin)); });
+    turnos.forEach(function (a) { horas += horasNetas(a); });
     if (unidad === 'horas' && entra && sale) horas = horasDe(entra, sale);
     else if (unidad === 'medio_dia') horas = horas / 2;
 
@@ -6604,6 +6670,10 @@ window.__app = {
   pintarMalla: pintarMalla, porHoraTurno: porHoraTurno, hhmm: hhmm, avisoPlan: avisoPlan,
   CFG_TOPE: CFG_TOPE, paso: paso, mostrar: mostrar, estadoNecesidad: estadoNecesidad,
   huecosDeNecesidad: huecosDeNecesidad, h2a: h2a, a2h: a2h,
+  /* Las dos, y JUNTAS a proposito: la prueba que vigila la colacion necesita
+     poder comparar «cuanto trabaja» contra «cuanto dura en el reloj». Si solo
+     se expusiera una, esa distincion no se podria probar. */
+  horasDe: horasDe, horasNetas: horasNetas,
   pintarSelectores: pintarSelectores,
   /* Los gestos de la vista Día. La prueba los llama directo, por el mismo
      motivo que ya vale para la planilla: un arrastre de verdad no se puede

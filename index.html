@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v107</span></p>
+      <span style="float:right;opacity:.55" id="ver">v111</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v107</span>
+    <span class="hint" id="ver2" title="Versión publicada">v111</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -378,6 +378,19 @@
     <div class="fldrow">
       <div class="fld"><label for="aEntra">Entra</label><input type="time" id="aEntra"></div>
       <div class="fld"><label for="aSale">Sale</label><input type="time" id="aSale"></div>
+      <!-- COLACION, y se llama asi porque lo corrigio Pedro (msg 6783): yo le
+           habia puesto «Pausa», que es de Skello y esta en frances. En Chile
+           es colacion.
+           El 0 ES VALIDO a proposito: el art. 34 exceptua los trabajos de
+           proceso continuo, y obligar a 30 obligaria a anotar algo falso. -->
+    </div>
+    <!-- EN SU PROPIA FILA, y no apretados con Entra y Sale. Con los cuatro
+         juntos la fila se partia y «Son» caia solo a una linea de abajo, con el
+         dialogo mas alto y el numero descolgado de las horas que lo explican.
+         Visto en la captura, no leyendo el CSS. -->
+    <div class="fldrow">
+      <div class="fld corto"><label for="aColacion">Colación</label>
+        <input type="number" id="aColacion" min="0" max="240" step="5"></div>
       <div class="fld corto"><label>Son</label><div class="cuenta" id="aDur"></div></div>
     </div>
     <p class="hint">Puedes cubrir <b>solo un trozo</b>: deja las horas que de
@@ -654,6 +667,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=57"></script>
+<script src="app.js?v=58"></script>
 </body>
 </html>
