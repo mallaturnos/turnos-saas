@@ -541,6 +541,19 @@ function cargarTodo(mia) {
    elegido, y ninguno de los dos visibles aparecía seleccionado. */
 function agrupacionValida() {
   if (S.vista === 'dia' && S.agrupar === 'dia') S.agrupar = 'cargo';
+  /* Y TAMPOCO EN EL MES. Lo decidio Pedro el 15-10 (msg 6807: «sácala en mes,
+     déjala en semana») despues de mirarlo con datos de verdad.
+
+     El motivo no es el gusto: la celda del mes se llamaba «compacta» y lo unico
+     que le quitaba era el numero del dia y el boton de ausencia. Todo lo demas
+     —tarjetas, «Completo», «Falta 2», «+ quién lo cubre»— se dibujaba igual que
+     en la semana, asi que el mes era LA SEMANA REPETIDA CINCO VECES hacia abajo.
+     Ninguno de los tres competidores lo hace asi: 7shifts lo tiene de lectura,
+     Deputy comprime la celda y Skello lo parte en semanas.
+
+     En Semana SE QUEDA, y eso tambien lo decidio el: es fea para leer pero es
+     la unica vista donde se DECLARA una necesidad y se cubre. */
+  if (S.vista === 'mes' && S.agrupar === 'dia') S.agrupar = 'persona';
 }
 
 function pintarSelectores() {
@@ -571,10 +584,10 @@ function pintarSelectores() {
 
      Un botón que existe y no hace nada es peor que uno que falta: obliga a
      apretarlo para descubrir que da igual. */
-  var soloUnDia = S.vista === 'dia';
+  var sinPorDia = S.vista === 'dia' || S.vista === 'mes';
   $$('#cAgrupar button').forEach(function (b) {
     var porDia = b.dataset.g === 'dia';
-    b.hidden = porDia && soloUnDia;
+    b.hidden = porDia && sinPorDia;
     b.setAttribute('aria-selected', String(b.dataset.g === S.agrupar));
   });
 
@@ -1613,8 +1626,14 @@ function pintarMesB() {
 }
 
 function pintarMes() {
-  // Agrupado por persona o por cargo, el mes es la forma B. Por día sigue
-  // siendo el calendario, que para mirar un mes suelto también sirve.
+  /* ⚠️ DESDE EL 15-10 EL CALENDARIO DE ABAJO YA NO SE ALCANZA, y no es un
+     descuido: `agrupacionValida()` impide que `S.agrupar` sea 'dia' estando en
+     el mes, asi que `esPlanilla()` es siempre cierto aqui. Pedro lo saco porque
+     el mes por dia era la semana repetida cinco veces.
+
+     NO SE BORRA porque el mismo dijo «quizá lo analizamos más adelante». Si se
+     vuelve, lo que hay que arreglar es que la celda «compacta» compacte de
+     verdad — hoy solo quita el numero del dia y el boton de ausencia. */
   if (esPlanilla()) return pintarMesB();
   var r = rangoVista(), hoy = hoyTexto(), f = r.desde, html = '';
   html += '<div class="mescab">' + ['lunes','martes','miérc.','jueves','viernes','sábado','domingo']
