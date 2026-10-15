@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=39">
+<link rel="stylesheet" href="estilo.css?v=40">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v101</span></p>
+      <span style="float:right;opacity:.55" id="ver">v102</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v101</span>
+    <span class="hint" id="ver2" title="Versión publicada">v102</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -341,8 +341,49 @@
     <p class="msg" id="aMsg"></p>
     <div class="acciones">
       <button type="button" class="primario" id="aGuardar">Listo</button>
+      <!-- LA SEGUNDA PUERTA. Pedro lo pidio «en los dos lados» (msg 6589), y es
+           su principio 1: una funcion encerrada en una sola pantalla es un
+           defecto. Abre EL MISMO dialogo que el menu del boton derecho.
+           Dice «Guardar y repetir» porque la ficha escribe AL CERRAR: repetir
+           sin guardar copiaria los datos viejos —habrias corrido la hora y se
+           repetiria la de antes— y eso no se ve hasta que ya esta hecho. -->
+      <button type="button" class="plano" id="aRepetir" hidden>Guardar y repetir en otros días…</button>
       <button type="button" class="plano" id="aBorrar" hidden>Quitar</button>
       <button type="button" class="plano" id="aCancelar" hidden>Descartar cambios</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- REPETIR UN TURNO EN OTROS DIAS DE LA SEMANA. Lo pidio Pedro (14-10) y la
+     forma la trajo el: en Skello se eligen los DIAS, no un numero de veces.
+
+     POR QUE DIAS Y NO «repetir 4 veces»: la base tiene un indice unico que impide
+     que la misma persona tenga dos turnos empezando a la misma hora el mismo dia,
+     asi que «4 copias» solo puede significar «en otros 4 dias». Eligiendolos uno a
+     uno ademas desaparece la pregunta de si saltar el fin de semana.
+
+     UN DIA SE APAGA POR TRES RAZONES, y la pastilla dice cual:
+       · es el dia de origen — es el turno que se esta copiando;
+       · esa persona tiene una ausencia ese dia (lo pidio Pedro: «ahi la pagina no
+         debe dejar asignar»). No es una regla nueva: pegar YA se niega a poner un
+         turno encima de una ausencia;
+       · ya tiene un turno que empieza a esa hora ese dia — lo rechazaria el indice
+         unico, y es mejor apagarlo antes que enseñar un error de la base despues.
+
+     Y EL BOTON DICE CUANTOS VA A CREAR, no «Aceptar». Es lo ultimo que se lee antes
+     de apretar: si creias haber marcado cinco y dice tres, te detienes. Misma idea
+     que el Deshacer, que dice QUE deshace. -->
+<dialog id="dlgRep" class="dlg">
+  <form method="dialog">
+    <h3>Repetir el turno</h3>
+    <p class="hint" id="rpDe"></p>
+    <label class="q" for="rpDias">¿En qué días?</label>
+    <div id="rpDias" class="rpdias"></div>
+    <p class="hint" id="rpNota" hidden></p>
+    <p class="msg" id="rpMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="rpGuardar">Repetir</button>
+      <button type="button" class="plano" id="rpCancelar">Cancelar</button>
     </div>
   </form>
 </dialog>
@@ -531,6 +572,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>

@@ -1008,3 +1008,22 @@ table.mesb .mini { cursor: pointer; }
 /* El «(opcional)» de «A quién». Va en la etiqueta y no en un aviso aparte:
    que el campo se pueda dejar vacío ES la función, no una nota al pie. */
 .fld label .opc { color:var(--gris); font-weight:400; font-size:.78rem; }
+
+/* REPETIR EN OTROS DÍAS. Las pastillas dicen tres cosas a la vez: qué día es, qué
+   fecha cae y por qué no se puede usar. Lo tercero es lo que pidió Pedro: que el
+   día diga «vacaciones» en vez de quedarse apagado sin explicación. */
+.rpdias { display:flex; gap:.5rem; }
+.rpdias .rpd { flex:1; border:1.5px solid var(--borde); border-radius:9px;
+  padding:.5rem .2rem; text-align:center; background:var(--blanco); cursor:pointer; }
+.rpdias .rpd .l { font-size:.72rem; color:var(--gris); font-weight:600;
+  text-transform:uppercase; letter-spacing:.06em; }
+.rpdias .rpd .n { font-size:1.25rem; color:var(--tinta); font-weight:700; }
+.rpdias .rpd .x { display:block; font-size:.66rem; color:var(--gris); margin-top:.1rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rpdias .rpd.on { background:var(--verde); border-color:var(--verde); }
+.rpdias .rpd.on .l { color:#bfe0da; } .rpdias .rpd.on .n { color:#fff; }
+.rpdias .rpd.no { cursor:not-allowed; background:var(--papel); }
+.rpdias .rpd.no .l, .rpdias .rpd.no .n { opacity:.42; }
+.rpdias .rpd.este { border-style:dashed; border-color:var(--verde);
+  background:var(--verde-claro); cursor:default; }
+.rpdias .rpd.este .l, .rpdias .rpd.este .n { opacity:1; }

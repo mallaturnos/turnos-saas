@@ -2675,6 +2675,9 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   $('#aSale').value  = a ? hhmm(a.hora_fin)    : (n ? hhmm(n.hora_fin)    : '17:00');
   pintarDuracion('#aEntra', '#aSale', '#aDur');
   $('#aBorrar').hidden = !a;
+  // Solo para un turno que YA existe: repetir uno que aun no se ha creado no
+  // significa nada, y el dialogo necesita su fecha y su gente para mirar ausencias.
+  $('#aRepetir').hidden = !a;
   aviso('#aMsg', '');
   // Lo fijo se muestra como texto, no como un desplegable apagado: un
   // desplegable gris se lee como «esto esta roto», no como «esto ya esta
@@ -3215,6 +3218,18 @@ function guardarAsignacion(d) {
     return false;
   });
 }
+
+$('#aRepetir').addEventListener('click', function () {
+  var id = asigActual && asigActual.id;
+  if (!id) return;
+  cerrarFicha(true).then(function (bien) {
+    // `false` = el guardado fallo y la ficha sigue abierta con lo escrito: no
+    // se repite nada encima de un turno que no se pudo guardar.
+    if (bien === false) return;
+    var fresca = S.asignaciones.filter(function (x) { return x.id === id; })[0];
+    if (fresca) abrirRepetir(fresca);
+  });
+});
 
 $('#aBorrar').addEventListener('click', function () {
   if (!asigActual) return;
@@ -3917,6 +3932,130 @@ function dejarSinAsignar() {
 }
 
 /* ====================================================================
+   REPETIR UN TURNO EN OTROS DIAS  (Pedro, 14-10, msgs 6582-6593)
+   ====================================================================
+
+   LA FORMA LA TRAJO EL, mirando Skello: se eligen los DIAS, no un numero de
+   veces. Y resulta que era la unica forma posible — la base tiene un indice
+   unico (`asignaciones_sin_repetir`) que impide que la misma persona tenga dos
+   turnos empezando a la misma hora el mismo dia, asi que «repetir 4 veces» solo
+   podia significar «en otros 4 dias». Eligiendolos uno a uno desaparece ademas
+   la pregunta de si saltar el fin de semana: la contesta el que planifica.
+
+   DOS PUERTAS AL MISMO CODIGO, y lo pidio el asi (msg 6589: «en los dos lados»):
+   el menu del boton derecho sobre un turno que ya existe, y la ficha del turno
+   como en Skello. Es su principio 1: una funcion encerrada en una sola pantalla
+   es un defecto. Dos entradas, una sola funcion — no dos copias. */
+var REP = { asig: null, dias: {} };
+
+/* Por que ESTE dia no se puede usar. Devuelve null si si se puede.
+   Las tres razones estan aqui y no repartidas por el dibujo: la pastilla, el
+   contador del boton y el guardado tienen que estar de acuerdo, y lo unico que
+   lo garantiza es que pregunten al mismo sitio. */
+function porQueNoRepetir(a, fecha) {
+  if (fecha === a.fecha) return 'este';
+  if (a.trabajador_id && ausenciasDe(a.trabajador_id, fecha).length) {
+    /* LO PIDIO PEDRO: que el dia diga QUE pasa, no que se apague mudo. Y no es
+       una regla nueva — pegar ya se niega a poner un turno sobre una ausencia
+       («una ausencia no se pisa… que aqui entrara por la puerta de atras haria
+       inutil el control»). Esto solo lo hace visible ANTES de intentarlo. */
+    return ausenciasDe(a.trabajador_id, fecha).map(function (x) {
+      return nombreTipoAusencia(x.tipo_id);
+    })[0];
+  }
+  /* Y ESTA LA AGREGUE YO: el indice unico rechazaria la fila igual, pero el
+     error de Postgres no le dice nada a nadie. Mejor apagar el dia antes que
+     enseñar el error despues. */
+  if (a.trabajador_id && S.asignaciones.some(function (o) {
+        return o.trabajador_id === a.trabajador_id && o.fecha === fecha
+            && hhmm(o.hora_inicio) === hhmm(a.hora_inicio);
+      })) return 'ya tiene';
+  return null;
+}
+
+function pintarDiasRep() {
+  var a = REP.asig, lun = lunesDe(a.fecha), html = '';
+  for (var i = 0; i < 7; i++) {
+    var f = masDias(lun, i), no = porQueNoRepetir(a, f);
+    var clase = no === 'este' ? 'rpd este' : (no ? 'rpd no' : (REP.dias[f] ? 'rpd on' : 'rpd'));
+    html += '<div class="' + clase + '" data-f="' + f + '"'
+         + (no ? ' title="' + esc(no === 'este' ? 'Es el turno que estás copiando' : no) + '"' : '')
+         + '><span class="l">' + esc(nombreDia(f).slice(0, 3)) + '</span>'
+         + '<span class="n">' + esc(diaMes(f).split('/')[0]) + '</span>'
+         + '<span class="x">' + esc(no === 'este' ? 'este' : (no || '')) + '</span></div>';
+  }
+  $('#rpDias').innerHTML = html;
+  var n = Object.keys(REP.dias).filter(function (f) { return REP.dias[f]; }).length;
+  // EL BOTON DICE CUANTOS, no «Aceptar»: es lo ultimo que se lee antes de apretar.
+  $('#rpGuardar').textContent = n ? 'Repetir en ' + n + ' día' + (n > 1 ? 's' : '') : 'Repetir';
+  $('#rpGuardar').disabled = !n;
+}
+
+function abrirRepetir(a) {
+  if (!a) return;
+  REP.asig = a; REP.dias = {};
+  $('#rpDe').innerHTML = '<b>' + esc(nombreCargo(a.cargo_id)) + '</b> · <b>'
+    + esc(hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin)) + '</b>'
+    + (a.trabajador_id ? ' · <b>' + esc(nombreTrab(a.trabajador_id)) + '</b>'
+                       : ' · <i>sin asignar</i>');
+  $('#rpMsg').textContent = '';
+  $('#rpNota').hidden = !!a.trabajador_id;
+  if (!a.trabajador_id) {
+    // Sin persona no hay ausencias que mirar: se dice, para que no parezca un fallo.
+    $('#rpNota').innerHTML = 'Este turno <b>no tiene persona</b>, así que ningún día '
+      + 'aparece bloqueado por ausencias.';
+  }
+  pintarDiasRep();
+  $('#dlgRep').showModal();
+}
+
+$('#rpDias').addEventListener('click', function (ev) {
+  var d = ev.target.closest('.rpd'); if (!d) return;
+  if (d.classList.contains('no') || d.classList.contains('este')) return;
+  REP.dias[d.dataset.f] = !REP.dias[d.dataset.f];
+  pintarDiasRep();
+});
+$('#rpCancelar').addEventListener('click', function () { $('#dlgRep').close(); });
+
+$('#rpGuardar').addEventListener('click', function () {
+  var a = REP.asig;
+  var fechas = Object.keys(REP.dias).filter(function (f) { return REP.dias[f]; }).sort();
+  if (!a || !fechas.length) return;
+  $('#dlgRep').close();
+  avisarSeleccion('Repitiendo en ' + fechas.length + ' día(s)…');
+
+  var creadas = [], fallaron = [];
+  var cadena = fechas.reduce(function (pr, f) {
+    return pr.then(function () {
+      return DATOS.asignaciones.crear({
+        sucursal_id: a.sucursal_id, fecha: f, cargo_id: a.cargo_id,
+        trabajador_id: a.trabajador_id,
+        hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+      }).then(function (fila) { creadas.push(fila.id); })
+        .catch(function (e) { fallaron.push({ f: f, e: e }); });
+    });
+  }, Promise.resolve());
+
+  return cadena.then(function () {
+    if (creadas.length) {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'crear',
+                   { repetido_en: creadas.length }, null);
+      // Un solo Deshacer para toda la repeticion, no uno por dia.
+      recordar('repetir el turno en ' + creadas.length + ' día(s)', function () {
+        return creadas.reduce(function (pr, id) {
+          return pr.then(function () { return DATOS.asignaciones.borrar(id); });
+        }, Promise.resolve());
+      });
+    }
+    return recargarSemana();
+  }).then(function () {
+    var txt = creadas.length + ' turno(s) creado(s)';
+    if (fallaron.length) txt += ' · ' + fallaron.length + ' no se pudo: ' + fallaron[0].e.message;
+    decirSel(txt);
+  }).catch(function (e) { decirSel('No pude: ' + e.message); });
+});
+
+/* ====================================================================
    CAMBIAR VARIOS TURNOS DE UNA VEZ  (Pedro, 14-10, msgs 6561-6571)
    ====================================================================
 
@@ -4136,6 +4275,9 @@ function menuEl() {
       case 'copiar':  return copiarSeleccion(false);
       case 'cortar':  return copiarSeleccion(true);
       case 'pegar':   return pegarSeleccion();
+      /* Repetir es de UN turno: con varios marcados la pregunta «¿en qué días?»
+         no tiene una respuesta sola. Por eso la fila se enciende con uno. */
+      case 'repetir': return abrirRepetir(marcadosDeSeleccion()[0]);
       case 'lote':    return abrirLote();
       case 'soltar':  return dejarSinAsignar();
       case 'borrar':  return borrarSeleccion(false);
@@ -4202,6 +4344,7 @@ function abrirMenu(x, y, td, idTurno) {
     + fila('cortar',  'Cortar',  'Ctrl+X', marcados.length > 0)
     + fila('pegar',   'Pegar',   'Ctrl+V', !!PORTA)
     + '<hr>'
+    + fila('repetir', 'Repetir en otros días…', '', marcados.length === 1)
     + fila('lote',    'Cambiar los ' + marcados.length + ' marcados…', '', marcados.length > 1)
     + fila('soltar',  'Dejar sin asignar', '', conPersona > 0)
     + fila('borrar',  'Borrar',  'Supr',  marcados.length > 0, 'mal');
@@ -6027,6 +6170,7 @@ window.__app = {
   alinearNecesidad: alinearNecesidad,
   // El lote: la prueba abre el diálogo y aprieta, igual que haría una persona.
   abrirLote: abrirLote, sePisaConOtro: sePisaConOtro,
+  abrirRepetir: abrirRepetir, porQueNoRepetir: porQueNoRepetir,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
