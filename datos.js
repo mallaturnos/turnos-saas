@@ -202,6 +202,16 @@
   function crear(tabla, d, que) {
     return rest(tabla, { method: 'POST', body: d, headers: devolver }, que).then(primero);
   }
+  /* IGUAL QUE `crear`, PERO DEVUELVE TODAS LAS FILAS.
+     `crear` se queda con la primera —`primero`—, que es lo correcto cuando se
+     inserta una. Al insertar un lote eso tira a la basura los identificadores
+     de todo lo demas, y sin ellos NO SE PUEDE DESHACER: para retirar lo que se
+     acaba de crear hay que saber que se creo. No se cambia `crear` porque la
+     usan muchos sitios que esperan una fila sola. */
+  function crearVarios(tabla, filas, que) {
+    return rest(tabla, { method: 'POST', body: filas, headers: devolver }, que)
+      .then(function (f) { return f || []; });
+  }
   function editar(tabla, id, d, que) {
     return rest(tabla + '?id=eq.' + id, { method: 'PATCH', body: d, headers: devolver }, que)
       .then(primero);
@@ -306,6 +316,7 @@
   var necesidades = {
     listar: function (s, a, b) { return delRango('necesidades', s, a, b, 'leer lo planificado'); },
     crear:  function (d) { return crear('necesidades', d, 'guardar lo planificado'); },
+    crearVarios: function (f) { return crearVarios('necesidades', f, 'guardar lo planificado'); },
     guardar:function (id, d) { return editar('necesidades', id, d, 'guardar lo planificado'); },
     borrar: function (id) { return quitar('necesidades', 'id=eq.' + id, 'borrar lo planificado'); },
   };
@@ -330,6 +341,7 @@
                   + '&order=fecha&order=hora_inicio', null, 'ver los turnos de esa persona');
     },
     crear:  function (d) { return crear('asignaciones', d, 'guardar la asignación'); },
+    crearVarios: function (f) { return crearVarios('asignaciones', f, 'guardar los turnos'); },
     guardar:function (id, d) { return editar('asignaciones', id, d, 'guardar la asignación'); },
     borrar: function (id) { return quitar('asignaciones', 'id=eq.' + id, 'quitar la asignación'); },
   };

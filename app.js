@@ -3983,6 +3983,12 @@ $('#btnMasSem').addEventListener('click', function (ev) {
   b.title = b.disabled
     ? 'Cámbiate a Semana o a Día: limpiar un mes entero no se podría deshacer con seguridad'
     : 'Borra todos los turnos de ' + queVes + ' que estás viendo';
+  // Copiar se mide en semanas: en el Mes no hay «esta semana» que copiar.
+  var c = $('#btnCopiarSem');
+  if (c) {
+    c.disabled = S.vista === 'mes';
+    c.title = c.disabled ? 'Cámbiate a Semana o a Día' : 'Copia lo de esta semana a las siguientes';
+  }
   m.hidden = !abrir;
   this.setAttribute('aria-expanded', abrir ? 'true' : 'false');
 });
@@ -3999,6 +4005,131 @@ document.addEventListener('keydown', function (ev) {
 $('#menuSem').addEventListener('click', function (ev) {
   if (ev.target.closest('button')) cerrarMenuSem();
 });
+
+/* COPIAR ESTA SEMANA A LAS SIGUIENTES  (Pedro, 14-10)
+
+   NO SE ESCRIBE UN COPIADO NUEVO. Se reusan las dos piezas que ya mueven una
+   semana entera: `lineasDeLaSemana()`, que convierte lo que estas viendo en
+   lineas de modelo, y `planDeAplicar()`, que las baja a filas de una semana
+   destino. Son las mismas que usan «Guardar como modelo» y «Aplicar un modelo»,
+   y llevan dentro cosas que un copiado nuevo habria perdido en silencio: que
+   quien ya no trabaja aqui no revive, y que lo planificado viaja con el turno.
+
+   Y NO HAY UN «traer la semana anterior» aparte: es este mismo movimiento visto
+   al reves. Te paras en la semana anterior y copias a la siguiente. Dos botones
+   para un movimiento son dos sitios donde arreglar el mismo defecto. */
+function abrirCopiarSem() {
+  if (S.vista === 'mes') return;
+  var lineas = lineasDeLaSemana();
+  if (!lineas.length) return nada('Esta semana no tiene nada que copiar.');
+  $('#cpDe').innerHTML = 'Vas a copiar <b>' + lineas.length + '</b> cosa(s) de la semana '
+    + 'del <b>' + esc(diaMes(S.lunes)) + '</b>.';
+  // Hacia adelante y nunca al pasado, igual que el aplicar de los modelos.
+  $('#cpSemanas').innerHTML = [1, 2, 3, 4].map(function (i) {
+    var l = masDias(S.lunes, i * 7);
+    return '<label class="op"><input type="checkbox" value="' + l + '"'
+         + (i === 1 ? ' checked' : '') + '> Semana del <b>' + esc(diaMes(l)) + '</b></label>';
+  }).join('');
+  aviso('#cpMsg', '');
+  $('#dlgCopiarSem').showModal();
+}
+$('#btnCopiarSem').addEventListener('click', abrirCopiarSem);
+$('#cpCancelar').addEventListener('click', function () { $('#dlgCopiarSem').close(); });
+
+$('#cpOk').addEventListener('click', function () {
+  var semanas = $$('#cpSemanas input:checked').map(function (c) { return c.value; });
+  if (!semanas.length) return aviso('#cpMsg', 'Elige al menos una semana.', 'bad');
+  var traer = ($$('[name="cpTraer"]').filter(function (r) { return r.checked; })[0] || {}).value
+            || 'con-gente';
+  var lineas = lineasDeLaSemana();
+  $('#dlgCopiarSem').close();
+  return aplicarLineasEn(lineas, semanas, traer, 'copiar la semana');
+});
+
+/* EL CREADO DE VARIAS SEMANAS, EN UN SOLO SITIO — y con Deshacer, que es lo que
+   le faltaba.
+
+   ⚠️ LO QUE ENCONTRE AL VENIR AQUI: «Aplicar un modelo» crea necesidades y
+   turnos en hasta cuatro semanas y NO registraba nada en Deshacer. `recordar`
+   no aparecia ni una vez en ese camino. O sea: el movimiento que mas filas crea
+   de toda la aplicacion era el unico sin vuelta atras. Al compartir este codigo,
+   el aplicar de modelos lo gana tambien.
+
+   Para poder retirar lo creado hay que saber QUE se creo, y `crear()` devuelve
+   solo la primera fila de un lote. Por eso `crearVarios()`. */
+function aplicarLineasEn(lineas, semanas, traer, etiqueta) {
+  var todas = { necs: [], asigs: [], perdidas: 0 };
+  semanas.forEach(function (l) {
+    var p = planDeAplicar(lineas, l, traer);
+    todas.necs = todas.necs.concat(p.necs);
+    todas.asigs = todas.asigs.concat(p.asigs);
+    todas.perdidas += p.asigs.filter(function (a) { return a.__perdida; }).length;
+  });
+  todas.asigs.forEach(function (a) { delete a.__perdida; });
+
+  /* EL CHOQUE SE MIRA EN LA BASE, NO EN LA MEMORIA. La memoria solo tiene la
+     semana que estas viendo, nunca la destino: preguntarle da siempre «vacia» y
+     se duplica en silencio. Ese fallo ya se pago una vez en el aplicar de
+     modelos y no se vuelve a pagar aqui. */
+  var mirar = function (l) {
+    var hasta = masDias(l, 6);
+    return Promise.all([
+      DATOS.asignaciones.listar(S.sucursal, l, hasta),
+      DATOS.necesidades.listar(S.sucursal, l, hasta),
+    ]).then(function (r) { return ((r[0] || []).length + (r[1] || []).length) ? l : null; });
+  };
+
+  var escribir = function () {
+    var necsCreadas = [], asigsCreadas = [];
+    return Promise.resolve()
+      .then(function () {
+        return todas.necs.length ? DATOS.necesidades.crearVarios(todas.necs)
+          .then(function (f) { necsCreadas = (f || []).map(function (x) { return x.id; }); }) : null;
+      })
+      .then(function () {
+        return todas.asigs.length ? DATOS.asignaciones.crearVarios(todas.asigs)
+          .then(function (f) { asigsCreadas = (f || []).map(function (x) { return x.id; }); }) : null;
+      })
+      .then(function () {
+        DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'crear',
+          { copiado_en_semanas: semanas.length, turnos: asigsCreadas.length }, null);
+        // Se retira en el orden inverso: primero los turnos, despues lo planificado.
+        if (asigsCreadas.length || necsCreadas.length) {
+          recordar(etiqueta + ' (' + asigsCreadas.length + ' turno(s))', function () {
+            return asigsCreadas.reduce(function (pr, id) {
+              return pr.then(function () { return DATOS.asignaciones.borrar(id).catch(function () {}); });
+            }, Promise.resolve()).then(function () {
+              return necsCreadas.reduce(function (pr, id) {
+                return pr.then(function () { return DATOS.necesidades.borrar(id).catch(function () {}); });
+              }, Promise.resolve());
+            });
+          });
+        }
+        return recargarSemana();
+      })
+      .then(function () {
+        avisoPlan('Copiado: <b>' + asigsCreadas.length + '</b> turnos y <b>'
+          + necsCreadas.length + '</b> necesidades en <b>' + semanas.length + '</b> '
+          + (semanas.length === 1 ? 'semana' : 'semanas') + '.'
+          + (todas.perdidas ? ' <b>' + todas.perdidas + '</b> quedaron sin asignar porque '
+             + 'esa persona ya no está.' : '')
+          + ' <i>Deshacer lo retira entero.</i>');
+      })
+      .catch(function (e) { avisoPlan('No se pudo: ' + e.message); });
+  };
+
+  return Promise.all(semanas.map(mirar)).then(function (r) {
+    var ocupadas = r.filter(Boolean);
+    if (!ocupadas.length) return escribir();
+    // No se borra nada nunca: lo que entra SE SUMA, y se dice con esas palabras.
+    var ok = confirm((ocupadas.length === 1
+        ? 'La semana del ' + diaMes(ocupadas[0]) + ' ya tiene cosas puestas.'
+        : ocupadas.length + ' de las semanas elegidas ya tienen cosas puestas.')
+      + '\n\nLo que copies SE SUMA a lo que ya hay: no se borra nada, pero pueden '
+      + 'quedar turnos repetidos.\n\nSe puede deshacer. ¿Sigo?');
+    return ok ? escribir() : null;
+  });
+}
 
 /* LIMPIAR LA SEMANA. Reusa `quitarTurnos()`, que es el MISMO borrado del boton
    «Borrar» sobre lo marcado: mismo aviso de publicados, mismo Deshacer. Si
@@ -6276,6 +6407,7 @@ window.__app = {
   abrirRepetir: abrirRepetir, porQueNoRepetir: porQueNoRepetir,
   limpiarSemana: limpiarSemana, cerrarMenuSem: cerrarMenuSem,
   rangoVista: rangoVista,
+  masDias: masDias, abrirCopiarSem: abrirCopiarSem,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,

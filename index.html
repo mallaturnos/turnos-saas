@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v104</span></p>
+      <span style="float:right;opacity:.55" id="ver">v105</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v104</span>
+    <span class="hint" id="ver2" title="Versión publicada">v105</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -128,6 +128,7 @@
                 aria-haspopup="true" aria-expanded="false">···</button>
         <div id="menuSem" class="menusem" hidden>
           <div class="gr">Esta semana</div>
+          <button class="plano" id="btnCopiarSem">Copiar a las siguientes…</button>
           <button class="plano mal" id="btnLimpiarSem">Limpiar la semana</button>
           <div class="gr" id="grModelos">Modelos</div>
           <button class="plano" id="btnGuardarModelo" hidden>Guardar como modelo</button>
@@ -393,6 +394,34 @@
      Y EL BOTON DICE CUANTOS VA A CREAR, no «Aceptar». Es lo ultimo que se lee antes
      de apretar: si creias haber marcado cinco y dice tres, te detienes. Misma idea
      que el Deshacer, que dice QUE deshace. -->
+<!-- COPIAR ESTA SEMANA A LAS SIGUIENTES. Pedro, 14-10.
+
+     POR QUE NO HAY TAMBIEN UN «traer la semana anterior»: seria la misma cosa
+     con otro nombre. Te paras en la semana anterior, copias a la siguiente, y
+     ya esta. Dos botones para un movimiento son dos sitios donde arreglar el
+     mismo defecto — es lo que ya se hizo al fundir «+ turno suelto» en
+     «+ agregar». -->
+<dialog id="dlgCopiarSem" class="dlg">
+  <form method="dialog">
+    <h3>Copiar esta semana</h3>
+    <p class="hint" id="cpDe"></p>
+    <label class="q">¿A cuáles?</label>
+    <div class="fld opciones" id="cpSemanas"></div>
+    <label class="q">¿Qué copio?</label>
+    <div class="fld opciones">
+      <label class="op"><input type="radio" name="cpTraer" value="con-gente" checked>
+        Todo, <b>con las personas</b></label>
+      <label class="op"><input type="radio" name="cpTraer" value="sin-gente">
+        Todo, pero los turnos <b>sin dueño</b></label>
+    </div>
+    <p class="msg" id="cpMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="cpOk">Copiar</button>
+      <button type="button" class="plano" id="cpCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlgRep" class="dlg">
   <form method="dialog">
     <h3>Repetir el turno</h3>
@@ -592,6 +621,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=18"></script>
-<script src="app.js?v=51"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>
