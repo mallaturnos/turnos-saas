@@ -5821,6 +5821,12 @@ function pintarFormaAusencia() {
   // que la pantalla ni siquiera ofrece poner un rango. Mejor no poder hacerlo
   // que poder hacerlo y que te lo rechacen al guardar.
   $('#usHastaCaja').hidden = !porDia;
+  /* Y EL ROTULO CAMBIA CON EL. Lo encontro Pedro usandolo (msg 6753): «¿que en
+     fecha salga desde?». Con medio dia o unas horas la ausencia es de UN SOLO
+     dia —el disparador de la base lo exige— asi que el «Hasta» se esconde…
+     pero el otro seguia diciendo «Desde», que se lee como un rango al que le
+     falta la otra mitad. El guardado estaba bien; mentia el rotulo. */
+  $('#usDesdeEt').textContent = porDia ? 'Desde' : 'Día';
   if (!porDia) $('#usHasta').value = $('#usDesde').value;
   /* EL MEDIO DIA TAMBIEN PIDE LAS HORAS.
 
