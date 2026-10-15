@@ -1095,3 +1095,9 @@ table.mesb .mini { cursor: pointer; }
 .pestdlg-t.on { color:var(--verde); border-bottom-color:var(--verde);
   cursor:default; opacity:1; }
 .pestdlg-t:focus-visible { outline:2px solid var(--verde); outline-offset:3px; }
+
+/* El turno sin dueño en el Mes: la MISMA marca que ya lleva en Semana. */
+.mesb .mini.pendiente { background:transparent; color:var(--gris);
+  border:1.5px dashed var(--gris); font-style:italic; }
+.mesb .cont .sindueno { display:block; font-size:.7rem; font-weight:700;
+  color:var(--rojo); font-style:normal; }

@@ -1561,13 +1561,14 @@ function pintarMesB() {
           + (fila.ido ? ' <span class="yano">ya no trabaja aquí</span>' : '') + '</th>';
     var mesHoras = 0;
     semanas.forEach(function (sem, iSem) {
-      var semHoras = 0;
+      var semHoras = 0, semSinDueno = 0;
       sem.forEach(function (d) {
         var suyas = S.asignaciones.filter(function (a) {
           return a.fecha === d && deQuien(a) === fila.id;
         }).sort(porHoraTurno);
         suyas.forEach(function (a) {
           if (a.trabajador_id) semHoras += horasNetas(a);
+          else semSinDueno++;
         });
         /* `data-semana` es lo que convierte el mes en una puerta: el clic lleva
            a ESA semana en vez de dejarte donde estabas. */
@@ -1582,17 +1583,36 @@ function pintarMesB() {
                      abra la ficha: el oyente de la malla ya abre cualquier cosa
                      que lleve ese atributo. Lo eligió Pedro (msg 5919, opción
                      C) y es lo que hace Skello, que edita en su vista Mes. */
-                  return '<span class="mini ' + colorCargo(a.cargo_id) + '"'
+                  /* SIN DUEÑO SE VE. Era el punto 1 de la propuesta del Mes y el
+                     hallazgo que la abria: la pantalla dice «aquí se ve dónde
+                     hay huecos» y la pastilla llevaba SOLO color de cargo y
+                     hora — ni la clase ni el `title` decian que no tiene a
+                     nadie. Agrupado por Cargo era indistinguible de uno
+                     cubierto; agrupado por persona solo se notaba por caer en
+                     la fila «Sin asignar», que es notarlo por accidente.
+
+                     En Semana ya se distinguia con `.blq.pendiente`: aqui va la
+                     MISMA marca, no una nueva. */
+                  var sinDueno = !a.trabajador_id;
+                  return '<span class="mini ' + colorCargo(a.cargo_id)
+                       + (sinDueno ? ' pendiente' : '') + '"'
                        + ' data-asigid="' + a.id + '"'
                        + ' title="' + esc(hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin)
-                           + ' · ' + nombreCargo(a.cargo_id) + ' · aprieta para abrirlo') + '">'
+                           + ' · ' + nombreCargo(a.cargo_id)
+                           + (sinDueno ? ' · SIN ASIGNAR' : '')
+                           + ' · aprieta para abrirlo') + '">'
                        + hhmm(a.hora_inicio).slice(0, 2) + '</span>';
                 }).join('')
               + '</td>';
       });
-      // Raya y no cero: un 0 se lee como «ahí no hay nada que ver».
+      /* Raya y no cero: un 0 se lee como «ahí no hay nada que ver».
+         Y DEBAJO, cuantos van sin dueño. Hace falta porque las horas NO lo
+         delatan: un turno sin persona no suma horas, asi que el contador baja
+         y nada dice por que. */
       html += '<td class="cont">'
             + (semHoras ? numero(semHoras) + ' h' : '<span class="cero">—</span>')
+            + (semSinDueno ? '<span class="sindueno">' + semSinDueno
+                 + ' sin dueño</span>' : '')
             + '</td>';
       porSemana[iSem] += semHoras;
       mesHoras += semHoras;
@@ -5959,7 +5979,12 @@ function pintarFormaAusencia() {
   $('#usHorasCaja').hidden = (unidad === 'dia');
   if (unidad === 'medio_dia') sugerirMediaJornada();
   $('#usFolioCaja').hidden = !t.pide_documento;
-  $('#usNotaEt').textContent = t.pide_nota ? 'Motivo (obligatorio)' : 'Motivo (opcional)';
+  /* «Nota o motivo», no «Motivo» a secas. Lo decidio Pedro el 15-10 (msg 6834).
+     El campo sirve para las dos cosas: en una licencia es una nota —el folio ya
+     va aparte— y en un permiso del jefe es el motivo de verdad. Llamarlo solo
+     «Motivo» hacia que pareciera que hay que justificar hasta una licencia. */
+  $('#usNotaEt').textContent = t.pide_nota ? 'Nota o motivo (obligatorio)'
+                                           : 'Nota o motivo (opcional)';
 
   // Lo que la ley dice de este tipo, en el momento de elegirlo. Si el tipo no
   // tiene base legal se dice que es del local: prometer una regla legal que no
