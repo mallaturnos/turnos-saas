@@ -1774,12 +1774,51 @@ function pintarMesB() {
         });
         /* `data-semana` es lo que convierte el mes en una puerta: el clic lleva
            a ESA semana en vez de dejarte donde estabas. */
+        /* 🔴 LAS AUSENCIAS, QUE EN EL MES NO SE DIBUJABAN. NI UNA.
+
+           Verificado el 16-10 contra el codigo: `pintarMesB()` no miraba
+           `S.ausencias` ni una vez. O sea unas vacaciones de dos semanas eran
+           DIEZ CELDAS VACIAS, identicas a «ese dia no le tocaba» — y el Mes es
+           justo la vista donde se miran las vacaciones.
+
+           Es el MISMO defecto que Pedro reporto el 16-10 por la mañana («aca
+           no se puede ver que Joaquin esta con permiso»), que se arreglo en
+           Personas y en Cargos y seguia vivo en el tercer sitio. Tres puertas,
+           y la tercera no se habia mirado.
+
+           Aqui no cabe la banda de arriba que se uso en Semana: son 30
+           columnas. Va DENTRO de la celda, que es lo que hace Skello.
+
+           Agrupado por CARGOS no se dibuja: una ausencia no es de un puesto,
+           es de una persona — el mismo motivo por el que alli la banda era la
+           salida. Lo que si se ve en las dos agrupaciones es el turno TEÑIDO
+           cuando choca, que ya es la marca de toda la app. */
+        var ausDia = (S.agrupar === 'persona' && fila.id)
+          ? ausenciasDe(fila.id, d) : [];
+
         html += '<td class="d' + (d === hoy ? ' hoy' : '')
               + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
               + ' data-dia="' + d + '"'
               + ' data-fila="' + esc(String(fila.id || '')) + '"'
               + ' title="' + esc(fila.nombre + ' · ' + nombreDia(d) + ' ' + diaMes(d)
-                  + (suyas.length ? '' : ' · aprieta para agregarle un turno')) + '">'
+                  + (ausDia.length
+                      ? ' · ' + ausDia.map(function (x) {
+                          return nombreTipoAusencia(x.tipo_id); }).join(', ')
+                      : '')
+                  + (suyas.length || ausDia.length ? '' : ' · aprieta para agregarle un turno')) + '">'
+              /* Solo cuando NO hay turno: si lo hay, el turno ya sale tenido y
+                 poner ademas la pastilla diria dos veces lo mismo en una celda
+                 que mide cuatro milimetros. */
+              + (ausDia.length && !suyas.length
+                  ? ausDia.slice(0, 1).map(function (x) {
+                      var u = unidadDe(x);
+                      return '<span class="mini ausmes' + (u !== 'dia' ? ' parcial' : '') + '"'
+                        + ' data-ausid="' + x.id + '"'
+                        + ' title="' + esc(nombreTrab(x.trabajador_id) + ' · '
+                            + nombreTipoAusencia(x.tipo_id)) + '">'
+                        + esc(nombreTipoAusencia(x.tipo_id)) + '</span>';
+                    }).join('')
+                  : '')
               + suyas.map(function (a) {
                   /* `data-asigid` es todo lo que hace falta para que el clic
                      abra la ficha: el oyente de la malla ya abre cualquier cosa
@@ -1796,8 +1835,12 @@ function pintarMesB() {
                      En Semana ya se distinguia con `.blq.pendiente`: aqui va la
                      MISMA marca, no una nueva. */
                   var sinDueno = !a.trabajador_id;
+                  // Teñido si ese día la persona tiene una ausencia: la misma
+                  // marca que en Semana y en el Día, sin texto porque aquí no
+                  // cabe ni una palabra.
+                  var chocaMes = !sinDueno && ausenciasDe(a.trabajador_id, d).length > 0;
                   return '<span class="mini ' + colorCargo(a.cargo_id)
-                       + (sinDueno ? ' pendiente' : '') + '"'
+                       + (sinDueno ? ' pendiente' : '') + (chocaMes ? ' choca' : '') + '"'
                        + ' data-asigid="' + a.id + '"'
                        + ' title="' + esc(hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin)
                            + ' · ' + nombreCargo(a.cargo_id)

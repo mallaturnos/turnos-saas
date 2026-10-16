@@ -764,6 +764,19 @@ table.girada tr.ausfila .aus, .auscel .aus {
 }
 table.mesb tr.domingomal th.rot { background:var(--amar); color:#6d5a2a; }
 
+/* La ausencia dentro de la celda del Mes. No cabe una banda arriba con 30
+   columnas, asi que va donde esta el hueco — que es lo que hace Skello. */
+.mini.ausmes {
+  background:var(--amar); border:1px solid var(--amar-borde); color:#7a5e18;
+  font-style:italic;
+}
+.mini.ausmes.parcial {
+  background:repeating-linear-gradient(45deg,var(--amar),var(--amar) 4px,#f4ead3 4px,#f4ead3 8px);
+}
+/* Y el turno de un dia con ausencia, tenido: misma marca que en las tablas,
+   sin palabra porque en el Mes no cabe. */
+.mini.choca { background:var(--amar); border-color:#b08a2e; color:#7a5e18; }
+
 /* ---------- las reglas legales del local ----------
    Lista de LECTURA, sin controles: el «Avisar / Bloquear» llega con los
    perfiles. Lo que esta vivo se distingue de lo que viene en camino, porque
