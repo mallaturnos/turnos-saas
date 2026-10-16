@@ -520,6 +520,11 @@ function cargarTodo(mia) {
         if (S.hayAtajoPorLocal !== hay) { S.hayAtajoPorLocal = hay; pintarConfig(); }
       });
     }
+    if (DATOS.sucursales.hayRubro) {
+      DATOS.sucursales.hayRubro().then(function (hay) {
+        if (S.hayRubro !== hay) { S.hayRubro = hay; pintarConfig(); }
+      });
+    }
     S.yoTrabajador = S.trabajadores.filter(function (p) { return p.usuario_id === S.yo.id; })[0] || null;
     $('#hEmpresa').textContent = 'Turnos';
     $('#hQuien').textContent = S.yo.email;
@@ -643,8 +648,131 @@ function recargarSemana() {
   }).then(function (r) {
     S.necesidades = r[0]; S.asignaciones = r[1]; S.turnos = r[2];
     S.ausencias = r[3]; S.tiposAusencia = r[4]; S.bloqueos = r[5];
-    pintarMalla();
+    /* Los domingos se cuentan ANTES de pintar: si se pintara primero y el
+       aviso llegara despues, la malla parpadearia y, peor, habria un instante
+       en que la pantalla dice que todo esta bien. */
+    return cargarDomingos().then(function () { pintarMalla(); });
   }).catch(function (e) { avisoPlan('No pude cargar la semana: ' + esc(e.message)); });
+}
+
+/* ====================== LOS DOMINGOS DEL MES ======================
+
+   Primera regla legal de la app. Art. 38 inc. 5 del Codigo del Trabajo: «al
+   menos dos de los dias de descanso en el respectivo mes calendario deberan
+   necesariamente otorgarse en dia domingo».
+
+   🔴 EL GIRO QUE HACE QUE ESTO SE PUEDA CALCULAR. La ley habla de DIAS DE
+   DESCANSO, y la app no sabe que es un dia de descanso: sabe que dias tienen
+   turno. Un domingo vacio puede ser descanso o puede ser que todavia no se
+   planifica. Contar descansos daria VERDE FALSO con el mes a medio llenar —
+   «cumple» por estar vacio, que es la peor clase de aviso.
+
+   Asi que se da vuelta la regla y se cuenta lo que si es dato:
+
+       la ley pide N domingos de descanso
+       → en un mes con D domingos, trabaja como maximo D - N
+
+   Mes de 4 domingos y N=2 → maximo 2. Mes de 5 → maximo 3. Sale solo de las
+   asignaciones, sin inferir nada.
+
+   ⚠️ EL BORDE, y por eso el aviso dice «segun lo planificado» y nunca
+   «cumple»: si el mes esta a medio planificar, la cuenta va sobre lo escrito
+   hasta ahora. La app avisa, no certifica. */
+
+function esDomingo(f) {
+  var p = f.split('-').map(Number);
+  return new Date(p[0], p[1] - 1, p[2]).getDay() === 0;
+}
+
+// Cuantos domingos tiene un mes 'YYYY-MM'. No se asume 4: hay meses de 5.
+function domingosDeMes(mesTxt) {
+  var p = mesTxt.split('-').map(Number), n = 0;
+  var ultimo = new Date(p[0], p[1], 0).getDate();
+  for (var d = 1; d <= ultimo; d++) {
+    if (new Date(p[0], p[1] - 1, d).getDay() === 0) n++;
+  }
+  return n;
+}
+
+/* Los meses que tocan los domingos VISIBLES. En el Mes es uno; en la Semana
+   puede ser uno o, si la semana parte el mes, dos; en el Dia, uno o ninguno
+   —un martes no toca ningun domingo y entonces no hay nada que contar—. */
+function mesesConDomingo() {
+  var r = rangoVista(), ms = {}, f = r.desde;
+  while (f <= r.hasta) {
+    if (esDomingo(f)) ms[f.slice(0, 7)] = true;
+    f = masDias(f, 1);
+  }
+  return Object.keys(ms);
+}
+
+/* SE VA A LA BASE Y NO A LO QUE HAY EN PANTALLA, igual que el control de
+   turnos que se pisan. En la Semana y en el Dia la pantalla tiene 7 dias o 1,
+   y la regla es MENSUAL: contando solo lo visible, un domingo suelto siempre
+   pareceria inocente. */
+function cargarDomingos() {
+  S.domingos = {};
+  var meses = mesesConDomingo();
+  if (!meses.length || !S.sucursal) return Promise.resolve();
+  var cad = Promise.resolve();
+  meses.forEach(function (m) {
+    cad = cad.then(function () {
+      var p = m.split('-').map(Number);
+      var fin = m + '-' + String(new Date(p[0], p[1], 0).getDate()).padStart(2, '0');
+      return DATOS.asignaciones.listar(S.sucursal, m + '-01', fin)
+        .then(function (filas) {
+          var porPersona = {};
+          filas.forEach(function (a) {
+            if (!a.trabajador_id || !esDomingo(a.fecha)) return;
+            /* POR FECHA Y NO UN CONTADOR: dos turnos el mismo domingo son UN
+               domingo trabajado. Con un contador, partir el domingo en dos
+               turnos haria saltar el aviso sin que nadie trabaje un domingo
+               mas. */
+            porPersona[a.trabajador_id] = porPersona[a.trabajador_id] || {};
+            porPersona[a.trabajador_id][a.fecha] = true;
+          });
+          S.domingos[m] = { total: domingosDeMes(m), porPersona: porPersona };
+        })
+        .catch(function () {});   // sin esto la malla entera se caeria por un aviso
+    });
+  });
+  return cad;
+}
+
+/* A quien NO le aplica la regla. Las tres excepciones del art. 38 inc. 5 viven
+   en la ficha de la persona porque son del CONTRATO, no del negocio. */
+function exceptuadoDeDomingos(trabajadorId) {
+  var w = S.trabajadores.filter(function (x) { return x.id === trabajadorId; })[0];
+  if (!w) return false;
+  return EXCEPCIONES.some(function (x) { return !!w[x.campo]; });
+}
+
+/* El veredicto para una persona en un mes. `null` significa «no hay nada que
+   decir», que no es lo mismo que «esta bien»:
+     · el local no declaro que es          → no se sabe que reglas rigen
+     · la persona tiene una excepcion      → la regla no le aplica
+     · todavia no se pego el SQL           → no hay rubro que leer */
+function vereditoDomingos(trabajadorId, mesTxt) {
+  if (!S.hayRubro || !trabajadorId) return null;
+  var d = S.domingos && S.domingos[mesTxt];
+  if (!d) return null;
+  var loc = S.sucursales.filter(function (x) { return x.id === S.sucursal; })[0] || {};
+  if (!loc.rubro) return null;
+  if (exceptuadoDeDomingos(trabajadorId)) return null;
+
+  var trabajados = Object.keys(d.porPersona[trabajadorId] || {}).length;
+  /* «Ninguna de estas» no es relleno: una empresa NO exceptuada del descanso
+     dominical no puede distribuir la jornada incluyendo domingos salvo fuerza
+     mayor (art. 37). Ahi el tope es cero. */
+  var tope = loc.rubro === 'ninguna'
+    ? 0
+    : d.total - (loc.domingos_min || DOMINGOS_LEGAL);
+  if (tope < 0) tope = 0;
+  return {
+    trabajados: trabajados, tope: tope, total: d.total,
+    pasado: trabajados > tope,
+    art37: loc.rubro === 'ninguna',
+  };
 }
 
 /* Qué trae la base según la vista. Un día, una semana o el mes entero — y el
@@ -850,20 +978,41 @@ function celdaDia(f, hoy, compacta) {
 }
 
 
+/* UNA PASTILLA DE AUSENCIA, ESCRITA UNA SOLA VEZ.
+
+   La misma pastilla se dibuja hoy en TRES sitios: la banda de la vista Dia, la
+   banda de arriba de la tabla por Cargos y la casilla de la tabla por Personas.
+   Antes existia escrita solo para el primero, asi que se saca aparte en vez de
+   copiarla — y ese es justamente el motivo que dio Pedro al elegir esta salida
+   (msg 6844, «para quedar igual que en dia»): no es una marca nueva, es la que
+   ya habia. Dos copias se habrian separado en el primer cambio.
+
+   `conNombre` es la unica diferencia real entre los tres usos: en la tabla por
+   Personas la FILA ya dice de quien es, asi que repetir el nombre dentro de la
+   casilla es ruido.
+
+   El `title` lleva SIEMPRE el nombre, incluso cuando el texto visible no lo
+   trae: el title se lee solo, y sin el nombre no se sabria de quien es. */
+function pastillaAusencia(a, conNombre) {
+  var u = unidadDe(a);
+  var medio = u !== 'dia';
+  var tipo = nombreTipoAusencia(a.tipo_id);
+  var quien = nombreTrab(a.trabajador_id) || 'alguien';
+  return '<span class="aus' + (medio ? ' parcial' : '') + '" data-ausid="' + a.id + '"'
+    + ' title="' + esc(quien + ' · ' + tipo + (a.nota ? ' — ' + a.nota : '')) + '">'
+    + (conNombre ? esc(quien) + ' · ' : '')
+    + esc(tipo)
+    + (medio ? ' (' + esc(u === 'medio_dia' ? 'medio día' : 'horas') + ')' : '')
+    + '</span>';
+}
+
 /* La banda de ausencias del dia. Vacia si no hay: una franja que dice «nadie
    falta» ocupa sitio todos los dias para no decir nada. */
 function bandaAusencias(f) {
   var hoy = ausenciasDelDia(f);
   if (!hoy.length) return '';
   return '<div class="ausdia">' + hoy.map(function (a) {
-    var u = unidadDe(a);
-    var medio = u !== 'dia';
-    return '<span class="aus' + (medio ? ' parcial' : '') + '" data-ausid="' + a.id + '" title="'
-      + esc(nombreTipoAusencia(a.tipo_id)) + (a.nota ? ' — ' + esc(a.nota) : '') + '">'
-      + esc(nombreTrab(a.trabajador_id) || 'alguien') + ' · '
-      + esc(nombreTipoAusencia(a.tipo_id))
-      + (medio ? ' (' + esc(u === 'medio_dia' ? 'medio día' : 'horas') + ')' : '')
-      + '</span>';
+    return pastillaAusencia(a, true);
   }).join('') + '</div>';
 }
 
@@ -1511,6 +1660,44 @@ function soltarTurno(id, filaId, horaNueva, soloHora) {
    las horas contratadas no existen (propuesta D de Equipo). El total de la
    semana sí, desde el primer día; la diferencia queda para cuando haya contra
    qué comparar. Se le dijo antes de empezar. */
+/* LA BANDA DE DOMINGOS, ARRIBA DEL MES.
+
+   Pedro eligio «B» (msg 6910) viendo las dos pantallas dibujadas: la fila de
+   la persona contesta «¿quien?» y la banda contesta «¿tengo un problema?».
+   La fila sola solo sirve si ya fuiste a mirar — el mismo motivo por el que la
+   banda de ausencias quedo arriba y no abajo.
+
+   Vacia no se dibuja: una franja que dice «todo bien» ocupa sitio todos los
+   meses para no decir nada, y ademas seria una promesa que la app no puede
+   hacer — con el mes a medio planificar, «todo bien» todavia no se sabe. */
+function bandaDomingos(mesTxt, filas) {
+  if (!S.hayRubro) return '';
+  var pasados = filas.filter(function (f) {
+    if (!f.id) return false;
+    var v = vereditoDomingos(f.id, mesTxt);
+    return v && v.pasado;
+  });
+  if (!pasados.length) return '';
+  var v0 = vereditoDomingos(pasados[0].id, mesTxt);
+  var nombres = pasados.map(function (f) { return esc(f.nombre); }).join(' · ');
+  return '<div class="bandalegal">'
+    + '<b>' + pasados.length
+    + (pasados.length === 1 ? ' persona se pasa' : ' personas se pasan')
+    + ' de domingos en ' + esc(nombreMes(mesTxt)) + '</b>'
+    + '<em>' + nombres + ' · '
+    + (v0.art37
+        ? 'este local no está exceptuado del descanso dominical, así que no puede planificar domingos (art. 37)'
+        : 'la ley pide que al menos ' + (v0.total - v0.tope)
+          + ' días de descanso caigan en domingo (art. 38)')
+    + ' · <i>según lo planificado</i></em></div>';
+}
+
+function nombreMes(mesTxt) {
+  var M = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+           'septiembre','octubre','noviembre','diciembre'];
+  return M[Number(mesTxt.split('-')[1]) - 1] || mesTxt;
+}
+
 function pintarMesB() {
   var r = rangoVista(), hoy = hoyTexto();
 
@@ -1538,7 +1725,8 @@ function pintarMesB() {
     deQuien = function (a) { return a.cargo_id; };
   }
 
-  var html = '<table class="mesb"><thead><tr><th class="rot"></th>';
+  var html = bandaDomingos(mes, filas)
+           + '<table class="mesb"><thead><tr><th class="rot"></th>';
   semanas.forEach(function (sem) {
     sem.forEach(function (d) {
       html += '<th class="d' + (d === hoy ? ' hoy' : '')
@@ -1557,7 +1745,21 @@ function pintarMesB() {
   var totalMes = 0;
 
   filas.forEach(function (fila) {
-    html += '<tr><th class="rot">' + esc(fila.nombre)
+    /* La marca va en la fila de la persona: la banda dice que hay lio, esta
+       dice en cual. Agrupado por cargos no se marca nada — un cargo no tiene
+       domingos, los tiene la gente. */
+    var vd = S.agrupar === 'persona' ? vereditoDomingos(fila.id, mes) : null;
+    html += '<tr' + (vd && vd.pasado ? ' class="domingomal"' : '')
+          + '><th class="rot">' + esc(fila.nombre)
+          + (vd && vd.pasado
+              ? '<span class="sellolegal" title="' + esc(fila.nombre
+                  + ' trabaja ' + vd.trabajados + ' de los ' + vd.total
+                  + ' domingos de ' + nombreMes(mes) + '. '
+                  + (vd.art37
+                      ? 'Este local no está exceptuado del descanso dominical (art. 37).'
+                      : 'La ley pide que al menos ' + (vd.total - vd.tope)
+                        + ' días de descanso caigan en domingo (art. 38 inc. 5).')) + '">revisar</span>'
+              : '')
           + (fila.ido ? ' <span class="yano">ya no trabaja aquí</span>' : '') + '</th>';
     var mesHoras = 0;
     semanas.forEach(function (sem, iSem) {
@@ -1857,20 +2059,54 @@ function pintarAsignacion(a) {
   var entero = choca && ausenciasDe(a.trabajador_id, a.fecha).some(function (x) {
     return unidadDe(x) === 'dia';
   });
+  /* El domingo que se pasa, tambien en la vista Dia — que es donde se reparte
+     la gente. Mismo motor que en la tabla: la cuenta es del MES, no de lo que
+     se ve en pantalla. */
+  var vDom = (a.trabajador_id && esDomingo(a.fecha))
+    ? vereditoDomingos(a.trabajador_id, a.fecha.slice(0, 7)) : null;
+  var domMal = !!(vDom && vDom.pasado);
+
   // El `title` lleva las dos cosas: qué estado tiene y, si choca, por qué.
   // Pisarlo con una sola dejaría la otra sin explicación.
   var partes = [estadoTexto(a, publicado)];
   if (choca) partes.push(quien + ' tiene ' + ausTxt + ' ese día');
+  if (domMal) {
+    partes.push('Va en su ' + vDom.trabajados + '° domingo de '
+      + nombreMes(a.fecha.slice(0, 7))
+      + (vDom.art37
+          ? ' y este local no está exceptuado del descanso dominical (art. 37)'
+          : '. La ley pide que al menos ' + (vDom.total - vDom.tope)
+            + ' días de descanso caigan en domingo (art. 38 inc. 5)'));
+  }
+  /* ⚠️ ESTE MOTIVO TIENE QUE ESTAR, y no es un adorno: desde que todas las
+     marcas dicen «revisar», el globito es el UNICO sitio donde se explica por
+     que. Antes la palabra «se cruza» lo decia sola; si se unifica el texto sin
+     mover el motivo aqui, la informacion no se simplifica — se pierde. */
+  if (pisa) partes.push(quien + ' ya tiene otro turno que se cruza con este');
   var titulo = ' title="' + esc(partes.join(' · ')) + '"';
   var marca  = choca ? '<span class="choque' + (entero ? '' : ' parte') + '">'
-                     + (entero ? 'no está' : 'parte del día') + '</span>' : '';
+                     /* UNA SOLA PALABRA PARA TODO LO QUE HAY QUE MIRAR —
+                        lo pidio Pedro (msg 6926) y la palabra la eligio el.
+                        «no está» y «parte del día» DESCRIBEN; «revisar» pide
+                        una accion, que es lo que corresponde en una app que
+                        avisa y no decide.
+
+                        LA DIFERENCIA NO SE PIERDE: la clase `parte` sigue
+                        pintandolo mas suave, asi que dia completo y medio dia
+                        se distinguen de un vistazo sin leer. Esa distincion
+                        decide si sales a buscar reemplazo, y por eso no podia
+                        quedar solo en el globito. */
+                     + 'revisar' + '</span>' : '';
   // «Se cruzan», no «se pisan»: lo pidio Pedro (msg 5622) y es la palabra que
   // se usa en un local.
-  var marcaPisa = pisa ? '<span class="choque pisa">se cruza</span>' : '';
+  // Misma palabra; el rojo de `pisa` sigue diciendo que es otra cosa.
+  var marcaPisa = pisa ? '<span class="choque pisa">revisar</span>' : '';
+  var marcaDom = domMal
+    ? '<span class="sellolegal">' + vDom.trabajados + '° dom</span>' : '';
   return '<li class="' + (a.trabajador_id ? (publicado ? 'publicado' : 'borrador') : 'pendiente')
        + (choca ? ' choca' : '') + (pisa ? ' sepisa' : '')
        + '" data-asigid="' + a.id + '"' + titulo + '>'
-       + quien + marcaPisa + marca
+       + quien + marcaPisa + marcaDom + marca
        + '<span class="hs">'
        + rangoHtml(a.hora_inicio, a.hora_fin, a.colacion_min) + '</span>'
        + botonQuitar(a) + '</li>';
@@ -1950,10 +2186,55 @@ function pintarBloqueSemana(a, abajo) {
                                             : 'ya no trabaja aquí';
   var pie = abajo === 'cargo' ? nombreCargo(a.cargo_id)
           : (sinDueno ? 'sin asignar' : nombreTrab(a.trabajador_id));
+
+  /* EL TURNO QUE CHOCA CON UNA AUSENCIA, TAMBIEN MARCADO EN LAS TABLAS.
+
+     Esto salio de mirar la pantalla despues de poner la banda, no de leer el
+     codigo. La lamina que Pedro aprobo decia «si la persona si tiene turno ese
+     dia, el turno ya sale marcado» — y era cierto SOLO en la vista Dia. Aqui
+     `pintarBloqueSemana()` no miraba las ausencias ni una vez, asi que Benja
+     aparecia el martes con su turno de Caja como cualquier otro dia estando
+     con licencia medica.
+
+     O sea el defecto que Pedro reporto —«aca no se puede ver que Joaquin esta
+     con permiso»— seguia vivo en el caso contrario al que arregle: no en el
+     dia sin turno, sino en el dia CON turno. Es la misma marca de la vista
+     Dia, con la misma regla: dia completo dice «no está», medio dia o unas
+     horas dicen «parte del día», porque esa persona si viene el resto. */
+  /* EL DOMINGO QUE SE PASA, MARCADO DONDE SE DECIDE.
+
+     La regla es MENSUAL y esta pantalla muestra 7 dias o 1, asi que la cuenta
+     NO sale de lo visible: `cargarDomingos()` fue a buscar el mes entero. Sin
+     eso, un domingo suelto siempre pareceria inocente y la app diria que todo
+     esta bien — el verde falso que esta regla vino a evitar.
+
+     Solo en domingo: avisar el martes de algo de domingos es ruido. */
+  var vDom = (!sinDueno && esDomingo(a.fecha))
+    ? vereditoDomingos(a.trabajador_id, a.fecha.slice(0, 7)) : null;
+  var domMal = !!(vDom && vDom.pasado);
+
+  var chocaAus = !sinDueno ? ausenciasDe(a.trabajador_id, a.fecha) : [];
+  var choca = chocaAus.length > 0;
+  var enteroAus = choca && chocaAus.some(function (x) { return unidadDe(x) === 'dia'; });
+  var partes = [estadoTexto(a, publicado)];
+  if (choca) {
+    partes.push(nombreTrab(a.trabajador_id) + ' tiene '
+      + chocaAus.map(function (x) { return nombreTipoAusencia(x.tipo_id); }).join(', ')
+      + ' ese día');
+  }
+  if (domMal) {
+    partes.push('Va en su ' + vDom.trabajados + '° domingo de ' + nombreMes(a.fecha.slice(0, 7))
+      + (vDom.art37
+          ? ' y este local no está exceptuado del descanso dominical (art. 37)'
+          : '. La ley pide que al menos ' + (vDom.total - vDom.tope)
+            + ' días de descanso caigan en domingo (art. 38 inc. 5)'));
+  }
+
   return '<li class="blq ' + colorCargo(a.cargo_id)
        + (sinDueno ? ' pendiente' : (publicado ? ' publicado' : ' borrador'))
+       + (choca ? ' choca' : '')
        + '" data-asigid="' + a.id + '"'
-       + ' title="' + esc(estadoTexto(a, publicado)) + '">'
+       + ' title="' + esc(partes.join(' · ')) + '">'
        + '<b>' + hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin) + '</b>'
        // Mismo formato H:MM que en todo el resto: dos maneras de escribir lo
        // mismo obligan a traducir mentalmente, y eso ya es un costo.
@@ -1962,9 +2243,43 @@ function pintarBloqueSemana(a, abajo) {
             ? ' class="sefue" title="' + esc(pie + ' ya no trabaja aquí'
                 + (quienEs.fecha_salida ? ' · su último día fue el '
                    + nombreDia(quienEs.fecha_salida) + ' ' + diaMes(quienEs.fecha_salida) : '')) + '"'
-            : '')
-       + '>' + esc(pie) + (seFue && abajo === 'persona' ? ' · ' + hasta : '')
-       + '</em>' + botonQuitar(a) + '</li>';
+            /* EL NOMBRE COMPLETO, EN EL TITLE DEL `<em>` — que es el elemento
+               que se recorta. El title del BLOQUE dice el estado («Publicado»,
+               «Pendiente»); meterle ahi tambien el nombre dejaria sin
+               explicacion la otra mitad, y de hecho rompio dos pruebas que
+               comprueban ese estado. Cada tooltip en el elemento del que
+               habla. */
+            : ' title="' + esc(pie) + '"')
+       /* TINTE AMBAR **MAS** LA PALABRA «revisar» — lo resolvio Pedro el 16-10
+          (msg 6881), y la gracia esta en cual palabra.
+
+          Yo habia probado con el texto de la vista Dia —«no está» y «parte del
+          día»— y las dos estiraban el bloque: detras del `</em>` caia en linea
+          propia (fila de 88 a 110 px) y dentro del `<em>` se partia igual
+          (107). Le mande las dos fotos diciendo que habia que elegir entre la
+          palabra y la igualdad de filas, y el salio por un tercer lado: una
+          palabra CORTA, que cabe en la misma linea. No habia que elegir.
+
+          Y «revisar» dice algo distinto de «no está»: no describe, PIDE UNA
+          ACCION — que es lo que corresponde, porque la app avisa y no decide.
+          La diferencia entre dia completo y medio dia no se pierde: va en el
+          tono del sello y, con todas las letras, en el `title`. */
+       /* EL SELLO VA DELANTE DEL NOMBRE, y la linea no se parte.
+
+          Con el sello detras, «Caja revisar» no cabia en una columna de dia y
+          se iba a una segunda linea: fila de 89 a 107 px. La linea se fija a
+          una sola (`nowrap` + puntos suspensivos) y el sello se pone PRIMERO,
+          para que lo que se recorte sea el nombre y nunca el aviso. El nombre
+          completo queda en el `title`. */
+       + '>'
+       + (choca ? '<span class="choque' + (enteroAus ? '' : ' parte') + '">'
+                + 'revisar</span> ' : '')
+       /* Si ademas se pasa de domingos, el numero: «4°» ocupa casi nada y dice
+          mas que otro «revisar» repetido al lado del primero. */
+       + (domMal ? '<span class="sellolegal">' + vDom.trabajados + '° dom</span> ' : '')
+       + esc(pie) + (seFue && abajo === 'persona' ? ' · ' + hasta : '')
+       + '</em>'
+       + botonQuitar(a) + '</li>';
 }
 
 /* LA MALLA GIRADA: filas de gente (o de cargos) y columnas de días.
@@ -1976,6 +2291,56 @@ function pintarBloqueSemana(a, abajo) {
 
    Las dos agrupaciones comparten el mismo dibujo y solo cambian en dos cosas:
    de dónde salen las filas y cómo se decide qué asignación va en cada una. */
+/* QUIEN FALTA, EN UNA BANDA ARRIBA DE LAS COLUMNAS DEL DIA.
+
+   Lo eligio Pedro el 16-10 (msg 6844: «a. una banda arriba para quedar igual
+   que en dia») frente a la alternativa de no mostrar la ausencia en Cargos.
+
+   EL HUECO QUE CIERRA, que lo encontro el: agrupada por cargos, las filas de
+   esta tabla son PUESTOS, asi que la ausencia de una persona no pertenece a
+   ninguna fila y hasta hoy desaparecia por completo — la malla dibujaba el dia
+   como si no faltara nadie.
+
+   POR QUE UNA BANDA Y NO UNA MARCA EN CADA CASILLA: la ausencia no es de un
+   cargo, es del dia. Repetirla en las casillas de todos los cargos que esa
+   persona podria hacer diria varias veces lo mismo y ademas seria falso — no
+   falta en tres puestos, falta ella.
+
+   VA ARRIBA por el mismo motivo que en la vista Dia: se reparte gente mirando
+   la parte de arriba, y un aviso que hay que ir a buscar llega tarde.
+
+   SOLO SI HAY ALGUNA en los dias que se miran: una franja que dice «no falta
+   nadie» ocupa sitio toda la semana para no decir nada. Es la misma regla que
+   `bandaAusencias()` ya aplicaba en el Dia.
+
+   Y SOLO AGRUPADA POR CARGOS: por personas, cada ausencia va dentro de la fila
+   de su dueño, asi que una banda ademas seria la misma cosa dicha dos veces. */
+function bandaAusFila(dias, hoy) {
+  if (S.agrupar === 'persona') return '';
+  var porDia = dias.map(function (f) { return ausenciasDelDia(f); });
+  if (!porDia.some(function (l) { return l.length > 0; })) return '';
+  return '<tr class="ausfila"><th class="rot">Quién falta</th>'
+    + porDia.map(function (lista, k) {
+        /* Las pastillas van en un DIV dentro de la celda, no sueltas.
+
+           Hacer `display:flex` sobre el propio `<td>` lo saca del layout de
+           tabla: la celda deja de pertenecer a su columna y todas las
+           ausencias de la semana terminaron apiladas en el lunes. Se vio
+           mirando la pantalla — la prueba contaba las ocho celdas y las ocho
+           estaban, solo que en el sitio equivocado. */
+        return '<td' + (dias[k] === hoy ? ' class="hoy"' : '') + '>'
+          + (lista.length
+              ? '<div class="auscol">'
+                + lista.map(function (a) { return pastillaAusencia(a, true); }).join('')
+                + '</div>'
+              : '')
+          + '</td>';
+      }).join('')
+    /* La celda del total va vacia a proposito: «quien falta» no son horas, y un
+       0 ahi se leeria como una suma de la columna de Horas. */
+    + '<td class="tot"></td></tr>';
+}
+
 function pintarGirada() {
   var dias = [];
   if (S.vista === 'dia') dias = [S.dia];
@@ -2017,7 +2382,18 @@ function pintarGirada() {
        la suma de las columnas. Dos totales que no cuadran entre si no se
        discuten: se dejan de mirar los dos. */
     + '<th class="tot">Horas</th>'
-    + '</tr></thead><tbody>';
+    /* LA BANDA VA EN EL THEAD, NO EN EL CUERPO.
+
+       Primero se puso como primera fila del `<tbody>` y rompio una invariante
+       que Pedro habia pedido antes: «las filas miden lo mismo, tenga turnos o
+       no esa persona» —la tabla se leia como un serrucho—. Hay una prueba que
+       lo vigila, y conto la banda como si fuera una persona mas.
+
+       Pero el arreglo no es callar la prueba: la banda **no es un dato**, es
+       cabecera. Puesta donde corresponde, el cuerpo vuelve a tener solo filas
+       de verdad y la invariante se cumple sola, sin excepciones que haya que
+       recordar. */
+    + '</tr>' + bandaAusFila(dias, hoy) + '</thead><tbody>';
 
   filas.forEach(function (fila) {
     var suma = 0;
@@ -2043,8 +2419,46 @@ function pintarGirada() {
       suyas.forEach(function (a) {
         if (a.trabajador_id) suma += horasNetas(a);
       });
+      /* LA AUSENCIA DE QUIEN NO TIENE TURNO ESE DIA.
+
+         Lo encontro Pedro: «aca no se puede ver que Joaquin esta con permiso».
+         Tenia razon y el defecto era de los peores: una casilla vacia NO
+         distinguia «no esta» de «no le tocaba», y son lo contrario uno del
+         otro. Tres dias se veian identicos cuando en uno habia permiso.
+
+         SOLO CUANDO NO HAY TURNO. Si lo hay, el bloque ya sale marcado («no
+         esta» o «parte del dia») desde que se hizo esa marca, y poner ademas
+         la pastilla diria dos veces lo mismo en la misma casilla.
+
+         `fila.id` puede ser nulo: la fila «Sin asignar» no es una persona y no
+         tiene ausencias que mirar. */
+      var ausCel = (S.agrupar === 'persona' && fila.id && !suyas.length)
+        ? ausenciasDe(fila.id, f) : [];
+
       html += '<td class="cel' + (f === hoy ? ' hoy' : '') + '"'
         + ' data-fila="' + esc(String(fila.id || '')) + '" data-fecha="' + f + '">'
+        /* UNA SOLA PASTILLA, Y UN «+N» SI HAY MAS.
+
+           Dibujarlas todas estiraba la fila —en la prueba, una casilla con dos
+           ausencias medio 92px dentro de una casilla de 88— y eso rompe «las
+           filas miden lo mismo», que Pedro pidio para que la tabla no se lea
+           como un serrucho.
+
+           No se recortan en silencio: el «+N» dice que hay mas y su `title`
+           las nombra. Lo que hace falta en esta tabla es saber QUE la persona
+           no esta; el detalle completo esta en la vista Dia, que es la que
+           existe para eso. */
+        + (ausCel.length
+            ? '<div class="auscel">'
+              + pastillaAusencia(ausCel[0], false)
+              + (ausCel.length > 1
+                  ? '<span class="ausmas" title="'
+                    + esc(ausCel.slice(1).map(function (a) {
+                        return nombreTipoAusencia(a.tipo_id); }).join(' · '))
+                    + '">+' + (ausCel.length - 1) + '</span>'
+                  : '')
+              + '</div>'
+            : '')
         + (suyas.length
             ? '<ul class="gente bloques">'
               + suyas.map(function (a) { return pintarBloqueSemana(a, abajo); }).join('')
@@ -2449,6 +2863,61 @@ $('#nHorario').addEventListener('change', function () {
   pintarMedia();
 });
 
+/* LAS FILAS PENDIENTES NACEN CON LO PEDIDO — opcion «a», elegida por Pedro el
+   16-10 (msg 6864) despues de verla dibujada.
+
+   EL PROBLEMA QUE RESUELVE, con sus palabras: la tarjeta decia «Falta 3» y
+   tenia UN solo boton «+ quien lo cubre». Habia que adivinar que se aprieta
+   tres veces, y nada en la pantalla lo decia.
+
+   POR QUE ESTO NO ES «A2», la propuesta que se retiro dos veces: la necesidad
+   sigue siendo UNA linea que pide 3. Lo que nace son ASIGNACIONES, que es la
+   capa donde va la gente. No se parte el pronostico en tres — se materializan
+   sus huecos. Por eso no reabre nada de lo discutido el 12 y el 13-10.
+
+   LO QUE NO SE ROMPE, verificado antes de escribirlo:
+   · `estadoNecesidad()` cuenta `cubren` solo con `trabajador_id`, asi que las
+     filas sin nadie NO tapan el hueco: la tarjeta sigue diciendo «Falta 3».
+   · `alinearNecesidad()` sale antes cuando la fila no tiene persona, asi que
+     una pendiente nunca encoge lo pedido.
+   · `huecosDeNecesidad()` si las cuenta, y debe: una pendiente YA ES el hueco
+     dibujado. Antes el mismo puesto salia dos veces, como barra rayada y como
+     bloque ambar encima.
+
+   UNA SOLA FUNCION PARA LOS DOS CAMINOS que crean necesidades —la tarjeta
+   nueva y la que se junta con una gemela—: si fueran dos, el dia que cambie
+   algo habria que acordarse de cambiarlo dos veces. */
+function nacerPendientes(nec, cuantos, quien) {
+  var nacidos = [], fallaron = 0, cadena = Promise.resolve();
+  for (var i = 0; i < cuantos; i++) {
+    (function (k) {
+      cadena = cadena.then(function () {
+        return DATOS.asignaciones.crear({
+          empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal,
+          necesidad_id: nec.id,
+          // Si eligio a alguien, esa persona ocupa la PRIMERA fila y el resto
+          // nacen sin nadie. Ponerla en las tres seria absurdo, y preguntar
+          // por los tres nombres convertiria un dialogo de diez segundos en
+          // un formulario.
+          trabajador_id: (k === 0 && quien) ? quien : null,
+          fecha: nec.fecha, hora_inicio: nec.hora_inicio, hora_fin: nec.hora_fin,
+          cargo_id: nec.cargo_id, origen: 'mano', tocado_a_mano: true,
+          estado: 'confirmada'
+        }).then(function (asig) {
+          DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', asig.id, 'crear', null, asig);
+          nacidos.push(asig);
+        }).catch(function () {
+          /* Una que falle no bota las demas: parar a la mitad dejaria la
+             tarjeta con dos huecos de tres y sin decir por que. Se cuentan y
+             se avisa al final. */
+          fallaron++;
+        });
+      });
+    }(i));
+  }
+  return cadena.then(function () { return { nacidos: nacidos, fallaron: fallaron }; });
+}
+
 $('#nCancelar').addEventListener('click', function () { $('#dlgNec').close(); });
 $('#nGuardar').addEventListener('click', function () {
   var d = {
@@ -2484,11 +2953,29 @@ $('#nGuardar').addEventListener('click', function () {
       .then(function () {
         DATOS.anotar(S.yo.empresa_id, S.yo.id, 'necesidad', gemela.id, 'editar',
                      { personas_requeridas: eran }, { personas_requeridas: total });
-        recordar('juntar con la de ' + nombreCargo(gemela.cargo_id), function () {
-          return DATOS.necesidades.guardar(gemela.id, { personas_requeridas: eran });
-        });
-        $('#dlgNec').close();
-        return recargarSemana();
+        /* TAMBIEN AQUI NACEN LAS FILAS, y solo las que se SUMAN.
+
+           Para quien lo usa, juntar con una gemela es el mismo gesto que crear
+           —pidio dos mas— y tiene que dar el mismo resultado. Si aqui no
+           nacieran, la misma accion daria dos pantallas distintas segun si ya
+           existia una tarjeta igual, que es justo la incoherencia que juntar
+           vino a quitar. */
+        return nacerPendientes(gemela, d.personas_requeridas,
+                               $('#nQuien') ? $('#nQuien').value : '')
+          .then(function (r) {
+            recordar('juntar con la de ' + nombreCargo(gemela.cargo_id), function () {
+              var v = r.nacidos.reduce(function (pr, asig) {
+                return pr.then(function () {
+                  return DATOS.asignaciones.borrar(asig.id).catch(function () {});
+                });
+              }, Promise.resolve());
+              return v.then(function () {
+                return DATOS.necesidades.guardar(gemela.id, { personas_requeridas: eran });
+              });
+            });
+            $('#dlgNec').close();
+            return recargarSemana();
+          });
       })
       .then(function () {
         avisoPlan('Ya había una igual en <b>' + esc(nombreCargo(gemela.cargo_id)) + '</b> '
@@ -2518,32 +3005,36 @@ $('#nGuardar').addEventListener('click', function () {
        que son —puestos que todavía no tienen a nadie— y se ven como «Falta 2».
        Poner a la misma persona tres veces sería absurdo, y preguntar por los
        tres nombres convertiría un diálogo de diez segundos en un formulario. */
-    var quien = necActual ? '' : ($('#nQuien') ? $('#nQuien').value : '');
-    if (!quien) return recargarSemana();
-    return DATOS.asignaciones.crear({
-      empresa_id: S.yo.empresa_id, sucursal_id: S.sucursal,
-      necesidad_id: fila.id, trabajador_id: quien,
-      fecha: fila.fecha, hora_inicio: fila.hora_inicio, hora_fin: fila.hora_fin,
-      cargo_id: fila.cargo_id, origen: 'mano', tocado_a_mano: true,
-      estado: 'confirmada'
-    }).then(function (asig) {
-      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', asig.id, 'crear', null, asig);
-      /* Deshacer se lleva las dos cosas, y el turno primero: si se fuera antes
-         lo pedido, el turno quedaría colgando de algo que ya no está. */
-      recordar('agregar ' + nombreTrab(quien) + ' en ' + nombreCargo(fila.cargo_id),
+    // Al EDITAR no nace nada: subir el numero de una tarjeta que ya existe es
+    // otro gesto, y bajarlo no puede borrar filas que quiza ya tienen gente.
+    if (necActual) return recargarSemana();
+
+    var quien = $('#nQuien') ? $('#nQuien').value : '';
+    var cuantos = fila.personas_requeridas || 1;
+    return nacerPendientes(fila, cuantos, quien).then(function (r) {
+      /* Deshacer se lleva TODO lo que nacio, y los turnos primero: si se fuera
+         antes lo pedido, quedarian colgando de algo que ya no esta. */
+      recordar(quien ? 'agregar ' + nombreTrab(quien) + ' en ' + nombreCargo(fila.cargo_id)
+                     : 'crear ' + nombreCargo(fila.cargo_id),
         function () {
-          return DATOS.asignaciones.borrar(asig.id).then(function () {
+          var v = r.nacidos.reduce(function (pr, asig) {
+            return pr.then(function () {
+              return DATOS.asignaciones.borrar(asig.id).catch(function () {});
+            });
+          }, Promise.resolve());
+          return v.then(function () {
             return DATOS.necesidades.borrar(fila.id).catch(function () {});
           });
         });
-      return recargarSemana();
-    }).catch(function (e) {
-      /* El pedido ya quedó creado: eso NO se deshace solo. Se dice qué pasó y
-         qué quedó, en vez de dejar media operación sin explicar. */
-      avisoPlan('Quedó creado lo que hace falta en <b>' + esc(nombreCargo(fila.cargo_id))
-        + '</b>, pero no se pudo poner a ' + esc(nombreTrab(quien)) + ': ' + esc(e.message)
-        + ' Ponlo con «+ quién lo cubre».');
-      return recargarSemana();
+      return recargarSemana().then(function () {
+        /* El pedido ya quedo creado: eso NO se deshace solo. Se dice que paso
+           y que quedo, en vez de dejar media operacion sin explicar. */
+        if (r.fallaron) {
+          avisoPlan('Quedó creado lo que hace falta en <b>' + esc(nombreCargo(fila.cargo_id))
+            + '</b>, pero <b>' + r.fallaron + '</b> de los ' + cuantos
+            + ' puestos no se pudieron abrir. Agrégalos con «+ quién lo cubre».');
+        }
+      });
     });
   }).catch(function (e) { aviso('#nMsg', e.message, 'bad'); });
 });
@@ -5087,7 +5578,34 @@ function abrirFicha(tipo, dato) {
                (dato && dato.trabajador_cargos || []).map(function (x) { return x.cargo_id; })) + '</div>'
            + '<p class="hint">Esto <b>sugiere</b> a quién ofrecerle un turno. Nunca impide nada.</p>'
            + '<label>En qué locales trabaja</label><div class="fld">' + marcas('fs', S.sucursales,
-               (dato && dato.trabajador_sucursales || []).map(function (x) { return x.sucursal_id; })) + '</div>';
+               (dato && dato.trabajador_sucursales || []).map(function (x) { return x.sucursal_id; })) + '</div>'
+           /* LAS EXCEPCIONES DEL DESCANSO DOMINICAL, aqui y no en el local.
+
+              Lo propuso Pedro (msg 6884) y la ley lo respalda: las tres son del
+              CONTRATO, no del negocio — dos personas del mismo local pueden
+              tener distinto. El local dice que reglas rigen; la ficha dice a
+              quien no le aplican.
+
+              Y esto NO es «apagar la ley que estorba», que era el riesgo que se
+              discutio el 15-10: un interruptor aqui no desactiva una regla,
+              DECLARA UN HECHO que la propia ley ya exceptua. Por eso va con el
+              articulo citado debajo y no suelto. */
+           + (S.hayRubro === false
+               ? '<p class="hint">⚠️ Todavía no se pueden marcar las excepciones del '
+                 + 'descanso dominical: falta pegar <code>arreglo-rubro-y-excepciones.sql</code>.</p>'
+               : '<label>Excepciones del descanso dominical</label><div class="fld">'
+                 + EXCEPCIONES.map(function (x) {
+                     return '<label style="font-weight:400;display:flex;gap:.4rem;align-items:center">'
+                       + '<input type="checkbox" style="width:auto" data-fx="' + x.campo + '"'
+                       + (dato && dato[x.campo] ? ' checked' : '') + '> '
+                       + esc(x.nombre) + ' <span class="hint" style="margin:0">· '
+                       + esc(x.pie) + '</span></label>';
+                   }).join('')
+                 + '</div>'
+                 + '<p class="hint">Con cualquiera marcada, <b>la regla de los dos domingos '
+                 + 'al mes no le aplica</b> y la app deja de avisar por esta persona. '
+                 + 'Son las tres excepciones del <b>art. 38 inc. 5</b> del Código del Trabajo. '
+                 + 'Márcalas solo si es verdad: marcar una que no lo es apaga el aviso.</p>');
   } else if (tipo === 'cargo') {
     $('#fTit').textContent = dato ? 'Cargo' : 'Nuevo cargo';
     campos = campo('text', 'fNombre', 'Nombre', dato ? dato.nombre : '');
@@ -5102,7 +5620,23 @@ function abrirFicha(tipo, dato) {
               «Establecimiento», como el Établissement de Skello (msg 5255).
               Tenerlo en los dos lados seria pedir que algún dia discrepen. */
            + '<p class="hint">El horario del local se edita en <b>Establecimiento</b>, '
-           + 'arriba en esta misma pantalla.</p>';
+           + 'arriba en esta misma pantalla.</p>'
+           /* QUE ES ESTE LOCAL. De esta sola declaracion cuelgan la regla de
+              los domingos, el recargo del 30 % y los feriados irrenunciables.
+              Se declara UNA VEZ y las reglas se siguen solas — no se encienden
+              reglas sueltas, que fue lo acordado el 15-10. */
+           + (S.hayRubro === false
+               ? '<p class="hint">⚠️ Todavía no se puede declarar el rubro: falta pegar '
+                 + '<code>arreglo-rubro-y-excepciones.sql</code>.</p>'
+               : '<label>¿Qué es este local?</label><div class="fld">'
+                 + opciones('fr', RUBROS, dato ? dato.rubro : null) + '</div>'
+                 + '<p class="hint">De esto dependen las reglas de <b>domingos y '
+                 + 'festivos</b>. Si eliges <b>Ninguna de estas</b>, la ley no te deja '
+                 + 'planificar domingos salvo fuerza mayor (<b>art. 37</b>).</p>'
+                 + campo('number', 'fDom', 'Domingos de descanso al mes',
+                         dato && dato.domingos_min ? dato.domingos_min : '')
+                 + '<p class="hint">Déjalo vacío para usar el <b>mínimo legal, que son 2</b>. '
+                 + 'Puedes <b>subirlo</b> si quieres ser más generoso; bajarlo, no.</p>');
   } else {
     $('#fTit').textContent = dato ? 'Tramo frecuente' : 'Nuevo tramo';
     campos = campo('text', 'fNombre', 'Nombre', dato ? dato.nombre : '')
@@ -5146,6 +5680,57 @@ function abrirFicha(tipo, dato) {
   $('#fVuelve').hidden = !(esTrab && dato.activo === false);
   $('#dlgFicha').showModal();
 }
+/* LOS RUBROS, EN UN SOLO SITIO.
+
+   Son los numerales del articulo 38 del Codigo del Trabajo, pero al usuario no
+   se le pregunta por numerales: se le pregunta QUE ES, en su idioma. El
+   numeral queda aqui al lado porque es lo que despues decide que reglas se
+   aplican — y porque un dia habra que citarlo en pantalla.
+
+   «ninguna» NO es relleno: una empresa no exceptuada del descanso dominical
+   NO PUEDE planificar domingos salvo fuerza mayor (art. 37), y hoy la app la
+   deja hacerlo sin decir nada. */
+/* EL MINIMO LEGAL DE DOMINGOS, en un solo sitio.
+
+   Art. 38 inc. 5 del Codigo del Trabajo: «al menos dos de los dias de descanso
+   en el respectivo mes calendario deberan necesariamente otorgarse en dia
+   domingo». Aplica a los numerales 2 y 7, no a todos.
+
+   Va como constante y no escrito en medio del codigo porque es una CIFRA LEGAL
+   y esas cambian: las 42 horas semanales pasan a 40 el 26-04-2028. Cuando una
+   de estas se mueva, tiene que haber un solo lugar que tocar. */
+var DOMINGOS_LEGAL = 2;
+
+var RUBROS = [
+  { id: 'comercio',  art38: 7, nombre: 'Comercio o servicios que atienden público' },
+  { id: 'hosteleria',art38: 7, nombre: 'Restaurante, hotel, bar o turismo' },
+  { id: 'continuo',  art38: 2, nombre: 'Proceso continuo (no se puede parar)' },
+  { id: 'ninguna',   art38: 0, nombre: 'Ninguna de estas' },
+];
+
+/* Las tres excepciones del art. 38 inc. 5, con el texto que va a leer alguien
+   que no es abogado. El `pie` es lo que las hace usables: «contrato de 30 dias
+   o menos» no dice nada; «plazo fijo corto» si. */
+var EXCEPCIONES = [
+  { campo: 'exc_contrato_corto',  nombre: 'Contrato de 30 días o menos',
+    pie: 'plazo fijo corto' },
+  { campo: 'exc_jornada_parcial', nombre: 'Jornada de 20 horas semanales o menos',
+    pie: 'media jornada o menos' },
+  { campo: 'exc_solo_finde',      nombre: 'Contratado solo para sábado, domingo o festivos',
+    pie: 'fin de semana' },
+];
+
+/* Una lista de opciones donde solo una vale. `marcas()` no sirve: ahi se puede
+   marcar varias, y el rubro es uno. */
+function opciones(pre, lista, elegido) {
+  return lista.map(function (x) {
+    return '<label style="font-weight:400;display:flex;gap:.4rem;align-items:center">'
+         + '<input type="radio" name="' + pre + '" style="width:auto" data-' + pre + '="'
+         + x.id + '"' + (x.id === elegido ? ' checked' : '') + '> '
+         + esc(x.nombre) + '</label>';
+  }).join('');
+}
+
 function campo(tipo, id, etiqueta, valor) {
   return '<div class="fld"><label for="' + id + '">' + esc(etiqueta) + '</label>'
        + '<input type="' + tipo + '" id="' + id + '" value="' + esc(valor) + '"></div>';
@@ -5229,6 +5814,31 @@ $('#fGuardar').addEventListener('click', function () {
           : DATOS.cargos.crear(emp, { nombre: nombre, color: libre });
   } else if (t === 'sucursal') {
     var s = { nombre: nombre, zona_horaria: ($('#fZona').value || 'America/Santiago').trim() };
+    /* Sin la columna no se manda nada: igual que con el horario por local, la
+       app funciona antes de que se pegue el arreglo. */
+    if (S.hayRubro) {
+      var elegido = $$('[data-fr]').filter(function (x) { return x.checked; })[0];
+      s.rubro = elegido ? elegido.dataset.fr : null;
+      /* EL MINIMO DEL LOCAL SOLO PUEDE SER MAYOR QUE EL LEGAL.
+
+         Es la regla que fijo Pedro (msg 6856): el local puede ser mas estricto
+         que la ley, nunca menos. Si escribe 1 no se guarda un 1 — se avisa y
+         se corta, porque guardar un minimo por debajo de la ley convertiria la
+         app en el sitio donde se apaga la regla que estorba.
+
+         Vacio no es cero: vacio significa «usa el legal». */
+      var dom = ($('#fDom') || {}).value;
+      if (dom !== '' && dom !== undefined && dom !== null) {
+        var nd = Number(dom);
+        if (!(nd > DOMINGOS_LEGAL)) {
+          return aviso('#fMsg', 'El mínimo legal son ' + DOMINGOS_LEGAL
+            + ' domingos al mes. Puedes exigir más, no menos: déjalo vacío para usar el legal.', 'bad');
+        }
+        s.domingos_min = nd;
+      } else {
+        s.domingos_min = null;
+      }
+    }
 
     p = d ? DATOS.sucursales.guardar(d.id, s) : DATOS.sucursales.crear(emp, s);
   } else if (t === 'horario') {
@@ -5243,6 +5853,13 @@ $('#fGuardar').addEventListener('click', function () {
     p = d ? DATOS.horarios.guardar(d.id, h) : DATOS.horarios.crear(emp, h);
   } else {
     var w = { nombre: nombre, valor_hora: Number($('#fValor').value) || null };
+    // Las tres excepciones, solo si la base ya tiene las columnas.
+    if (S.hayRubro) {
+      EXCEPCIONES.forEach(function (x) {
+        var c = $$('[data-fx]').filter(function (e) { return e.dataset.fx === x.campo; })[0];
+        w[x.campo] = !!(c && c.checked);
+      });
+    }
     p = (d ? DATOS.trabajadores.guardar(d.id, w) : DATOS.trabajadores.crear(emp, w))
       .then(function (fila) {
         var cs = $$('[data-fc]').filter(function (x) { return x.checked; }).map(function (x) { return x.dataset.fc; });

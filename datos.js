@@ -242,6 +242,7 @@
   var sucursales = {
     listar: function () { return rest('sucursales?select=*&order=nombre', null, 'leer los locales'); },
     hayHorario: probarHorarioLocal,
+    hayRubro: probarRubro,
     crear:  function (e, d) { return crear('sucursales', Object.assign({ empresa_id: e }, d), 'crear el local'); },
     guardar:function (id, d) { return editar('sucursales', id, d, 'guardar el local'); },
   };
@@ -293,6 +294,17 @@
     return rest('horarios?select=sucursal_id&limit=1', null, 'ver los atajos por local')
       .then(function () { hayHorarioPorLocal = true;  return true; })
       .catch(function () { hayHorarioPorLocal = false; return false; });
+  }
+
+  /* La misma sonda que para el horario por local: se LEE una columna y, si la
+     base no la tiene, la app sigue andando sin ese campo en vez de caerse.
+     Pedro pega los arreglos cuando puede, no cuando yo publico. */
+  var hayRubroLocal = null;
+  function probarRubro() {
+    if (hayRubroLocal !== null) return Promise.resolve(hayRubroLocal);
+    return rest('sucursales?select=rubro&limit=1', null, 'ver el rubro del local')
+      .then(function () { hayRubroLocal = true;  return true; })
+      .catch(function () { hayRubroLocal = false; return false; });
   }
 
   var horarios = {

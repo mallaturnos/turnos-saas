@@ -396,7 +396,12 @@ table.girada .gente { padding:0; }
 .gente.bloques .blq .dur { position:absolute; top:.3rem; right:.4rem;
   font-size:.7rem; color:var(--gris); }
 .gente.bloques .blq em { display:block; font-style:normal; font-size:.75rem;
-  color:var(--gris); margin-top:.05rem; padding-right:1.6rem; }
+  color:var(--gris); margin-top:.05rem; padding-right:1.6rem;
+  /* UNA SOLA LINEA, SIEMPRE. Antes envolvia, y cualquier cosa que no cupiera
+     —un nombre largo, o el sello «revisar»— estiraba el bloque y descuadraba
+     las filas. Lo que sobra se recorta con puntos suspensivos y el texto
+     entero queda en el `title`. */
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* La columna ya no crece para acomodar un nombre largo —ahora todas miden lo
    mismo—, así que el nombre tiene que saber cortarse en vez de desbordarse. */
 .gente.bloques .blq em, th.rot { overflow-wrap:anywhere; }
@@ -671,6 +676,52 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 .aus.parcial {
   background:repeating-linear-gradient(45deg,var(--amar),var(--amar) 5px,#f4ead3 5px,#f4ead3 10px);
 }
+/* ---------- quien falta, en la tabla girada ----------
+   Dos sitios, la MISMA pastilla `.aus` que la vista Dia: lo eligio Pedro asi
+   («para quedar igual que en dia») y la gracia es que no hay marca nueva.
+
+   1 · `.ausfila` — la banda de arriba, cuando se agrupa por CARGOS. Ahi las
+       filas son puestos y la ausencia no pertenece a ninguna, asi que va en
+       una franja propia sobre las columnas del dia.
+   2 · `.auscel` — dentro de la casilla, cuando se agrupa por PERSONAS y esa
+       persona no tiene turno ese dia. La fila ya dice quien es. */
+/* La banda crece con lo que haya: es cabecera y no tiene alto reservado.
+   OJO: el flex va en un DIV dentro de la celda y NUNCA en el `<td>`. Un `td`
+   con `display:flex` sale del layout de tabla y deja de alinearse con su
+   columna — todas las ausencias de la semana se apilaron en el lunes. */
+table.girada tr.ausfila td { vertical-align:top; }
+.auscol { display:flex; flex-direction:column; gap:.2rem; }
+/* La casilla de Personas, en cambio, SI tiene alto reservado (5.5rem) y no
+   puede estirarse: va en UNA linea — pastilla y, si hay mas, el «+N». */
+.auscel { display:flex; align-items:center; gap:.25rem; }
+.auscel .aus {
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+}
+.auscel .ausmas {
+  flex:0 0 auto; background:#7a5e18; color:#fff; border-radius:4px;
+  padding:0 .25rem; font-size:.68rem; cursor:help;
+}
+/* La franja se despega del cuerpo con su propio fondo y una linea mas marcada
+   abajo: sin eso se leia como una fila de datos mas, y no lo es. */
+table.girada tr.ausfila td, table.girada tr.ausfila th.rot {
+  background:#f2ebd9; border-bottom:2px solid var(--amar-borde);
+  vertical-align:top; padding-top:.3rem; padding-bottom:.3rem;
+}
+table.girada tr.ausfila th.rot {
+  font-size:.75rem; color:#7a5e18; font-weight:600;
+}
+/* El dia de hoy sigue marcandose, pero sin tapar el ambar de la banda: se
+   mezclan los dos y quedaba un verde sucio que no se entendia. */
+table.girada tr.ausfila td.hoy { background:#edeace; }
+table.girada tr.ausfila td.tot { background:#ece4d0; border-bottom:2px solid var(--amar-borde); }
+/* En una columna de dia la pastilla es mas angosta que en la tarjeta del Dia:
+   se achica la letra y se deja partir el nombre antes que desbordar la tabla. */
+table.girada tr.ausfila .aus, .auscel .aus {
+  font-size:.72rem; padding:.15rem .35rem; line-height:1.3;
+  overflow-wrap:anywhere;
+}
+/* La casilla de Personas: la pastilla manda arriba y no estira la casilla. */
+.auscel { margin-bottom:.15rem; }
 /* El turno que choca con una ausencia. Marca, no impedimento: se puede abrir y
    se puede dejar igual — lo que no puede es pasar desapercibido. */
 .gente li.choca { background:var(--amar); border-radius:5px; }
@@ -680,6 +731,38 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 }
 /* Media jornada no es lo mismo que no venir: se marca más suave. */
 .gente li .choque.parte { background:#b08a2e; }
+/* El turno que choca con una ausencia, EN LAS TABLAS: tinte, borde y el sello
+   «revisar». La palabra va en la linea del nombre y NO puede partirse — si se
+   parte, estira el bloque y rompe la igualdad de filas. Por eso es corta.
+   Hace falta mas especificidad que `.gente.bloques .blq`, que trae su propio
+   fondo. */
+.gente.bloques .blq em .choque { white-space:nowrap; font-size:.62rem; }
+.gente.bloques .blq.choca {
+  background:var(--amar); border-left-color:#b08a2e;
+}
+.gente.bloques .blq.choca:hover { background:#f7edd6; }
+
+/* ---------- avisos legales ----------
+   La banda va ARRIBA del mes por el mismo motivo que la de ausencias: un aviso
+   que hay que ir a buscar llega tarde. Ambar y no rojo: pasarse de domingos no
+   es un error del sistema, es algo que hay que mirar — y la app avisa, no
+   bloquea ni certifica. */
+.bandalegal {
+  background:var(--amar); border:1px solid var(--amar-borde); border-radius:9px;
+  padding:10px 13px; margin-bottom:.6rem; color:#6d5a2a; font-size:.85rem;
+}
+.bandalegal b { display:block; color:#5a4a1f; }
+.bandalegal em { display:block; font-style:normal; font-size:.78rem; margin-top:.15rem; }
+.bandalegal em i { font-style:italic; }
+/* El sello en la fila de quien se pasa. La misma palabra que eligio Pedro para
+   el turno que choca con una ausencia: «revisar» pide una accion en vez de
+   describir, que es lo que corresponde cuando decide el encargado. */
+.sellolegal {
+  display:inline-block; background:#7a5e18; color:#fff; border-radius:4px;
+  padding:0 .3rem; font-size:.62rem; margin-left:.35rem; cursor:help;
+  white-space:nowrap; letter-spacing:.02em;
+}
+table.mesb tr.domingomal th.rot { background:var(--amar); color:#6d5a2a; }
 
 /* El catálogo de permisos y ausencias. */
 .grupoTipo { margin:.9rem 0 .3rem; font-size:.82rem; color:var(--verde); }
@@ -867,7 +950,11 @@ table.girada tbody tr.ido td.cel .agregar-cel { display:none; }
    ver es el REPARTO —quién carga siempre la noche, dónde quedan huecos—, y eso
    se ve mejor con 31 columnas chicas que con siete grandes. El detalle de cada
    turno está en el `title`, y para trabajarlo se aprieta y se va a la semana. */
-.malla.mesb-wrap { overflow-x: auto; }
+/* BLOQUE, no rejilla. `.malla` es un grid de columnas para las tarjetas del
+   dia; dejandolo asi, la banda de domingos y la tabla del mes se repartian el
+   ancho como DOS COLUMNAS y la banda salia a la izquierda en vez de arriba.
+   Lo mismo que ya hace `.malla.girada`. */
+.malla.mesb-wrap { display:block; overflow-x: auto; }
 
 table.mesb { border-collapse: collapse; width: 100%; font-size: .78rem; }
 
