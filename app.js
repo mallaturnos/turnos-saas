@@ -1739,10 +1739,22 @@ function pintarMesB() {
           + ' · aprieta para ir a esa semana">'
           + 'S' + semanaISO(sem[0]) + '<i>h</i></th>';
   });
-  html += '<th class="tot">Mes</th></tr></thead><tbody>';
+  html += '<th class="tot">Mes</th><th class="costo">Costo</th></tr></thead><tbody>';
 
   var porSemana = semanas.map(function () { return 0; });
   var totalMes = 0;
+  /* EL COSTO DEL MES. `trabajadores.valor_hora` llevaba meses guardado y SIN
+     USAR —`grep` daba 2, las dos en el formulario—, y el Mes es donde cabe la
+     pregunta «cuanto me cuesta».
+
+     🔴 Y SOLO AHORA ES SEGURO CALCULARLO. Hasta ayer las horas eran BRUTAS, y
+     multiplicar horas brutas por el valor hora habria dado un costo INFLADO en
+     media hora por turno. Desde que la colacion se descuenta, el numero se
+     puede mirar. Ese orden estaba anotado desde el 15-10 y se cumplio.
+
+     NO ES UNA LIQUIDACION, y se dice en pantalla: no lleva el recargo del 30 %
+     del domingo ni las horas extra. Es lo que cuesta lo PLANIFICADO. */
+  var costoMes = 0, faltaValor = false;
 
   filas.forEach(function (fila) {
     /* La marca va en la fila de la persona: la banda dice que hay lio, esta
@@ -1864,6 +1876,26 @@ function pintarMesB() {
     });
     html += '<td class="tot">'
           + (mesHoras ? '<b>' + numero(mesHoras) + ' h</b>' : '<span class="cero">—</span>')
+          + '</td>';
+    /* El costo se suma turno por turno y con el valor de QUIEN lo hace, no con
+       el de la fila: asi vale igual agrupado por personas que por cargos. */
+    var costoFila = 0, sinValor = false;
+    todos.forEach(function (d) {
+      S.asignaciones.forEach(function (a) {
+        if (a.fecha !== d || deQuien(a) !== fila.id || !a.trabajador_id) return;
+        var w = S.trabajadores.filter(function (x) { return x.id === a.trabajador_id; })[0];
+        if (!w || !w.valor_hora) { sinValor = true; return; }
+        costoFila += horasNetas(a) * Number(w.valor_hora);
+      });
+    });
+    costoMes += costoFila;
+    if (sinValor) faltaValor = true;
+    /* Si a alguien le falta el valor hora NO se pone un cero: un cero se lee
+       como «no cuesta nada». Se pone una raya y abajo se dice por que. */
+    html += '<td class="costo">'
+          + (costoFila ? '$ ' + numero(Math.round(costoFila))
+                       : '<span class="cero">—</span>')
+          + (sinValor ? '<span class="sindueno">sin valor hora</span>' : '')
           + '</td></tr>';
     totalMes += mesHoras;
   });
@@ -1877,7 +1909,19 @@ function pintarMesB() {
   });
   html += '<td class="tot">'
         + (totalMes ? '<b>' + numero(totalMes) + ' h</b>' : '<span class="cero">—</span>')
-        + '</td></tr></tfoot></table>';
+        + '</td>'
+        + '<td class="costo">'
+        + (costoMes ? '<b>$ ' + numero(Math.round(costoMes)) + '</b>'
+                    : '<span class="cero">—</span>')
+        + '</td></tr></tfoot></table>'
+        /* Decir QUE es y QUE no es, al lado del numero. Un costo sin esta
+           linea se lee como una liquidacion, y no lo es. */
+        + '<p class="hint">El costo es <b>lo planificado</b>: horas netas por el valor hora '
+        + 'de cada persona. <b>No es una liquidación</b> — no lleva el recargo del domingo '
+        + 'ni las horas extra.'
+        + (faltaValor ? ' ⚠️ Hay gente <b>sin valor hora</b> en su ficha, así que el total '
+            + 'se queda corto.' : '')
+        + '</p>';
 
   var m = $('#malla');
   m.className = 'malla mesb-wrap';

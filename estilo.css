@@ -764,6 +764,16 @@ table.girada tr.ausfila .aus, .auscel .aus {
 }
 table.mesb tr.domingomal th.rot { background:var(--amar); color:#6d5a2a; }
 
+/* La columna de costo del Mes. Verde como las cifras de dinero del resto, y
+   mas angosta que la de horas: es un numero que se mira, no se compara. */
+table.mesb th.costo, table.mesb td.costo {
+  background:#eef3f2; color:var(--verde); font-weight:600; font-size:.78rem;
+  text-align:right; padding-right:.5rem; white-space:nowrap; min-width:5.5rem;
+}
+table.mesb thead th.costo { background:#e4edeb; color:var(--gris); font-weight:600; }
+table.mesb tfoot td.costo { background:#e2ebe8; }
+table.mesb td.costo .sindueno { display:block; font-weight:600; font-size:.62rem; }
+
 /* La ausencia dentro de la celda del Mes. No cabe una banda arriba con 30
    columnas, asi que va donde esta el hueco — que es lo que hace Skello. */
 .mini.ausmes {
@@ -1058,7 +1068,22 @@ table.mesb .tot {
   width: 4.2rem; min-width: 4.2rem; white-space: nowrap;
   text-align: right; padding: .25rem .4rem;
   border-bottom: 1px solid var(--borde); font-variant-numeric: tabular-nums;
+  /* 🔴 PEGADAS A LA DERECHA, igual que el nombre lo esta a la izquierda.
+
+     El mes mide cinco semanas y la tabla se desplaza: el total del mes y el
+     costo quedaban FUERA DE PANTALLA y habia que arrastrar para verlos. Toda
+     la mejora del Mes era que contestara «voy bien»; si la respuesta hay que
+     ir a buscarla, no la contesta. Se vio mirando la captura, no midiendo —
+     las pruebas decian que la columna existia, y existia. */
+  position: sticky; right: 5.5rem; z-index: 1;
+  /* Fondo OPACO, o los dias se ven por debajo al desplazar. Es el fallo
+     clasico de una columna pegada y no se nota hasta que se arrastra. */
+  background: var(--blanco);
 }
+table.mesb tbody tr:hover .tot { background: var(--blanco); }
+table.mesb th.costo, table.mesb td.costo { position: sticky; right: 0; z-index: 1; }
+/* Una linea que separe lo fijo de lo que se desplaza por debajo. */
+table.mesb .tot { border-left: 1px solid var(--borde); }
 table.mesb .cero { color: var(--gris); }
 table.mesb tfoot td, table.mesb tfoot th { border-top: 2px solid var(--borde); }
 
