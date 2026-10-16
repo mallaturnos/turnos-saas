@@ -764,6 +764,16 @@ table.girada tr.ausfila .aus, .auscel .aus {
 }
 table.mesb tr.domingomal th.rot { background:var(--amar); color:#6d5a2a; }
 
+/* La diferencia contra la jornada pactada. Azul «le falta», rojo «se paso»:
+   no son bueno y malo, son dos problemas distintos — uno es gente ociosa y el
+   otro son horas extra que pagar. */
+.mesb .cont .dif {
+  display:block; font-size:.68rem; font-weight:700; letter-spacing:.01em;
+  font-variant-numeric: tabular-nums;
+}
+.mesb .cont .dif.falta { color:#2b5f9a; }
+.mesb .cont .dif.sobra { color:var(--rojo); }
+
 /* La columna de costo del Mes. Verde como las cifras de dinero del resto, y
    mas angosta que la de horas: es un numero que se mira, no se compara. */
 table.mesb th.costo, table.mesb td.costo {

@@ -252,8 +252,19 @@
     crear:  function (e, d) { return crear('cargos', Object.assign({ empresa_id: e }, d), 'crear el cargo'); },
     guardar:function (id, d) { return editar('cargos', id, d, 'guardar el cargo'); },
   };
+  /* Misma sonda que para el rubro: se LEE la columna y si la base no la tiene
+     la app sigue andando sin ese campo. Pedro pega los arreglos cuando puede. */
+  var hayJornadaPactada = null;
+  function probarJornada() {
+    if (hayJornadaPactada !== null) return Promise.resolve(hayJornadaPactada);
+    return rest('trabajadores?select=jornada_pactada&limit=1', null, 'ver la jornada pactada')
+      .then(function () { hayJornadaPactada = true;  return true; })
+      .catch(function () { hayJornadaPactada = false; return false; });
+  }
+
 
   var trabajadores = {
+    hayJornada: probarJornada,
     listar: function () {
       /* SE TRAEN TODOS, también los que ya no trabajan aquí.
 

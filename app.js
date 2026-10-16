@@ -525,6 +525,11 @@ function cargarTodo(mia) {
         if (S.hayRubro !== hay) { S.hayRubro = hay; pintarConfig(); }
       });
     }
+    if (DATOS.trabajadores.hayJornada) {
+      DATOS.trabajadores.hayJornada().then(function (hay) {
+        if (S.hayJornada !== hay) { S.hayJornada = hay; pintarMalla(); }
+      });
+    }
     S.yoTrabajador = S.trabajadores.filter(function (p) { return p.usuario_id === S.yo.id; })[0] || null;
     $('#hEmpresa').textContent = 'Turnos';
     $('#hQuien').textContent = S.yo.email;
@@ -1866,8 +1871,34 @@ function pintarMesB() {
          Y DEBAJO, cuantos van sin dueño. Hace falta porque las horas NO lo
          delatan: un turno sin persona no suma horas, asi que el contador baja
          y nada dice por que. */
+      /* LA DIFERENCIA CONTRA SU CONTRATO, que es lo que convierte el total
+         en una respuesta. 34 h no dice nada; «34 h, le falta 1» si.
+
+         VA POR SEMANA Y NO POR MES, y no es un detalle: la jornada pactada es
+         SEMANAL —asi la escribe la ley— y comparar un mes contra cuatro
+         semanas de contrato daria un «le falta» falso a quien entro a mitad
+         de mes. Cada columna de semana cuenta sus siete dias completos,
+         incluidos los que caen en el mes vecino, asi que la comparacion es
+         valida en todas.
+
+         Solo agrupado por PERSONAS: un cargo no tiene contrato. */
+      var dif = '';
+      if (S.hayJornada && S.agrupar === 'persona' && fila.id) {
+        var w = S.trabajadores.filter(function (x) { return x.id === fila.id; })[0];
+        var pact = w && w.jornada_pactada ? Number(w.jornada_pactada) : 0;
+        if (pact > 0) {
+          var d = semHoras - pact;
+          /* Medio decimal de margen: con horas de 7,5 un redondeo haria
+             aparecer un «+0,1» que no significa nada y que se deja de mirar. */
+          if (Math.abs(d) >= 0.05) {
+            dif = '<span class="dif ' + (d < 0 ? 'falta' : 'sobra') + '">'
+                + (d < 0 ? '− ' : '+ ') + numero(Math.abs(d)) + '</span>';
+          }
+        }
+      }
       html += '<td class="cont">'
             + (semHoras ? numero(semHoras) + ' h' : '<span class="cero">—</span>')
+            + dif
             + (semSinDueno ? '<span class="sindueno">' + semSinDueno
                  + ' sin dueño</span>' : '')
             + '</td>';
@@ -5661,6 +5692,21 @@ function abrirFicha(tipo, dato) {
     $('#fTit').textContent = dato ? 'Trabajador' : 'Nuevo trabajador';
     campos = campo('text', 'fNombre', 'Nombre', dato ? dato.nombre : '')
            + campo('number', 'fValor', 'Valor hora (opcional)', dato ? (dato.valor_hora || '') : '')
+           /* LA JORNADA PACTADA. Sin esto el total del mes es una suma que no
+              se compara con nada: 133 horas no es mucho ni poco. Y el dato
+              paga TRES VECES — la diferencia en el Mes, la excepcion de
+              domingos de «20 h semanales o menos», y las horas extra, que por
+              el art. 30 se cuentan contra lo pactado si es menor que el tope
+              legal. */
+           + (S.hayJornada === false
+               ? '<p class="hint">⚠️ Todavía no se puede guardar la jornada pactada: '
+                 + 'falta pegar <code>arreglo-jornada-pactada.sql</code>.</p>'
+               : campo('number', 'fJornada', 'Jornada semanal pactada (horas)',
+                       dato && dato.jornada_pactada ? dato.jornada_pactada : '')
+                 + '<p class="hint">Cuántas horas le contrataste por semana. Con esto el Mes '
+                 + 'te dice <b>si le falta o se pasó</b>, en vez de solo cuántas lleva. '
+                 + '<b>Déjalo vacío si no lo sabes</b>: mejor sin diferencia que con una '
+                 + 'inventada.</p>')
            + '<label>Cargos que hace</label><div class="fld">' + marcas('fc', S.cargos,
                (dato && dato.trabajador_cargos || []).map(function (x) { return x.cargo_id; })) + '</div>'
            + '<p class="hint">Esto <b>sugiere</b> a quién ofrecerle un turno. Nunca impide nada.</p>'
@@ -5946,6 +5992,12 @@ $('#fGuardar').addEventListener('click', function () {
     p = d ? DATOS.horarios.guardar(d.id, h) : DATOS.horarios.crear(emp, h);
   } else {
     var w = { nombre: nombre, valor_hora: Number($('#fValor').value) || null };
+    // Vacio es NULL y no cero: «no me lo han dicho» no es «cero horas».
+    if (S.hayJornada) {
+      var jp = ($('#fJornada') || {}).value;
+      w.jornada_pactada = (jp === '' || jp === undefined || jp === null)
+        ? null : Number(jp);
+    }
     // Las tres excepciones, solo si la base ya tiene las columnas.
     if (S.hayRubro) {
       EXCEPCIONES.forEach(function (x) {
