@@ -5960,6 +5960,88 @@ function atajosHuerfanos() {
    con sus datos, y comparar dos es mirar. De paso se corta un acoplamiento
    feo que yo mismo habia metido: cambiar de local aqui ya no cambia lo que se
    esta planificando. */
+/* LAS REGLAS LEGALES QUE RIGEN EN ESTE LOCAL.
+
+   Revisadas punto por punto con Pedro el 16-10 (msgs 6974-6992). Cuatro
+   decisiones suyas mandan aqui:
+
+   1. DOS FAMILIAS SEPARADAS. Las de la ley aplican siempre; las del rubro
+      aparecen y desaparecen al cambiarlo. Revueltas, cambiar de rubro se veria
+      como filas que se van solas, sin motivo visible.
+   2. SIN INTERRUPTORES, por ahora. El «Avisar / Bloquear» llega con los
+      perfiles —el dueño configura, el encargado opera— porque sin perfiles el
+      que opera podria devolver Bloquear a Avisar y el candado seria decorativo.
+   3. Y por eso MISMO no hace falta columna nueva: sin interruptor no hay nada
+      que guardar. La revision ahorro un SQL en vez de agregarlo.
+   4. SOLO SE MARCA COMO ACTIVA LA QUE DE VERDAD FUNCIONA. Las demas van en
+      gris, sin control. Un control que no controla nada promete una app que no
+      existe — ya paso con el generador sin boton y con el Mes que decia «aqui
+      se ven los huecos» sin poder dibujarlos. */
+var REGLAS_LEY = [
+  { n: 'Máximo 42 horas semanales',        art: 'art. 22', activa: false },
+  { n: 'Máximo 10 horas diarias',          art: 'art. 28', activa: false },
+  { n: 'Máximo 2 horas extra al día',      art: 'art. 31', activa: false },
+  { n: 'Menores de 18: jornada y noche',   art: 'art. 14 y 18', activa: false },
+];
+
+function reglasDelRubro(rubro) {
+  if (rubro === 'ninguna') return [
+    // El tope es CERO domingos: una empresa no exceptuada del descanso
+    // dominical no puede distribuir la jornada incluyendo domingos salvo
+    // fuerza mayor. Esta SI funciona: `vereditoDomingos` la contempla.
+    { n: 'No se pueden planificar domingos', art: 'art. 37', activa: true },
+  ];
+  if (rubro === 'comercio') return [
+    { n: 'Dos domingos de descanso al mes', art: 'art. 38', activa: true },
+    { n: 'Siete domingos al año adicionales', art: 'art. 38 bis', activa: false },
+    { n: 'Recargo del 30 % por domingo',    art: 'art. 38', activa: false },
+    { n: 'Feriados irrenunciables',         art: 'ley 19.973', activa: false },
+  ];
+  if (rubro === 'hosteleria') return [
+    { n: 'Dos domingos de descanso al mes', art: 'art. 38', activa: true },
+    { n: '33 horas de descanso antes del día libre', art: 'art. 36', activa: false },
+    { n: 'Interrupción de jornada hasta 4 horas',    art: 'art. 34 bis', activa: false },
+  ];
+  if (rubro === 'continuo') return [
+    { n: 'Dos domingos de descanso al mes', art: 'art. 38', activa: true },
+    { n: 'Exceptuado de partir la jornada para colación', art: 'art. 34', activa: false },
+  ];
+  return [];
+}
+
+function filaRegla(r) {
+  return '<div class="regla' + (r.activa ? ' viva' : '') + '">'
+    + '<b>' + esc(r.n) + '</b><span class="art">' + esc(r.art) + '</span>'
+    + '<span class="espacio"></span>'
+    + '<span class="estado">' + (r.activa ? 'Avisando' : 'en camino') + '</span>'
+    + '</div>';
+}
+
+function bloqueReglas(loc) {
+  if (S.hayRubro === false) return '';
+  var delRubro = reglasDelRubro(loc.rubro);
+  var nombreRubro = (RUBROS.filter(function (x) { return x.id === loc.rubro; })[0] || {}).nombre;
+  return '<div class="sep-tramos">Reglas legales de este local</div>'
+    + (loc.rubro
+        ? ''
+        : '<p class="hint">Dinos arriba <b>qué es este local</b> y aquí verás qué reglas '
+          + 'le tocan.</p>')
+    + '<div class="reglas">'
+      + '<div class="grupo">Siempre, por ley</div>'
+      + REGLAS_LEY.map(filaRegla).join('')
+      + (loc.rubro
+          ? '<div class="grupo">Porque es <b>' + esc(nombreRubro || loc.rubro) + '</b></div>'
+            + delRubro.map(filaRegla).join('')
+          : '')
+    + '</div>'
+    /* Se dice QUE hace y QUE no hace. «No certifica cumplimiento» no es
+       modestia: la app no conoce los contratos ni las resoluciones de la
+       Direccion del Trabajo, y prometerlo seria lo unico peor que no avisar. */
+    + '<p class="hint">Las que dicen <b>Avisando</b> ya funcionan; las demás están '
+      + 'en camino y aparecerán solas. La app <b>avisa, no bloquea</b>, y '
+      + '<b>no certifica cumplimiento</b>: no conoce los contratos de cada persona.</p>';
+}
+
 function tarjetaLocal(loc) {
   var falta = S.hayHorarioLocal === false;
   var sinHora = !loc.abre || !loc.cierra;
@@ -6009,6 +6091,7 @@ function tarjetaLocal(loc) {
           + '</div>'
           + '<p class="hint">Vacío usa el <b>mínimo legal, que son 2</b>. Puedes '
           + '<b>subirlo</b>; bajarlo, no.</p>')
+    + bloqueReglas(loc)
     /* LOS TRAMOS, DENTRO DE SU LOCAL (opcion C), y de UN solo local.
        Ya no hay marca de «compartido»: no hay compartidos. */
     + '<div class="sep-tramos">Tramos frecuentes de este local</div>'

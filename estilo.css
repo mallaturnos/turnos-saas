@@ -764,6 +764,36 @@ table.girada tr.ausfila .aus, .auscel .aus {
 }
 table.mesb tr.domingomal th.rot { background:var(--amar); color:#6d5a2a; }
 
+/* ---------- las reglas legales del local ----------
+   Lista de LECTURA, sin controles: el «Avisar / Bloquear» llega con los
+   perfiles. Lo que esta vivo se distingue de lo que viene en camino, porque
+   mezclarlos seria prometer lo que no existe. */
+.reglas { border:1px solid var(--borde); border-radius:8px; overflow:hidden;
+  background:var(--blanco); margin-bottom:.4rem; }
+.reglas .grupo {
+  background:#f4f1ea; color:var(--gris); font-size:.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.07em; padding:.35rem .6rem;
+}
+.reglas .grupo b { color:var(--tinta); text-transform:none; letter-spacing:0; }
+.reglas .regla {
+  display:flex; align-items:center; gap:.4rem; padding:.4rem .6rem;
+  border-top:1px solid #f0efea; font-size:.82rem; color:#9a958a;
+}
+.reglas .regla b { font-weight:500; }
+/* La que de verdad funciona se lee en negro; las demas, apagadas. */
+.reglas .regla.viva { color:var(--tinta); }
+.reglas .regla.viva b { font-weight:600; }
+.reglas .art {
+  background:var(--verde-claro); color:var(--verde); border-radius:4px;
+  padding:0 .3rem; font-size:.66rem; font-weight:600; white-space:nowrap;
+}
+.reglas .regla:not(.viva) .art { background:#f2f1ec; color:#a9a498; }
+.reglas .estado { font-size:.68rem; color:#a9a498; white-space:nowrap; }
+.reglas .regla.viva .estado {
+  background:var(--amar); border:1px solid var(--amar-borde); color:#7a5e18;
+  border-radius:4px; padding:0 .35rem; font-weight:600;
+}
+
 /* El catálogo de permisos y ausencias. */
 .grupoTipo { margin:.9rem 0 .3rem; font-size:.82rem; color:var(--verde); }
 .lista .item.apagado { opacity:.5; }
