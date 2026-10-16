@@ -5724,9 +5724,15 @@ var EXCEPCIONES = [
    marcar varias, y el rubro es uno. */
 function opciones(pre, lista, elegido) {
   return lista.map(function (x) {
+    /* ⚠️ EL VALOR VA EN `value`, NO EN UN `data-`.
+
+       En la tarjeta del local el prefijo lleva el id dentro (`r_<uuid>`), y un
+       `data-r_a1b2-c3d4` NO se lee como `dataset['r_a1b2-c3d4']`: el navegador
+       convierte los guiones a mayusculas y la clave deja de coincidir. Habria
+       fallado en silencio, guardando siempre `null`. */
     return '<label style="font-weight:400;display:flex;gap:.4rem;align-items:center">'
-         + '<input type="radio" name="' + pre + '" style="width:auto" data-' + pre + '="'
-         + x.id + '"' + (x.id === elegido ? ' checked' : '') + '> '
+         + '<input type="radio" name="' + pre + '" style="width:auto" value="'
+         + esc(x.id) + '"' + (x.id === elegido ? ' checked' : '') + '> '
          + esc(x.nombre) + '</label>';
   }).join('');
 }
@@ -5817,8 +5823,8 @@ $('#fGuardar').addEventListener('click', function () {
     /* Sin la columna no se manda nada: igual que con el horario por local, la
        app funciona antes de que se pegue el arreglo. */
     if (S.hayRubro) {
-      var elegido = $$('[data-fr]').filter(function (x) { return x.checked; })[0];
-      s.rubro = elegido ? elegido.dataset.fr : null;
+      var elegido = $$('input[name="fr"]').filter(function (x) { return x.checked; })[0];
+      s.rubro = elegido ? elegido.value : null;
       /* EL MINIMO DEL LOCAL SOLO PUEDE SER MAYOR QUE EL LEGAL.
 
          Es la regla que fijo Pedro (msg 6856): el local puede ser mas estricto
@@ -5975,6 +5981,34 @@ function tarjetaLocal(loc) {
             ? '<p class="hint"><span class="avisito">sin horario</span> '
               + 'La franja del día se deduce de los turnos.</p>'
             : ''))
+    /* 🔴 QUE ES ESTE LOCAL — EN LA TARJETA, que es donde se edita de verdad.
+
+       Esto lo encontro Pedro usandolo (msg 6953): *«para lo que ya tenemos no
+       nos deja»*, con la foto de «Nuevo local» donde el campo SI salia.
+
+       Y el fallo es mio por probar la pieza suelta en vez de la combinada: lo
+       puse en `abrirFicha('sucursal')` y lo di por bueno porque, abriendo ese
+       dialogo a mano, se veia. Pero ese dialogo **solo se usa para CREAR**. Un
+       local que ya existe se edita aqui, en su tarjeta, y aqui no estaba.
+       Resultado: funcionaba para el local que no tienes y no para el que si.
+
+       Va en los dos sitios a proposito —se crea y se edita— y por eso el
+       catalogo `RUBROS` vive en una sola variable: dos listas se habrian
+       separado. */
+    + (S.hayRubro === false
+        ? '<p class="hint">⚠️ No se puede declarar el rubro todavía: falta pegar '
+          + '<code>arreglo-rubro-y-excepciones.sql</code>.</p>'
+        : '<div class="sep-tramos">Qué es este local</div>'
+          + '<div class="fld">' + opciones('r_' + loc.id, RUBROS, loc.rubro) + '</div>'
+          + '<p class="hint">De esto dependen las reglas de <b>domingos y festivos</b>. '
+          + 'Con <b>Ninguna de estas</b>, la ley no te deja planificar domingos salvo '
+          + 'fuerza mayor (<b>art. 37</b>).</p>'
+          + '<div class="fldrow">'
+          + campo('number', 'dm_' + loc.id, 'Domingos de descanso al mes',
+                  loc.domingos_min ? loc.domingos_min : '')
+          + '</div>'
+          + '<p class="hint">Vacío usa el <b>mínimo legal, que son 2</b>. Puedes '
+          + '<b>subirlo</b>; bajarlo, no.</p>')
     /* LOS TRAMOS, DENTRO DE SU LOCAL (opcion C), y de UN solo local.
        Ya no hay marca de «compartido»: no hay compartidos. */
     + '<div class="sep-tramos">Tramos frecuentes de este local</div>'
@@ -6005,6 +6039,20 @@ document.addEventListener('click', function (ev) {
     if (S.hayHorarioLocal) {
       d.abre   = $('#a_' + id).value || null;
       d.cierra = $('#c_' + id).value || null;
+    }
+    if (S.hayRubro) {
+      var ele = $$('input[name="r_' + id + '"]').filter(function (x) { return x.checked; })[0];
+      d.rubro = ele ? ele.value : null;
+      // El mismo freno que en la ficha: mas estricto que la ley si, menos no.
+      var dm = ($('#dm_' + id) || {}).value;
+      if (dm !== '' && dm !== undefined && dm !== null) {
+        var ndm = Number(dm);
+        if (!(ndm > DOMINGOS_LEGAL)) {
+          return alert('El mínimo legal son ' + DOMINGOS_LEGAL + ' domingos al mes. '
+            + 'Puedes exigir más, no menos: déjalo vacío para usar el legal.');
+        }
+        d.domingos_min = ndm;
+      } else { d.domingos_min = null; }
     }
     ev.target.disabled = true;
     return DATOS.sucursales.guardar(id, d).then(cargarTodo)
