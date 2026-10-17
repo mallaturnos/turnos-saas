@@ -5616,9 +5616,14 @@ document.addEventListener('keydown', function (ev) {
 // botón que da miedo apretar, y entonces no se usa aunque funcione. Se mira
 // qué turno existe ya para cada asignación y se crea solo la diferencia.
 // ====================================================================
-function paraPublicar() {
+/* `semanas` es opcional: una lista de lunes. Sin ella se publica todo lo
+   cargado, que es lo de siempre en Semana y en Dia. Con ella —solo desde el
+   Mes— se publica lo que el usuario marco. */
+function paraPublicar(semanas) {
   return S.asignaciones.filter(function (a) {
-    return a.trabajador_id && a.estado !== 'anulada';
+    if (!a.trabajador_id || a.estado === 'anulada') return false;
+    if (!semanas || !semanas.length) return true;
+    return semanas.indexOf(lunesDe(a.fecha)) >= 0;
   });
 }
 function resumenPublicar() {
@@ -5639,10 +5644,56 @@ function resumenPublicar() {
   return p.join(' · ');
 }
 
+/* Desde el Mes se pregunta ANTES de publicar; desde Semana o Dia no hay nada
+   que elegir y se publica directo. El dialogo no es un paso de mas: es la
+   diferencia entre avisarle a la gente de la semana que cerraste y avisarle de
+   cinco semanas que todavia vas a cambiar. */
 $('#btnPublicar').addEventListener('click', function () {
-  var listas = paraPublicar();
+  if (S.vista === 'mes') return abrirPublicar();
+  publicarAhora(this, null);
+});
+
+function abrirPublicar() {
+  var r = rangoVista(), semanas = [], f = r.desde;
+  while (f <= r.hasta) { semanas.push(f); f = masDias(f, 7); }
+  var mes = S.lunes.slice(0, 7);
+  $('#pubSemanas').innerHTML = semanas.map(function (l) {
+    var pend = paraPublicar([l]).filter(function (a) {
+      return !S.turnos.some(function (t) {
+        return t.asignacion_id === a.id && t.estado === 'publicado'
+            && hhmm(t.hora_inicio) === hhmm(a.hora_inicio)
+            && hhmm(t.hora_fin) === hhmm(a.hora_fin)
+            && t.trabajador_id === a.trabajador_id; });
+    }).length;
+    /* Las semanas del mes vecino nacen DESMARCADAS: se ven en la pantalla
+       porque el mes se dibuja completo, pero no son el mes que se esta
+       mirando, y publicarlas sin querer es justo el accidente que esto viene
+       a evitar. */
+    var delMes = l.slice(0, 7) === mes || masDias(l, 6).slice(0, 7) === mes;
+    return '<label class="dia' + (pend ? '' : ' vacia') + '">'
+      + '<input type="checkbox" data-pubsem="' + l + '"'
+      + (delMes ? ' checked' : '') + '> '
+      + 'Semana ' + semanaISO(l) + ' <span class="sub">' + diaMes(l)
+      + ' al ' + diaMes(masDias(l, 6)) + ' · '
+      + (pend ? pend + ' sin publicar' : 'al día') + '</span></label>';
+  }).join('');
+  aviso('#pubMsg', '');
+  $('#dlgPub').showModal();
+}
+
+$('#pubCancelar').addEventListener('click', function () { $('#dlgPub').close(); });
+$('#pubOk').addEventListener('click', function () {
+  var sem = $$('[data-pubsem]').filter(function (x) { return x.checked; })
+                               .map(function (x) { return x.dataset.pubsem; });
+  if (!sem.length) return aviso('#pubMsg', 'Marca al menos una semana.', 'bad');
+  $('#dlgPub').close();
+  publicarAhora($('#btnPublicar'), sem);
+});
+
+function publicarAhora(b, semanas) {
+  var listas = paraPublicar(semanas);
   if (!listas.length) return alert('No hay nada con persona asignada que publicar.');
-  var b = this; b.disabled = true;
+  b.disabled = true;
   var ahora = new Date().toISOString();
 
   var nuevas = [], cambios = [];
@@ -5666,13 +5717,14 @@ $('#btnPublicar').addEventListener('click', function () {
     return Promise.all(cambios.map(function (c) { return DATOS.turnos.guardar(c.id, c.d); }));
   }).then(function () {
     DATOS.anotar(S.yo.empresa_id, S.yo.id, 'turno', null, 'publicar', null,
-                 { nuevas: nuevas.length, cambiados: cambios.length, semana: S.lunes });
+                 { nuevas: nuevas.length, cambiados: cambios.length,
+                   semana: S.lunes, semanas: semanas || null });
     return recargarSemana();
   }).then(function () {
     alert(nuevas.length + ' turno(s) publicado(s), ' + cambios.length + ' actualizado(s).');
   }).catch(function (e) { alert('No pude publicar: ' + e.message); })
     .then(function () { b.disabled = false; });
-});
+}
 
 // ====================================================================
 // EQUIPO Y CONFIGURACIÓN
@@ -7629,7 +7681,7 @@ window.__app = {
   abrirRepetir: abrirRepetir, porQueNoRepetir: porQueNoRepetir,
   limpiarSemana: limpiarSemana, cerrarMenuSem: cerrarMenuSem,
   rangoVista: rangoVista,
-  masDias: masDias, abrirCopiarSem: abrirCopiarSem,
+  masDias: masDias, lunesDe: lunesDe, abrirCopiarSem: abrirCopiarSem,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,

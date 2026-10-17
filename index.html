@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v125</span></p>
+      <span style="float:right;opacity:.55" id="ver">v126</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v125</span>
+    <span class="hint" id="ver2" title="Versión publicada">v126</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -464,6 +464,30 @@
   </form>
 </dialog>
 
+<!-- PUBLICAR ELIGIENDO SEMANAS. Lo trajo Pedro el 16-10 desde una captura de
+     Skello, donde se marca «todo el mes» o semana por semana.
+
+     POR QUE HACE FALTA: «Publicar» manda TODO lo que se esta viendo, y desde el
+     Mes eso son cinco semanas de una vez. Publicar es lo que le avisa a la
+     gente que su turno es definitivo: mandar cinco semanas cuando solo estaba
+     cerrada la proxima no es un detalle, es decirle a todo el mundo que ya
+     puede organizarse con algo que todavia va a cambiar.
+
+     SOLO APARECE EN EL MES. En Semana o en Dia no hay nada que elegir, y un
+     dialogo que siempre dice lo mismo es un paso de mas. -->
+<dialog id="dlgPub" class="dlg">
+  <form method="dialog">
+    <h3>¿Qué semanas publicas?</h3>
+    <p class="hint">Publicar le avisa a la gente que su turno es definitivo.</p>
+    <div id="pubSemanas" class="rpdias"></div>
+    <p class="msg" id="pubMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="pubOk">Publicar</button>
+      <button type="button" class="plano" id="pubCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlgRep" class="dlg">
   <form method="dialog">
     <h3>Repetir el turno</h3>
@@ -667,6 +691,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=20"></script>
-<script src="app.js?v=72"></script>
+<script src="app.js?v=73"></script>
 </body>
 </html>
