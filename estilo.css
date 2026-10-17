@@ -1342,3 +1342,33 @@ table.mesb .mini { cursor: pointer; }
 .mesb .mini.choca em { border-top-color: #b08a2e; }
 .mesb .cont .sindueno { display:block; font-size:.7rem; font-weight:700;
   color:var(--rojo); font-style:normal; }
+
+/* ---------- QUIEN ENTRA Y QUE PUEDE HACER (v130) ----------
+   Una fila por cuenta. En angosto se apila: el correo arriba, el selector
+   debajo, y la descripcion abajo ocupando el ancho — con el selector al lado
+   del correo en una pantalla de telefono no queda sitio para ninguno de los
+   dos. */
+.cuentas { display: flex; flex-direction: column; gap: .6rem; }
+.cuenta {
+  display: grid; grid-template-columns: 1fr auto; gap: .2rem .8rem;
+  align-items: center;
+  padding: .6rem .7rem; border: 1px solid var(--borde); border-radius: 8px;
+}
+/* `wrap` para que los distintivos BAJEN en vez de estrujar el correo: sin
+   esto, en un telefono «demo@ejemplo.cl» se partia a mitad de palabra para
+   dejarle sitio al «TÚ» que va al lado. Se vio mirando la captura angosta. */
+.cuenta .quien { display: flex; align-items: center; gap: .4rem; min-width: 0; flex-wrap: wrap; }
+.cuenta .quien b { overflow-wrap: anywhere; }   /* un correo largo no desborda */
+.cuenta .cual { justify-self: end; }
+.cuenta .que, .cuenta .hint { grid-column: 1 / -1; margin: 0; }
+.cuenta .tu {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+  background: var(--verde-claro); border: 1px solid var(--borde);
+  border-radius: 999px; padding: .05rem .4rem; white-space: nowrap;
+}
+.cuenta .tu.solo { background: transparent; }
+.cuenta .permiso-fijo { font-weight: 600; white-space: nowrap; }
+@media (max-width: 520px) {
+  .cuenta { grid-template-columns: 1fr; }
+  .cuenta .cual { justify-self: start; }
+}

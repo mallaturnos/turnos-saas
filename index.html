@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=51">
+<link rel="stylesheet" href="estilo.css?v=52">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v129</span></p>
+      <span style="float:right;opacity:.55" id="ver">v130</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v129</span>
+    <span class="hint" id="ver2" title="Versión publicada">v130</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -220,6 +220,30 @@
         supervisor nuevo pasaría a ver el sueldo de todo el equipo sin que nadie
         lo hubiera decidido.</p>
       <p class="hint" id="cfgVerValoresMsg"></p>
+    </div>
+
+    <!-- QUIEN ENTRA Y QUE PUEDE HACER. Lo eligio Pedro el 17-10 (msg 7176,
+         «A») despues de pedir el flujo completo y el estandar de mercado.
+
+         VA EN CONFIGURACION Y NO EN LA FICHA DE LA PERSONA, aunque el estandar
+         —7shifts, Skello, Deputy— ponga el permiso en la ficha del empleado.
+         Motivo: aca una CUENTA todavia no es un trabajador. La de Pedro no lo
+         es, y `trabajadores.usuario_id` existe pero nadie lo escribe. Ponerlo
+         en la ficha hoy dejaria la cuenta del dueño sin ningun sitio donde
+         aparecer. Cuando exista «Dar acceso» desde la ficha, este es el lugar
+         natural para que se mude.
+
+         ES DE LA EMPRESA, no de un local: el mismo criterio por el que el
+         interruptor de los sueldos esta aqui arriba y no en una tarjeta de
+         local. -->
+    <div id="cajaCuentas" class="tarjeta" hidden>
+      <h2>Quién entra y qué puede hacer</h2>
+      <p class="hint">Estas son las cuentas que pueden entrar a tu empresa. El
+        <b>permiso</b> es lo que cada una puede hacer en el sistema, y no tiene
+        nada que ver con el <b>cargo</b> que la persona tiene en el trabajo:
+        alguien puede ser <i>supervisor</i> aquí y de cargo <i>jefe de cocina</i>.</p>
+      <div id="listaCuentas" class="cuentas"></div>
+      <p class="hint" id="cuentasMsg"></p>
     </div>
 
     <div class="controles">
@@ -739,6 +763,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=21"></script>
-<script src="app.js?v=76"></script>
+<script src="app.js?v=77"></script>
 </body>
 </html>

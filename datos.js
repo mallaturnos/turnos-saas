@@ -186,10 +186,52 @@
 
   // ---------- quién soy ----------
   // null = entró pero todavía no tiene empresa: es la primera vez.
+  /* 🔴 ESTO PEDIA «UNA FILA CUALQUIERA», Y HASTA HOY HABIA UNA SOLA.
+
+     Era `usuarios?select=*&limit=1` sin decir CUAL, y la politica de lectura
+     deja ver todas las cuentas de la empresa (`empresa_id = mi_empresa()`).
+     Con una sola cuenta —como estuvo este proyecto hasta esta tarde— acierta
+     siempre. Con tres, Postgres no promete ningun orden sin `order by`: la app
+     podia tomar la fila de OTRA persona y entonces `S.yo` entero quedaba mal
+     —el rol, el correo del encabezado, el `usuario_id` con que se arma «Mi
+     calendario», y el id con que se firma la BITACORA: acciones anotadas a
+     nombre de quien no las hizo—.
+
+     No es la base lo que fallaba: ella entrego lo que se le pidio. Aparecio
+     al construir el reparto de permisos, que es justo la pantalla que existe
+     porque hay varias cuentas. [[probar-el-camino-no-la-pieza]]
+
+     El id sale de la sesion que ya esta guardada: GoTrue devuelve `user` junto
+     al token, asi que no hace falta decodificar nada ni pedir una vuelta mas.
+     Si por lo que sea no estuviera, se cae al comportamiento viejo en vez de
+     dejar a la persona sin entrar: con una sola cuenta ese camino acierta, y
+     quedarse fuera es peor que el riesgo que evita. */
   function yo() {
-    return rest('usuarios?select=*&limit=1', null, 'buscar tu cuenta')
+    var mio = sesion && sesion.user && sesion.user.id;
+    var camino = mio ? 'usuarios?select=*&id=eq.' + encodeURIComponent(mio) + '&limit=1'
+                     : 'usuarios?select=*&limit=1';
+    return rest(camino, null, 'buscar tu cuenta')
       .then(function (f) { return (f && f[0]) || null; });
   }
+
+  /* ---------- LAS CUENTAS QUE ENTRAN A LA EMPRESA ----------
+
+     Hasta hoy la app solo LEIA `usuarios`, y una sola fila. Esto es lo que
+     necesita la pantalla donde el dueño reparte los permisos.
+
+     `order=creado` no es decoracion: la primera cuenta de la lista es la que
+     abrio la empresa, y asi la lista no baila de un refresco a otro. */
+  var usuarios = {
+    listar: function () {
+      return rest('usuarios?select=id,email,rol,creado&order=creado',
+                  null, 'leer las cuentas de tu empresa');
+    },
+    /* El permiso se manda SOLO. Un PATCH con mas campos podria pisar el correo
+       o la empresa de alguien por un descuido de la pantalla. */
+    guardarPermiso: function (id, rol) {
+      return editar('usuarios', id, { rol: rol }, 'cambiar el permiso de la cuenta');
+    },
+  };
 
   /* ---------- LA EMPRESA ----------
      Se lee para UNA cosa: el interruptor de si el supervisor ve los valores.
@@ -567,7 +609,7 @@
 
   window.DATOS = {
     auth: cuenta, yo: yo, primeraVez: primeraVez,
-    miEmpresa: miEmpresa, guardarEmpresa: guardarEmpresa,
+    miEmpresa: miEmpresa, guardarEmpresa: guardarEmpresa, usuarios: usuarios,
     sucursales: sucursales, cargos: cargos, trabajadores: trabajadores, eventos: eventos,
     plantillas: plantillas, ausencias: ausencias,
     horarios: horarios, necesidades: necesidades, asignaciones: asignaciones,

@@ -70,6 +70,9 @@ var S = {
   // la pantalla sigue funcionando sin ellas.
   ausencias:[], tiposAusencia:[], bloqueos:[], hayAusencias:null,
   yoTrabajador:null,
+  // Las cuentas que entran a la empresa. Se piden al entrar a Configuracion y
+  // solo si el permiso alcanza para verlas.
+  cuentas:[],
 };
 
 /* ---------- fechas ----------
@@ -2919,7 +2922,7 @@ $('#nav').addEventListener('click', function (ev) {
      pantalla salia vacia, sin un solo error en la consola. Es el mismo defecto
      contra el que avisa el comentario de aqui arriba, y lo encontro la prueba
      de humo, no yo. */
-  if (b.dataset.p === 'config') { cargarCatalogo(); cargarBloqueos(); }
+  if (b.dataset.p === 'config') { cargarCatalogo(); cargarBloqueos(); cargarCuentas(); }
 });
 
 // Un solo oyente para toda la malla: los botones se repintan constantemente y
@@ -4246,11 +4249,17 @@ var PUEDE = {
   repartirPerfiles: ['dueno'],
 };
 function miRol() { return (S.yo && S.yo.rol) || 'trabajador'; }
-function puede(que) {
+/* Se pregunta POR UN ROL, no solo por el mio: la pantalla de permisos necesita
+   describir lo que podria hacer OTRA cuenta. La primera version de eso cambiaba
+   `S.yo.rol` un instante para preguntar y lo devolvia despues — funcionaba, y
+   es la clase de truco que un dia deja el rol de otro puesto si algo falla en
+   medio. Con el rol como argumento no hay nada que devolver. */
+function puedeRol(rol, que) {
   var quienes = PUEDE[que];
   if (!quienes) return false;          // un permiso inventado no se concede
-  return quienes.indexOf(miRol()) >= 0;
+  return quienes.indexOf(rol) >= 0;
 }
+function puede(que) { return puedeRol(miRol(), que); }
 /* LAS PESTANAS QUE NO LE TOCAN, FUERA.
 
    No es seguridad —eso esta en la base— sino no ofrecer algo que va a fallar.
@@ -6630,6 +6639,11 @@ function pintarConfig() {
       $('#cfgVerValores').checked = !!S.empresa.supervisor_ve_valores;
     }
   }
+  /* La caja de cuentas se esconde aqui tambien, no solo al entrar a la
+     pestaña: si no, un repintado con otro permiso la dejaria a la vista. */
+  var cc = $('#cajaCuentas');
+  if (cc && !puede('repartirPerfiles')) cc.hidden = true;
+
   var sueltos = atajosHuerfanos();
   $('#listaSucursales').innerHTML = (S.sucursales.length
     ? S.sucursales.map(tarjetaLocal).join('')
@@ -6648,6 +6662,131 @@ function pintarConfig() {
           + '</div></div>'
         : '');
 }
+
+/* ---------- QUIEN ENTRA Y QUE PUEDE HACER (v130) ----------
+
+   Lo eligio Pedro el 17-10 (msg 7176). Antes de esto el permiso de una cuenta
+   se cambiaba pegando SQL en la base: o sea pasaba por mi, y un producto donde
+   hay que llamar al programador para que un encargado deje de ver los sueldos
+   no se puede vender.
+
+   LOS TEXTOS DE CADA PERMISO SALEN DE `PUEDE`, NO DE LO QUE YO CREA.
+   Se escriben una sola vez aqui y se leen de la tabla, asi que el dia que
+   cambie un permiso no puede quedar una descripcion mintiendo en pantalla. Eso
+   ya paso en este proyecto con un texto del Mes que afirmaba algo falso.
+
+   LO QUE ESTA PANTALLA *NO* ES: la defensa. La defensa son las politicas que
+   piden `mi_rol()`. Aqui se evita OFRECER lo que la base va a rechazar. */
+var PERMISOS = ['dueno', 'admin', 'supervisor', 'trabajador'];
+var NOMBRE_PERMISO = {
+  dueno: 'Dueño', admin: 'Administrador',
+  supervisor: 'Supervisor', trabajador: 'Trabajador',
+};
+/* La descripcion se ARMA leyendo PUEDE, para que no se pueda desfasar.
+   `mio` («Mi calendario») lo tienen todos y por eso no se nombra. */
+function queHace(rol) {
+  var si = [];
+  if (puedeRol(rol, 'planificar')) si.push('arma y publica turnos y ausencias');
+  if (puedeRol(rol, 'gente')) si.push('crea y edita la gente');
+  if (puedeRol(rol, 'configurar')) si.push('configura locales, horarios y reglas');
+  if (puedeRol(rol, 'verBitacora')) si.push('ve la bitácora');
+  if (puedeRol(rol, 'repartirPerfiles')) si.push('reparte estos permisos');
+  if (puedeRol(rol, 'borrarLocal')) si.push('borra un local');
+  if (!si.length) return 'Solo ve su propio calendario.';
+  return si.join(' · ').replace(/^./, function (c) { return c.toUpperCase(); }) + '.';
+}
+
+/* Se pide AL ENTRAR a Configuracion, no al arrancar, y por el mismo motivo que
+   el catalogo: `pintarConfig()` corre una sola vez y la pantalla saldria vacia
+   sin un solo error. Y no se pide si no lo va a ver nadie: pedir la lista de
+   cuentas para esconderla es regalarle una consulta a la base. */
+function cargarCuentas() {
+  var caja = $('#cajaCuentas'); if (!caja) return;
+  if (!puede('repartirPerfiles')) { caja.hidden = true; return; }
+  caja.hidden = false;
+  if (!DATOS.usuarios) {           // base vieja: la app anda igual, sin la caja
+    caja.hidden = true; return;
+  }
+  aviso('#cuentasMsg', 'Cargando las cuentas…');
+  return DATOS.usuarios.listar().then(function (lista) {
+    S.cuentas = lista || [];
+    aviso('#cuentasMsg', '');
+    pintarCuentas();
+  }).catch(function (e) {
+    /* El error se MUESTRA en la caja en vez de esconderla: una tarjeta que
+       desaparece sola deja a Pedro creyendo que la pantalla no existe. */
+    $('#listaCuentas').innerHTML = '';
+    aviso('#cuentasMsg', e.message, 'bad');
+  });
+}
+
+function pintarCuentas() {
+  var lista = S.cuentas || [], miId = S.yo && S.yo.id;
+  var dueños = lista.filter(function (c) { return c.rol === 'dueno'; }).length;
+  $('#listaCuentas').innerHTML = lista.map(function (c) {
+    var soyYo = c.id === miId;
+    /* TU PROPIA CUENTA NO SE TOCA, y es la regla que sostiene todo lo demas:
+       es el estandar (en 7shifts nadie se asciende solo) y ademas es lo que
+       impide que el unico dueño se degrade y deje la empresa sin nadie que
+       pueda configurar nada — un agujero del que no se sale por la pantalla. */
+    var selector = soyYo
+      ? '<span class="permiso-fijo">' + esc(NOMBRE_PERMISO[c.rol] || c.rol) + '</span>'
+      : '<select class="permiso" data-cuenta="' + esc(c.id) + '">'
+        + PERMISOS.map(function (r) {
+            return '<option value="' + r + '"' + (r === c.rol ? ' selected' : '') + '>'
+                 + (NOMBRE_PERMISO[r] || r) + '</option>';
+          }).join('')
+        + '</select>';
+    return '<div class="cuenta" data-id="' + esc(c.id) + '">'
+         + '<div class="quien"><b>' + esc(c.email) + '</b>'
+         + (soyYo ? '<span class="tu">tú</span>' : '')
+         + (dueños === 1 && c.rol === 'dueno'
+             ? '<span class="tu solo">único dueño</span>' : '')
+         + '</div>'
+         + '<div class="cual">' + selector + '</div>'
+         + '<p class="hint que">' + esc(queHace(c.rol)) + '</p>'
+         + (soyYo ? '<p class="hint">Tu propio permiso no se cambia desde aquí: '
+                  + 'si te lo quitaras, nadie podría volver a dártelo.</p>' : '')
+         + '</div>';
+  }).join('') || '<p class="vacio">Todavía solo entras tú.</p>';
+}
+
+/* Un solo oyente para la lista: las filas se repintan y enganchar cada select
+   es como se queda uno muerto sin que nadie lo note. */
+$('#listaCuentas').addEventListener('change', function (ev) {
+  var sel = ev.target.closest('select.permiso'); if (!sel) return;
+  var id = sel.dataset.cuenta, nuevo = sel.value;
+  var cuenta = (S.cuentas || []).filter(function (c) { return c.id === id; })[0];
+  if (!cuenta) return;
+  var antes = cuenta.rol;
+  if (nuevo === antes) return;
+
+  /* ASCENDER A DUEÑO SE PREGUNTA. No es destructivo, pero le entrega a otra
+     persona el poder de repartir permisos y borrar locales — incluido quitarte
+     a ti el tuyo. Bajarle el permiso a alguien no se pregunta: se deshace
+     volviendo a elegir. */
+  if (nuevo === 'dueno' && !confirm(
+        '¿Dejar a ' + cuenta.email + ' como Dueño?\n\n'
+      + 'Va a poder todo lo que puedes tú, incluido repartir estos permisos '
+      + 'y borrar locales.')) {
+    sel.value = antes; return;
+  }
+
+  sel.disabled = true;
+  aviso('#cuentasMsg', 'Guardando…');
+  DATOS.usuarios.guardarPermiso(id, nuevo).then(function () {
+    cuenta.rol = nuevo;
+    aviso('#cuentasMsg', 'Listo: ' + cuenta.email + ' ahora es '
+          + (NOMBRE_PERMISO[nuevo] || nuevo) + '.', 'ok');
+    pintarCuentas();              // repinta la descripcion y «único dueño»
+  }).catch(function (e) {
+    /* Se devuelve el selector a donde estaba en vez de dejarlo mintiendo: la
+       base rechazo el cambio y la pantalla tiene que decir lo mismo que ella.
+       Mismo criterio que el interruptor de los sueldos. */
+    sel.value = antes; sel.disabled = false;
+    aviso('#cuentasMsg', e.message, 'bad');
+  });
+});
 
 ['#listaTrabajadores','#listaIdos','#listaCargos'].forEach(function (sel) {
   $(sel).addEventListener('click', function (ev) {
@@ -7921,6 +8060,11 @@ window.__app = {
   abrirBloqueo: abrirBloqueo,
   cargarBloqueos: cargarBloqueos,
   cargarCatalogo: cargarCatalogo,
+  // El reparto de permisos. `queHace` y `puedeRol` se exponen porque la prueba
+  // tiene que comprobar que la descripcion de cada permiso SALE DE LA TABLA y
+  // no de un texto escrito a mano que puede quedarse atras.
+  cargarCuentas: cargarCuentas, pintarCuentas: pintarCuentas,
+  queHace: queHace, puedeRol: puedeRol,
   desgloseAusencia: desgloseAusencia,
   marcarTurnosParaRevisar: marcarTurnosParaRevisar,
   recargarSemana: recargarSemana,
