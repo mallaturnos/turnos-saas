@@ -4859,9 +4859,32 @@ function aplicarLineasEn(lineas, semanas, traer, etiqueta) {
     });
   };
 
-  var escribir = function () {
-    var necsCreadas = [], asigsCreadas = [];
+  var escribir = function (limpiar) {
+    var necsCreadas = [], asigsCreadas = [], borradas = [];
     return Promise.resolve()
+      .then(function () {
+        /* REEMPLAZAR = borrar lo que hay y despues copiar.
+
+           Se borran SOLO LOS TURNOS, igual que «Limpiar la semana», y no las
+           necesidades: son dos capas distintas y limpiar una no es limpiar la
+           otra. El dialogo lo dice con esas palabras para que no haya sorpresa.
+
+           Y se leen DE LA BASE, no de memoria: `S.asignaciones` solo tiene la
+           semana que estas mirando, nunca la destino. Ese fallo ya se pago una
+           vez al aplicar modelos. */
+        if (!limpiar) return null;
+        return Promise.all(semanas.map(function (l) {
+          return DATOS.asignaciones.listar(S.sucursal, l, masDias(l, 6));
+        })).then(function (r) {
+          borradas = r.reduce(function (t, x) { return t.concat(x || []); }, []);
+          return borradas.reduce(function (pr, a) {
+            return pr.then(function () {
+              return DATOS.turnos.borrarDe([a.id]).catch(function () {})
+                .then(function () { return DATOS.asignaciones.borrar(a.id).catch(function () {}); });
+            });
+          }, Promise.resolve());
+        });
+      })
       .then(function () {
         return todas.necs.length ? DATOS.necesidades.crearVarios(todas.necs)
           .then(function (f) { necsCreadas = (f || []).map(function (x) { return x.id; }); }) : null;
@@ -4874,7 +4897,11 @@ function aplicarLineasEn(lineas, semanas, traer, etiqueta) {
         DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'crear',
           { copiado_en_semanas: semanas.length, turnos: asigsCreadas.length }, null);
         // Se retira en el orden inverso: primero los turnos, despues lo planificado.
-        if (asigsCreadas.length || necsCreadas.length) {
+        if (asigsCreadas.length || necsCreadas.length || borradas.length) {
+          /* UN SOLO DESHACER PARA LAS DOS MITADES. Si «borrar» y «copiar»
+             dejaran cada uno el suyo, deshacer una vez retiraria la copia y la
+             semana quedaria VACIA — peor que antes de empezar, y sin forma de
+             volver. Se retira lo creado y se repone lo borrado, en ese orden. */
           recordar(etiqueta + ' (' + asigsCreadas.length + ' turno(s))', function () {
             return asigsCreadas.reduce(function (pr, id) {
               return pr.then(function () { return DATOS.asignaciones.borrar(id).catch(function () {}); });
@@ -4882,13 +4909,27 @@ function aplicarLineasEn(lineas, semanas, traer, etiqueta) {
               return necsCreadas.reduce(function (pr, id) {
                 return pr.then(function () { return DATOS.necesidades.borrar(id).catch(function () {}); });
               }, Promise.resolve());
+            }).then(function () {
+              return borradas.reduce(function (pr, a) {
+                return pr.then(function () {
+                  return DATOS.asignaciones.crear({
+                    empresa_id: a.empresa_id, sucursal_id: a.sucursal_id,
+                    necesidad_id: a.necesidad_id, trabajador_id: a.trabajador_id,
+                    fecha: a.fecha, hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+                    colacion_min: a.colacion_min || 0,
+                    cargo_id: a.cargo_id, origen: a.origen, tocado_a_mano: true,
+                    estado: a.estado }).catch(function () {});
+                });
+              }, Promise.resolve());
             });
           });
         }
         return recargarSemana();
       })
       .then(function () {
-        avisoPlan('Copiado: <b>' + asigsCreadas.length + '</b> turnos y <b>'
+        avisoPlan((borradas.length ? 'Reemplazado (se fueron <b>' + borradas.length
+                     + '</b> turnos). ' : '')
+          + 'Copiado: <b>' + asigsCreadas.length + '</b> turnos y <b>'
           + necsCreadas.length + '</b> necesidades en <b>' + semanas.length + '</b> '
           + (semanas.length === 1 ? 'semana' : 'semanas') + '.'
           + (todas.perdidas ? ' <b>' + todas.perdidas + '</b> quedaron sin asignar porque '
@@ -4925,11 +4966,20 @@ function aplicarLineasEn(lineas, semanas, traer, etiqueta) {
       : ocupadas.map(function (o) {
           return '· Semana ' + semanaISO(o.l) + ' (del ' + diaMes(o.l) + '): ' + detalle(o);
         }).join('\n');
-    // No se borra nada nunca: lo que entra SE SUMA, y se dice con esas palabras.
-    var ok = confirm(cab
-      + '\n\nLo que copies SE SUMA a lo que ya hay: no se borra nada, pero pueden '
-      + 'quedar turnos repetidos.\n\nSe puede deshacer. ¿Sigo?');
-    return ok ? escribir() : null;
+    /* AHORA ELIGE EL, cada vez. Antes la app decidia por el que se sumara, y
+       eso sorprendia a quien esperaba reemplazar — que es lo que le pasaba a
+       Pedro. Las dos son utiles en momentos distintos: rellenar una semana a
+       medias, o rehacerla entera. */
+    $('#cpDetalle').innerHTML = cab.replace(/\n/g, '<br>');
+    $('#dlgCopia').showModal();
+    return new Promise(function (resolve) {
+      var fin = function (limpiar) {
+        return function () { $('#dlgCopia').close(); resolve(escribir(limpiar)); };
+      };
+      $('#cpReemplazar').onclick = fin(true);
+      $('#cpAgregar').onclick    = fin(false);
+      $('#cpCancelar').onclick   = function () { $('#dlgCopia').close(); resolve(null); };
+    });
   });
 }
 

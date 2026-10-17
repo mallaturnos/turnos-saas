@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v126</span></p>
+      <span style="float:right;opacity:.55" id="ver">v127</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v126</span>
+    <span class="hint" id="ver2" title="Versión publicada">v127</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -475,6 +475,34 @@
 
      SOLO APARECE EN EL MES. En Semana o en Dia no hay nada que elegir, y un
      dialogo que siempre dice lo mismo es un paso de mas. -->
+<!-- COPIAR UNA SEMANA: REEMPLAZAR O AGREGAR. Lo decidio Pedro el 16-10 (msg
+     7063) y la discusion vale la pena recordarla, porque el defecto no era el
+     que parecia.
+
+     El miro el aviso y propuso que dijera «ya tiene 7 turnos, ¿seguro que
+     quieres reemplazar?». Esa frase describe algo que la app NO hacia —hoy
+     sumaba— asi que escribirla habria sido mentir. Pero lo importante no era
+     corregir el texto: EL ESPERABA QUE REEMPLAZARA, y es quien lo usa. Sumar
+     le iba a sorprender siempre, y cada vez iba a terminar borrando duplicados
+     a mano.
+
+     Asi que el defecto no era la redaccion: era que la app elegia por el una
+     de las dos. Ahora elige el, cada vez. -->
+<dialog id="dlgCopia" class="dlg">
+  <form method="dialog">
+    <h3>Esas semanas no están vacías</h3>
+    <p class="hint" id="cpDetalle"></p>
+    <p class="hint"><b>Reemplazar</b> borra los turnos que haya y deja solo los
+      que copies. <b>Agregar</b> los suma a los que ya están, y pueden quedar
+      repetidos. <i>Las dos se pueden deshacer.</i></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="cpReemplazar">Reemplazar</button>
+      <button type="button" class="primario" id="cpAgregar">Agregar</button>
+      <button type="button" class="plano" id="cpCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlgPub" class="dlg">
   <form method="dialog">
     <h3>¿Qué semanas publicas?</h3>
@@ -691,6 +719,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=20"></script>
-<script src="app.js?v=73"></script>
+<script src="app.js?v=74"></script>
 </body>
 </html>
