@@ -73,6 +73,10 @@ var S = {
   // Las cuentas que entran a la empresa. Se piden al entrar a Configuracion y
   // solo si el permiso alcanza para verlas.
   cuentas:[],
+  // Invitaciones pendientes. `hayInvitaciones` en null es «todavia no pregunte»:
+  // con el arreglo sin pegar queda false y la ficha lo dice en vez de ofrecer
+  // un boton que fallaria.
+  invitaciones:[], hayInvitaciones:null,
 };
 
 /* ---------- fechas ----------
@@ -2922,7 +2926,17 @@ $('#nav').addEventListener('click', function (ev) {
      pantalla salia vacia, sin un solo error en la consola. Es el mismo defecto
      contra el que avisa el comentario de aqui arriba, y lo encontro la prueba
      de humo, no yo. */
-  if (b.dataset.p === 'config') { cargarCatalogo(); cargarBloqueos(); cargarCuentas(); }
+  if (b.dataset.p === 'config') {
+    cargarCatalogo(); cargarBloqueos(); cargarCuentas();
+    // Las pendientes se pintan en la misma lista, debajo de las cuentas: es la
+    // respuesta completa a «quien entra», y verlas en dos sitios obliga a
+    // preguntarse cual manda.
+    cargarInvitaciones().then(function () { if (S.cuentas.length) pintarCuentas(); });
+  }
+  // En Equipo hacen falta para que la ficha sepa si alguien ya fue invitado.
+  // Y las CUENTAS tambien: sin ellas la ficha no puede decir con que correo
+  // entra quien ya entra.
+  if (b.dataset.p === 'equipo') { cargarInvitaciones(); cargarCuentas(true); }
 });
 
 // Un solo oyente para toda la malla: los botones se repintan constantemente y
@@ -6005,6 +6019,162 @@ var ficha = null;
 // dialogo. Si se abriera siempre en «todos», el gesto diria una cosa y el
 // formulario otra.
 var tramoPara = null;
+/* ---------- DAR ACCESO A ALGUIEN DEL EQUIPO (v132) ----------
+
+   Pedro eligio el camino 1 (msgs 7205-7207): el dueño deja apuntado «este
+   correo entra a mi empresa con este permiso», y cuando esa persona se
+   registra, un disparador en la base la mete en la empresa correcta. El correo
+   lo manda el sistema en el camino 2, que queda para mas adelante.
+
+   VA EN LA FICHA DE LA PERSONA y no en una pantalla aparte, porque es lo que
+   hacen los tres que se miraron —7shifts, Skello y Deputy—: la ficha y la
+   cuenta son la misma cosa, y en Skello la casilla de invitar esta dentro de
+   la ficha. Las cuentas que NO son de nadie del equipo —un socio, el contador—
+   se ven igual en la lista de Configuracion.
+
+   SOLO EL DUEÑO. Invitar es repartir acceso, y eso no se delega: misma regla
+   que el reparto de permisos, y la base dice lo mismo. */
+function accesoDe(t) {
+  if (!t) return { estado: 'nuevo' };
+  if (t.usuario_id) {
+    var c = (S.cuentas || []).filter(function (x) { return x.id === t.usuario_id; })[0];
+    return { estado: 'entra', cuenta: c || null };
+  }
+  var inv = (S.invitaciones || []).filter(function (x) { return x.trabajador_id === t.id; })[0];
+  if (inv) return { estado: 'pendiente', inv: inv };
+  return { estado: 'sin' };
+}
+
+function bloqueAcceso(dato) {
+  if (!puede('repartirPerfiles')) return '';          // no se ofrece lo que no se puede
+  if (!S.hayInvitaciones) {
+    /* La tabla todavia no esta. Se avisa en vez de ofrecer un boton que va a
+       fallar — misma linea que la jornada pactada y el rubro. */
+    return '<label>Acceso a la app</label>'
+         + '<p class="hint">⚠️ Todavía no se puede dar acceso: falta pegar el arreglo '
+         + 'en la base. Te lo paso por el chat.</p>';
+  }
+  var a = accesoDe(dato);
+  if (a.estado === 'nuevo') {
+    return '<label>Acceso a la app</label>'
+         + '<p class="hint"><b>Guarda primero a la persona</b> y después podrás darle '
+         + 'acceso: la invitación se engancha a su ficha, y para eso la ficha tiene '
+         + 'que existir.</p>';
+  }
+  if (a.estado === 'entra') {
+    return '<label>Acceso a la app</label>'
+         + '<p class="fijo">✅ <b>Ya entra a la app</b>'
+         + (a.cuenta ? ' con <b>' + esc(a.cuenta.email) + '</b>' : '')
+         + (a.cuenta ? ' · permiso <b>' + esc(NOMBRE_PERMISO[a.cuenta.rol] || a.cuenta.rol)
+                       + '</b>' : '')
+         + '</p>'
+         + '<p class="hint">El permiso se cambia en <b>Configuración</b>, en la lista de '
+         + 'cuentas.</p>';
+  }
+  if (a.estado === 'pendiente') {
+    return '<label>Acceso a la app</label>'
+         + '<p class="fijo">⏳ <b>Invitación pendiente</b> para <b>'
+         + esc(a.inv.email) + '</b></p>'
+         + '<p class="hint">Entra cuando esa persona <b>se registre con ese correo</b>. '
+         + 'Pásale la dirección de la app. Mientras tanto no ocupa nada.</p>'
+         + '<button type="button" class="plano" id="fQuitarInv" data-inv="'
+         + esc(a.inv.id) + '">Cancelar la invitación</button>'
+         + '<p class="msg" id="fAccesoMsg"></p>';
+  }
+  return '<label for="fAccesoMail">Acceso a la app</label>'
+       + '<div class="fld"><input type="email" id="fAccesoMail" placeholder="su correo" '
+       + 'autocomplete="off"></div>'
+       + '<label for="fAccesoRol">Qué va a poder hacer</label>'
+       + '<div class="fld"><select id="fAccesoRol">'
+       + PERMISOS.map(function (r) {
+           return '<option value="' + r + '"' + (r === 'trabajador' ? ' selected' : '') + '>'
+                + (NOMBRE_PERMISO[r] || r) + '</option>';
+         }).join('')
+       + '</select></div>'
+       + '<button type="button" class="plano" id="fDarAcceso">Dar acceso</button>'
+       + '<p class="hint">Queda apuntado y <b>entra cuando esa persona se registre con ese '
+       + 'correo</b>. Viene como <b>Trabajador</b>, que es el que menos puede: subirlo es un '
+       + 'clic, y lo que no se deshace es que alguien haya visto lo que no debía.</p>'
+       + '<p class="msg" id="fAccesoMsg"></p>';
+}
+
+/* Las invitaciones pendientes se piden al entrar a Equipo y a Configuracion.
+   No en el arranque: son de una pantalla que no todos abren, y retrasar el
+   arranque por ellas es pagar en el sitio equivocado. */
+function cargarInvitaciones() {
+  if (!puede('repartirPerfiles') || !DATOS.invitaciones) return Promise.resolve();
+  return DATOS.invitaciones.hay().then(function (hay) {
+    S.hayInvitaciones = hay;
+    if (!hay) { S.invitaciones = []; return; }
+    return DATOS.invitaciones.listar().then(function (l) { S.invitaciones = l || []; });
+  }).catch(function () { S.invitaciones = []; });
+}
+
+/* Delegado en el dialogo y no en cada boton: `#fCampos` se rehace entero cada
+   vez que se abre una ficha, asi que un oyente puesto sobre el boton se queda
+   con el HTML viejo. Es el mismo motivo por el que la malla tiene un solo
+   oyente. */
+$('#dlgFicha').addEventListener('click', function (ev) {
+  var dar = ev.target.closest('#fDarAcceso');
+  var quitar = ev.target.closest('#fQuitarInv');
+  if (!dar && !quitar) return;
+  ev.preventDefault();
+
+  if (quitar) {
+    if (!confirm('¿Cancelar la invitación? Esa persona ya no podrá entrar con ese correo.')) return;
+    quitar.disabled = true;
+    aviso('#fAccesoMsg', 'Cancelando…');
+    DATOS.invitaciones.cancelar(quitar.dataset.inv).then(function () {
+      S.invitaciones = (S.invitaciones || []).filter(function (x) {
+        return x.id !== quitar.dataset.inv; });
+      aviso('#fAccesoMsg', 'Listo: la invitación quedó cancelada.', 'ok');
+      if (ficha && ficha.dato) abrirFicha('trabajador', ficha.dato);   // repinta el bloque
+    }).catch(function (e) {
+      quitar.disabled = false; aviso('#fAccesoMsg', e.message, 'bad');
+    });
+    return;
+  }
+
+  var mail = ($('#fAccesoMail').value || '').trim();
+  var rol = $('#fAccesoRol').value;
+  /* Se comprueba aqui lo MINIMO —que haya algo con arroba— y lo demas lo dice
+     la base. Un correo mal escrito no rompe nada: simplemente nadie se
+     registrara con el, y la invitacion se puede cancelar. */
+  if (!mail || mail.indexOf('@') < 1) {
+    aviso('#fAccesoMsg', 'Escribe el correo con el que va a entrar.', 'bad');
+    $('#fAccesoMail').focus(); return;
+  }
+  /* Invitar a quien YA tiene cuenta deja una invitacion que no se va a usar
+     nunca: esa persona no se va a volver a registrar. La base no lo impide
+     —su regla solo mira las pendientes— asi que lo dice la pantalla, que es
+     donde se sabe quien tiene cuenta. */
+  var ya = (S.cuentas || []).filter(function (c) {
+    return (c.email || '').toLowerCase() === mail.toLowerCase(); })[0];
+  if (ya) {
+    aviso('#fAccesoMsg', 'Ese correo ya entra a la app. El permiso se cambia en '
+          + 'Configuración, en la lista de cuentas.', 'bad');
+    return;
+  }
+  dar.disabled = true;
+  aviso('#fAccesoMsg', 'Dando el acceso…');
+  DATOS.invitaciones.crear(S.yo.empresa_id, {
+    email: mail, rol: rol,
+    trabajador_id: (ficha && ficha.dato) ? ficha.dato.id : null,
+  }).then(function (inv) {
+    S.invitaciones = (S.invitaciones || []).concat([inv]);
+    aviso('#fAccesoMsg', 'Listo: entra cuando se registre con ese correo.', 'ok');
+    if (ficha && ficha.dato) abrirFicha('trabajador', ficha.dato);
+  }).catch(function (e) {
+    dar.disabled = false;
+    /* El choque del indice unico llega como un error de Postgres que nadie
+       entiende. Se traduce: es el caso real de invitar dos veces al mismo. */
+    aviso('#fAccesoMsg',
+      /duplicate key|unique/i.test(e.message)
+        ? 'Ese correo ya tiene una invitación pendiente.'
+        : e.message, 'bad');
+  });
+});
+
 function abrirFicha(tipo, dato) {
   ficha = { tipo: tipo, dato: dato || null };
   var campos = '';
@@ -6126,6 +6296,7 @@ function abrirFicha(tipo, dato) {
                  + 'sirve en otro, créalo en la tarjeta de ese otro: quedan separados y '
                  + 'cambiar uno no toca al otro.</p>');
   }
+  if (tipo === 'trabajador') campos += bloqueAcceso(dato);
   $('#fCampos').innerHTML = campos;
   aviso('#fMsg', '');
   var esTrab = tipo === 'trabajador' && !!dato;
@@ -6338,7 +6509,29 @@ $('#fGuardar').addEventListener('click', function () {
 
   p.then(function (fila) {
     DATOS.anotar(emp, S.yo.id, t, fila && fila.id, d ? 'editar' : 'crear', d, fila);
-    $('#dlgFicha').close(); return cargarTodo();
+    /* 🔴 EL CORREO ESCRITO Y NO DADO. Se vio MIRANDO la ficha: el campo de
+       acceso queda encima de «Guardar», y escribir el correo y apretar Guardar
+       —que es lo que hace cualquiera— no daba ningun acceso ni decia nada. El
+       correo se perdia al cerrarse la ficha.
+
+       Guardar hace lo que la persona ve escrito en la pantalla. Si hay un
+       correo puesto, se da el acceso tambien; si eso falla, el guardado NO se
+       deshace —la ficha ya quedo bien— y se avisa de lo que no se pudo. */
+    var mail = (($('#fAccesoMail') || {}).value || '').trim();
+    if (t !== 'trabajador' || !mail || !fila) { $('#dlgFicha').close(); return cargarTodo(); }
+    var rolSel = ($('#fAccesoRol') || {}).value || 'trabajador';
+    return DATOS.invitaciones.crear(emp, {
+      email: mail, rol: rolSel, trabajador_id: fila.id,
+    }).then(function (inv) {
+      S.invitaciones = (S.invitaciones || []).concat([inv]);
+      $('#dlgFicha').close();
+      return cargarTodo();
+    }).catch(function (e) {
+      aviso('#fMsg', 'La ficha quedó guardada, pero el acceso no: '
+            + (/duplicate key|unique/i.test(e.message)
+                ? 'ese correo ya tiene una invitación pendiente.' : e.message), 'bad');
+      return cargarTodo();
+    });
   }).catch(function (e) {
     if (/cargos_unicos/.test(e.message)) return aviso('#fMsg', 'Ya tienes un cargo con ese nombre.', 'bad');
     aviso('#fMsg', e.message, 'bad');
@@ -6700,19 +6893,24 @@ function queHace(rol) {
    el catalogo: `pintarConfig()` corre una sola vez y la pantalla saldria vacia
    sin un solo error. Y no se pide si no lo va a ver nadie: pedir la lista de
    cuentas para esconderla es regalarle una consulta a la base. */
-function cargarCuentas() {
-  var caja = $('#cajaCuentas'); if (!caja) return;
-  if (!puede('repartirPerfiles')) { caja.hidden = true; return; }
-  caja.hidden = false;
-  if (!DATOS.usuarios) {           // base vieja: la app anda igual, sin la caja
-    caja.hidden = true; return;
+/* `soloDatos` lo usa la pestaña Equipo: ahi las cuentas hacen falta para que la
+   ficha pueda decir CON QUE CORREO entra quien ya entra, pero la tarjeta vive
+   en Configuracion y no hay que tocarla desde otra pantalla. */
+function cargarCuentas(soloDatos) {
+  var caja = $('#cajaCuentas'); if (!caja && !soloDatos) return;
+  if (!puede('repartirPerfiles') || !DATOS.usuarios) {
+    if (caja && !soloDatos) caja.hidden = true;
+    return;
   }
-  aviso('#cuentasMsg', 'Cargando las cuentas…');
+  if (caja && !soloDatos) caja.hidden = false;
+  if (!soloDatos) aviso('#cuentasMsg', 'Cargando las cuentas…');
   return DATOS.usuarios.listar().then(function (lista) {
     S.cuentas = lista || [];
+    if (soloDatos) return;
     aviso('#cuentasMsg', '');
     pintarCuentas();
   }).catch(function (e) {
+    if (soloDatos) return;
     /* El error se MUESTRA en la caja en vez de esconderla: una tarjeta que
        desaparece sola deja a Pedro creyendo que la pantalla no existe. */
     $('#listaCuentas').innerHTML = '';
@@ -6749,6 +6947,27 @@ function pintarCuentas() {
                   + 'si te lo quitaras, nadie podría volver a dártelo.</p>' : '')
          + '</div>';
   }).join('') || '<p class="vacio">Todavía solo entras tú.</p>';
+
+  /* LAS INVITACIONES QUE TODAVIA NO SON CUENTA. Van en la misma lista y al
+     final, marcadas como lo que son: alguien a quien se le dio acceso y
+     todavia no se registra. Si se vieran en otra pantalla, «quien entra a mi
+     empresa» tendria dos respuestas en dos sitios. */
+  var pend = (S.invitaciones || []).filter(function (i) { return !i.usada; });
+  if (pend.length) {
+    $('#listaCuentas').innerHTML += pend.map(function (i) {
+      var de = (S.trabajadores || []).filter(function (t) {
+        return t.id === i.trabajador_id; })[0];
+      return '<div class="cuenta pendiente" data-inv="' + esc(i.id) + '">'
+           + '<div class="quien"><b>' + esc(i.email) + '</b>'
+           + '<span class="tu solo">sin registrarse</span></div>'
+           + '<div class="cual"><span class="permiso-fijo">'
+           + esc(NOMBRE_PERMISO[i.rol] || i.rol) + '</span></div>'
+           + '<p class="hint que">Entra cuando se registre con ese correo'
+           + (de ? ' · es <b>' + esc(de.nombre) + '</b>, del equipo' : '')
+           + '. ' + esc(queHace(i.rol)) + '</p>'
+           + '</div>';
+    }).join('');
+  }
 }
 
 /* Un solo oyente para la lista: las filas se repintan y enganchar cada select

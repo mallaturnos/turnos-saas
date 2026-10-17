@@ -221,6 +221,36 @@
 
      `order=creado` no es decoracion: la primera cuenta de la lista es la que
      abrio la empresa, y asi la lista no baila de un refresco a otro. */
+  /* ---------- LAS INVITACIONES ----------
+     «Este correo entra a mi empresa con este permiso». La tabla puede NO estar
+     —Pedro pega los arreglos cuando puede— y la app tiene que andar igual:
+     misma sonda que la jornada pactada y el rubro. Sin ella, el boton de dar
+     acceso no se ofrece, en vez de ofrecerse y fallar. */
+  var hayInvitaciones = null;
+  function probarInvitaciones() {
+    if (hayInvitaciones !== null) return Promise.resolve(hayInvitaciones);
+    return rest('invitaciones?select=id&limit=1', null, 'ver las invitaciones')
+      .then(function () { hayInvitaciones = true;  return true; })
+      .catch(function () { hayInvitaciones = false; return false; });
+  }
+
+  var invitaciones = {
+    hay: probarInvitaciones,
+    /* Solo las PENDIENTES: una invitacion usada ya es una cuenta, y esa se ve
+       en la lista de cuentas. Mostrar las dos listas con la misma persona en
+       ambas obliga a preguntarse cual manda. */
+    listar: function () {
+      return rest('invitaciones?select=*&usada=is.null&order=creado',
+                  null, 'leer las invitaciones pendientes');
+    },
+    crear: function (e, d) {
+      return crear('invitaciones', Object.assign({ empresa_id: e }, d), 'dar el acceso');
+    },
+    cancelar: function (id) {
+      return quitar('invitaciones', 'id=eq.' + id, 'cancelar la invitación');
+    },
+  };
+
   var usuarios = {
     listar: function () {
       return rest('usuarios?select=id,email,rol,creado&order=creado',
@@ -610,6 +640,7 @@
   window.DATOS = {
     auth: cuenta, yo: yo, primeraVez: primeraVez,
     miEmpresa: miEmpresa, guardarEmpresa: guardarEmpresa, usuarios: usuarios,
+    invitaciones: invitaciones,
     sucursales: sucursales, cargos: cargos, trabajadores: trabajadores, eventos: eventos,
     plantillas: plantillas, ausencias: ausencias,
     horarios: horarios, necesidades: necesidades, asignaciones: asignaciones,

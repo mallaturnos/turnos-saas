@@ -1384,3 +1384,7 @@ table.mesb .mini { cursor: pointer; }
    version de este arreglo ya habia pasado la prueba de «queda dentro». */
 .casilla input { margin-top: .2rem; flex: none; width: auto; min-width: 0; }
 .casilla span { flex: 1; min-width: 0; }
+
+/* Una invitación todavía no es una cuenta: se ve en la misma lista, más
+   apagada, para que se lea como «esto aún no pasa» sin tener que leerlo. */
+.cuenta.pendiente { border-style: dashed; background: var(--papel); }
