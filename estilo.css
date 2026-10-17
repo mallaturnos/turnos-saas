@@ -1372,3 +1372,15 @@ table.mesb .mini { cursor: pointer; }
   .cuenta { grid-template-columns: 1fr; }
   .cuenta .cual { justify-self: start; }
 }
+
+/* La casilla de un interruptor dentro de una tarjeta. Nombre propio y no
+   `.marca`, que en esta hoja es la marquita de hora de la regla de la malla:
+   reusarlo metia `position:absolute` y un `translateX(-50%)` que sacaban la
+   etiqueta de la tarjeta. */
+.casilla { display: flex; align-items: flex-start; gap: .5rem; cursor: pointer; }
+/* `width:auto` NO es decoracion: la hoja le da `width:100%` a los campos de
+   formulario, y sin esto la casilla salia de 318 px de ancho empujando el
+   texto fuera de la tarjeta. Se vio mirando, despues de que la primera
+   version de este arreglo ya habia pasado la prueba de «queda dentro». */
+.casilla input { margin-top: .2rem; flex: none; width: auto; min-width: 0; }
+.casilla span { flex: 1; min-width: 0; }

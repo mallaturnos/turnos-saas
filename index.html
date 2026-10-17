@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=52">
+<link rel="stylesheet" href="estilo.css?v=53">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v130</span></p>
+      <span style="float:right;opacity:.55" id="ver">v131</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v130</span>
+    <span class="hint" id="ver2" title="Versión publicada">v131</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -210,7 +210,15 @@
          sueldo de la misma persona. -->
     <div id="cajaValores" class="tarjeta angosta" hidden>
       <h2>Quién ve los sueldos</h2>
-      <label class="marca">
+      <!-- 🔴 ESTO DECIA class="marca" Y SE SALIA DE LA TARJETA.
+           `.marca` ya existia en la hoja y es OTRA COSA: la marquita de hora
+           de la regla de la malla, que es `position:absolute` y va corrida
+           media marca a la izquierda con `translateX(-50%)`. La etiqueta del
+           interruptor heredaba las dos y se iba a x=-64, fuera de la pantalla,
+           con la casilla suelta arriba. Lo encontro Pedro mandando una foto de
+           su Configuracion, el 17-10. Una clase que YA SIGNIFICA otra cosa no
+           da error: se aplica, y con todo su estilo. -->
+      <label class="casilla">
         <input type="checkbox" id="cfgVerValores">
         <span>El <b>supervisor</b> también ve el valor hora y el costo del mes</span>
       </label>
