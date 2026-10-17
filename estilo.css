@@ -1029,16 +1029,48 @@ table.mesb th.rot {
 table.mesb thead th.rot { background: var(--papel); }
 table.mesb th.rot .yano { font-weight: 400; font-size: .68rem; color: var(--oro); }
 
+/* EL ANCHO DE LA COLUMNA, Y LO QUE SE DECIDIO AL SUBIRLO (17-10).
+
+   Con 1,55 rem solo cabian dos caracteres, y por eso la pastilla dibujaba las
+   dos primeras cifras de la entrada y nada mas. Para que quepan las dos horas
+   hay que ensanchar, y eso tiene un precio honesto: **el mes ya no entra
+   entero en la pantalla y se desplaza a lo ancho.**
+
+   Se acepta a proposito. La tabla ya tenia `overflow-x: auto`, el nombre de la
+   fila esta fijo a la izquierda y el costo a la derecha, asi que al desplazarse
+   no se pierde de quien es la fila. Es lo que hace Skello en su Mes. Un mes
+   completo que no se puede leer no es mejor que medio mes legible. */
 table.mesb thead th.d {
-  width: 1.55rem; min-width: 1.55rem; padding: .25rem 0; text-align: center;
+  width: 2.9rem; min-width: 2.9rem; padding: .2rem 0 .25rem; text-align: center;
   font-weight: 600; color: var(--gris); font-size: .68rem;
   border-bottom: 1px solid var(--borde);
 }
+/* El dia de la semana, encima del numero y mas apagado: la cabecera dice las
+   dos cosas sin que haya que elegir cual. */
+table.mesb thead th.d i {
+  display: block; font-style: normal; font-size: .56rem; font-weight: 600;
+  color: var(--gris); opacity: .75; letter-spacing: .02em;
+}
 table.mesb td.d {
-  width: 1.55rem; min-width: 1.55rem; padding: 1px; vertical-align: top;
+  width: 2.9rem; min-width: 2.9rem; padding: 1px; vertical-align: top;
   border-bottom: 1px solid var(--borde); cursor: pointer;
 }
-table.mesb td.d:hover { background: var(--verde-claro); }
+/* Solo las casillas del CUERPO se iluminan: las de la fila de abajo son
+   totales y no se pueden apretar. Iluminar algo que no hace nada es la pista
+   falsa que Pedro ya reporto una vez («me lo ennegrece y no me deja asignarle
+   algo»). */
+table.mesb tbody td.d:hover { background: var(--verde-claro); }
+
+/* EL DOMINGO, DE ARRIBA ABAJO. No es decoracion: esta pantalla lleva la banda
+   ambar del descanso dominical y el sello «revisar», y hasta hoy no se veia
+   cual columna era domingo. Va tenue a proposito — tiene que distinguirse sin
+   competir con el color del cargo, que es lo que lleva la informacion. */
+table.mesb .domingo { background: #f3efe6; }
+table.mesb thead th.d.domingo, table.mesb tfoot td.d.domingo { background: #ece6d8; }
+table.mesb tbody td.d.domingo:hover { background: var(--verde-claro); }
+/* El dia del mes vecino manda sobre el tinte del domingo: lo que dice es «esto
+   no es de este mes», y eso se lee antes. */
+table.mesb .vecino.domingo { background: #ebe7df; }
 
 /* Los días de los meses vecinos que caen en una semana mostrada se apagan, en
    vez de esconderse: la semana tiene siete días y recortarla mentiría sobre
@@ -1047,10 +1079,31 @@ table.mesb .vecino { background: #00000008; color: #aab; }
 
 table.mesb .hoy { box-shadow: inset 0 0 0 2px var(--verde); }
 
-/* Una marca por turno: la hora de entrada y nada más. */
+/* Una marca por turno: las dos horas, y el nombre cuando la fila es un cargo. */
 table.mesb .mini {
-  display: block; font-size: .6rem; line-height: 1.5; text-align: center;
-  border-radius: 2px; margin: 1px 0; color: #fff; background: var(--verde);
+  display: block; font-size: .58rem; line-height: 1.25; text-align: center;
+  border-radius: 2px; margin: 1px 0; padding: 1px 0; color: #fff;
+  background: var(--verde); font-variant-numeric: tabular-nums;
+}
+table.mesb .mini b { display: block; font-weight: 600; }
+/* La salida, un punto mas apagada que la entrada: las dos estan, pero la que
+   se busca primero al recorrer el mes es a que hora entra. */
+table.mesb .mini b + b { opacity: .8; }
+/* EL NOMBRE SE RECORTA, NO PARTE LA FILA. Si se dejara envolver, una fila con
+   un nombre largo mediria distinto que las demas y la tabla se lee peor — es
+   el mismo motivo por el que en Semana el nombre va en una sola linea con
+   puntos suspensivos y completo en el `title`. */
+/* ⚠ EL `max-width` ES LO QUE HACE QUE EL RECORTE EXISTA, y me costo una medida
+   descubrirlo: con `overflow:hidden` y `ellipsis` pero SIN tope, una celda de
+   tabla **se ensancha** para que quepa el texto en vez de recortarlo. Medido:
+   «María Fernanda del Carmen Larraín» llevaba su columna de 61 a 173 px y la
+   tabla entera de 2194 a 2306. La rejilla dejaba de ser una rejilla por un
+   nombre largo. Con el tope, el nombre se recorta y queda entero en el
+   `title`, que es lo mismo que hace el bloque de la Semana. */
+table.mesb .mini em {
+  display: block; max-width: 2.6rem; font-style: normal; font-size: .54rem;
+  opacity: .92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px solid rgba(255,255,255,.28); margin-top: 1px; padding-top: 1px;
 }
 table.mesb .mini.c1 { background: #0f6b63; }
 table.mesb .mini.c2 { background: #8a6d2f; }
@@ -1096,6 +1149,12 @@ table.mesb th.costo, table.mesb td.costo { position: sticky; right: 0; z-index: 
 table.mesb .tot { border-left: 1px solid var(--borde); }
 table.mesb .cero { color: var(--gris); }
 table.mesb tfoot td, table.mesb tfoot th { border-top: 2px solid var(--borde); }
+/* Las horas de cada dia, en la fila de abajo. Mas chicas que las de la semana:
+   son el detalle, y la columna de la semana sigue siendo la que se mira. */
+table.mesb tfoot td.d {
+  text-align: center; font-size: .6rem; color: var(--gris); font-weight: 600;
+  padding: .2rem 0; cursor: default; font-variant-numeric: tabular-nums;
+}
 
 /* El número de semana es la puerta a esa semana: un gesto que se aprieta a
    propósito, no un clic que te mueve la pantalla sin querer. */
@@ -1264,5 +1323,10 @@ table.mesb .mini { cursor: pointer; }
 /* El turno sin dueño en el Mes: la MISMA marca que ya lleva en Semana. */
 .mesb .mini.pendiente { background:transparent; color:var(--gris);
   border:1.5px dashed var(--gris); font-style:italic; }
+/* La raya que separa el nombre es blanca sobre el color del cargo; en la
+   pastilla sin dueño el fondo es transparente y ahi no se veria, asi que se
+   repinta del mismo gris del borde. Lo mismo en la teñida de ámbar. */
+.mesb .mini.pendiente em { border-top-color: var(--gris); opacity: .95; }
+.mesb .mini.choca em { border-top-color: #b08a2e; }
 .mesb .cont .sindueno { display:block; font-size:.7rem; font-weight:700;
   color:var(--rojo); font-style:normal; }

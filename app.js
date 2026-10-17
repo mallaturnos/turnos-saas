@@ -109,6 +109,13 @@ function semanaISO(fechaIso) {
 var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
              'septiembre','octubre','noviembre','diciembre'];
 var DIAS = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
+/* DOS LETRAS, no una: con una sola, «martes» y «miércoles» son las dos «M», y
+   una cabecera que no distingue dos columnas no sirve de cabecera. */
+var DIAS2 = ['Lu','Ma','Mi','Ju','Vi','Sá','Do'];
+function inicialDia(texto) {
+  var p = texto.split('-').map(Number);
+  return DIAS2[(new Date(p[0], p[1]-1, p[2]).getDay() + 6) % 7];
+}
 function nombreDia(texto) {
   var p = texto.split('-').map(Number);
   return DIAS[(new Date(p[0], p[1]-1, p[2]).getDay() + 6) % 7];
@@ -1734,10 +1741,21 @@ function pintarMesB() {
            + '<table class="mesb"><thead><tr><th class="rot"></th>';
   semanas.forEach(function (sem) {
     sem.forEach(function (d) {
+      /* EL DIA DE LA SEMANA Y EL DOMINGO, que faltaban los dos (17-10).
+
+         La cabecera era un numero pelado: `17`, sin decir que es viernes. El
+         nombre del dia vivia solo en el `title`, o sea habia que pasar el raton
+         columna por columna.
+
+         Y el domingo no estaba marcado DE NINGUNA FORMA — en la pantalla que
+         justo te pone la banda ambar cuando alguien se pasa de domingos y un
+         sello «revisar» en su fila. La app acusaba un problema de domingos en
+         una rejilla donde no se veia cual columna era domingo. */
       html += '<th class="d' + (d === hoy ? ' hoy' : '')
+            + (esDomingo(d) ? ' domingo' : '')
             + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
             + ' title="' + nombreDia(d) + ' ' + diaMes(d) + '">'
-            + d.slice(8) + '</th>';
+            + '<i>' + inicialDia(d) + '</i>' + d.slice(8) + '</th>';
     });
     html += '<th class="cont irsem" data-semana="' + sem[0] + '"'
           + ' title="Horas de la semana ' + semanaISO(sem[0])
@@ -1747,6 +1765,13 @@ function pintarMesB() {
   html += '<th class="tot">Mes</th><th class="costo">Costo</th></tr></thead><tbody>';
 
   var porSemana = semanas.map(function () { return 0; });
+  /* LAS HORAS DE CADA DIA. La fila de abajo tenia una celda vacia con
+     `colspan="7"` por semana: el sitio estaba dibujado y en blanco. Es lo que
+     contesta «que dia del mes tengo mas gente», que es una pregunta del mes y
+     no de la semana, y es lo que Skello pone en su fila «Horas trabajadas».
+     Se acumula en el mismo recorrido que ya suma las horas de la fila: cada
+     turno cae en una sola fila, asi que sumar por columna no duplica nada. */
+  var porDia = {};
   var totalMes = 0;
   /* EL COSTO DEL MES. `trabajadores.valor_hora` llevaba meses guardado y SIN
      USAR —`grep` daba 2, las dos en el formulario—, y el Mes es donde cabe la
@@ -1786,8 +1811,10 @@ function pintarMesB() {
           return a.fecha === d && deQuien(a) === fila.id;
         }).sort(porHoraTurno);
         suyas.forEach(function (a) {
-          if (a.trabajador_id) semHoras += horasNetas(a);
-          else semSinDueno++;
+          if (a.trabajador_id) {
+            semHoras += horasNetas(a);
+            porDia[d] = (porDia[d] || 0) + horasNetas(a);
+          } else semSinDueno++;
         });
         /* `data-semana` es lo que convierte el mes en una puerta: el clic lleva
            a ESA semana en vez de dejarte donde estabas. */
@@ -1814,6 +1841,7 @@ function pintarMesB() {
           ? ausenciasDe(fila.id, d) : [];
 
         html += '<td class="d' + (d === hoy ? ' hoy' : '')
+              + (esDomingo(d) ? ' domingo' : '')
               + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
               + ' data-dia="' + d + '"'
               + ' data-fila="' + esc(String(fila.id || '')) + '"'
@@ -1856,14 +1884,44 @@ function pintarMesB() {
                   // marca que en Semana y en el Día, sin texto porque aquí no
                   // cabe ni una palabra.
                   var chocaMes = !sinDueno && ausenciasDe(a.trabajador_id, d).length > 0;
+                  /* LA PASTILLA DECIA DOS CIFRAS, Y ESO PERDIA DATOS (17-10).
+
+                     Dibujaba `hhmm(a.hora_inicio).slice(0, 2)`, o sea las dos
+                     primeras cifras de la entrada: **09:00 y 09:30 se veian
+                     IDENTICAS**, y 14:00 igual que 14:45. En una pantalla cuya
+                     gracia es ver el patron del mes, dos turnos distintos que
+                     se dibujan iguales es el error que no se puede permitir.
+                     Tampoco estaba la hora de SALIDA, asi que el Mes no
+                     distinguia un turno de 4 horas de uno de 10 — y «a quien le
+                     toca siempre lo mismo» es justo una pregunta sobre eso.
+
+                     Ahora van las dos horas, una por linea, que es como lo hace
+                     Skello en su Mes.
+
+                     Y EL NOMBRE, pero SOLO agrupado por cargos. Era el hallazgo
+                     del 16-10: ahi la fila dice el puesto, el color lo repite y
+                     **quien hace el turno no aparecia en ninguna parte** — ni en
+                     la pastilla, ni en su `title`, ni en el de la casilla (que
+                     lleva el nombre de la FILA, o sea el del cargo). Agrupado
+                     por personas no se repite: la fila ya lo dice.
+
+                     La palabra para el que no tiene dueño es «sin asignar», la
+                     MISMA que usa el bloque de la Semana. Un segundo nombre
+                     para lo mismo se paga traduciendo. */
+                  var quienEsMes = sinDueno ? 'sin asignar' : nombreTrab(a.trabajador_id);
                   return '<span class="mini ' + colorCargo(a.cargo_id)
                        + (sinDueno ? ' pendiente' : '') + (chocaMes ? ' choca' : '') + '"'
                        + ' data-asigid="' + a.id + '"'
                        + ' title="' + esc(hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin)
                            + ' · ' + nombreCargo(a.cargo_id)
-                           + (sinDueno ? ' · SIN ASIGNAR' : '')
+                           + ' · ' + (sinDueno ? 'SIN ASIGNAR' : quienEsMes)
                            + ' · aprieta para abrirlo') + '">'
-                       + hhmm(a.hora_inicio).slice(0, 2) + '</span>';
+                       + '<b>' + hhmm(a.hora_inicio) + '</b>'
+                       + '<b>' + hhmm(a.hora_fin) + '</b>'
+                       + (S.agrupar === 'persona' ? ''
+                           : '<em title="' + esc(quienEsMes) + '">'
+                             + esc(quienEsMes) + '</em>')
+                       + '</span>';
                 }).join('')
               + '</td>';
       });
@@ -1933,7 +1991,19 @@ function pintarMesB() {
 
   html += '</tbody><tfoot><tr><th class="rot">Horas</th>';
   semanas.forEach(function (sem, iSem) {
-    html += '<td class="d" colspan="7"></td>';
+    /* Aqui habia UNA celda vacia con `colspan="7"`. Ahora cada dia dice las
+       suyas. Raya y no cero por lo mismo de siempre: un 0 se lee como «aqui no
+       hay nada que ver», y un dia sin nadie planificado es justo lo que hay
+       que ver. */
+    sem.forEach(function (d) {
+      html += '<td class="d' + (esDomingo(d) ? ' domingo' : '')
+            + (d.slice(0, 7) !== mes ? ' vecino' : '') + '"'
+            + ' title="' + esc(nombreDia(d) + ' ' + diaMes(d) + ' · '
+                + (porDia[d] ? numero(porDia[d]) + ' h planificadas'
+                             : 'sin horas planificadas')) + '">'
+            + (porDia[d] ? numero(porDia[d]) : '<span class="cero">—</span>')
+            + '</td>';
+    });
     html += '<td class="cont">'
           + (porSemana[iSem] ? numero(porSemana[iSem]) + ' h' : '<span class="cero">—</span>')
           + '</td>';
@@ -2838,6 +2908,29 @@ $('#malla').addEventListener('click', function (ev) {
      Agregar desde el mes es además lo que hace Skello, que crea, modifica y
      borra turnos en su vista Mes. Preselecciona la fila, igual que el + de la
      semana: filas de personas → la persona; filas de cargos → el cargo. */
+  /* 🔴 LA AUSENCIA DEL MES SE ABRE, Y ESTO VA ANTES DE LA CASILLA VACIA.
+
+     Hasta el 17-10, apretar «Vacaciones» o «Licencia médica» en el Mes abria
+     «Quién lo cubre» CON LA PERSONA YA PUESTA y un turno listo para guardar —
+     o sea, el gesto ofrecia darle trabajo el dia que no está. Comprobado en la
+     app, no deducido: el dialogo salia diciendo «apretaste el + en su fila», y
+     no se habia apretado ningun +.
+
+     Por que pasaba: la pastilla del Mes tiene clase `ausmes`, el oyente que
+     abre una ausencia busca `.aus[data-ausid]` —que NO coincide— y antes de
+     llegar ahi saltaba la rama de la casilla vacia, porque la pastilla no
+     lleva `data-asigid`.
+
+     El arreglo es mirar `[data-ausid]` ANTES, y no retocar el selector de mas
+     abajo: el orden es lo que importa, porque la casilla vacia se traga todo
+     lo que no sea un turno. En Semana y en Dia este mismo clic ya abria la
+     ausencia; aqui queda igual que alli. */
+  var chipMes = t.closest && t.closest('.mesb [data-ausid]');
+  if (chipMes) {
+    var ausMes = S.ausencias.filter(function (x) { return x.id === chipMes.dataset.ausid; })[0];
+    if (ausMes) return abrirAusencia(ausMes, null, null);
+  }
+
   var celVacia = t.closest && t.closest('.mesb td.d[data-fila]');
   if (celVacia && !t.closest('[data-asigid]')) {
     var quienMes = celVacia.dataset.fila || null;
