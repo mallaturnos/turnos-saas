@@ -1145,6 +1145,18 @@ table.mesb .tot {
 }
 table.mesb tbody tr:hover .tot { background: var(--blanco); }
 table.mesb th.costo, table.mesb td.costo { position: sticky; right: 0; z-index: 1; }
+/* 🔴 SIN LA COLUMNA DE COSTO, EL TOTAL SE PEGA AL BORDE.
+
+   El `right: 5.5rem` de arriba reservaba el ancho del Costo. Cuando el perfil
+   no puede ver valores esa columna no se dibuja, y el total se quedaba pegado
+   a 88 px del borde: flotando ENCIMA de las columnas de los dias, en medio de
+   la pantalla. Medido en el navegador — `tot@1109` mientras los dias de al
+   lado iban en 1911 y 2050.
+
+   Las pruebas no lo cazaron y no podian: contaban que la columna de Costo no
+   estuviera y que las horas siguieran, y las dos cosas eran ciertas. Esto se
+   vio MIRANDO la pantalla con el rol cambiado. [[mirar-el-render]]. */
+table.mesb.sin-costo .tot { right: 0; }
 /* Una linea que separe lo fijo de lo que se desplaza por debajo. */
 table.mesb .tot { border-left: 1px solid var(--borde); }
 table.mesb .cero { color: var(--gris); }

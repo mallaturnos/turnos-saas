@@ -511,8 +511,14 @@ function cargarTodo(mia) {
   return Promise.all([
     DATOS.sucursales.listar(), DATOS.cargos.listar(),
     DATOS.trabajadores.listar(), DATOS.horarios.listar(),
+    DATOS.miEmpresa(),
   ]).then(function (r) {
     S.sucursales = r[0]; S.cargos = r[1]; S.trabajadores = r[2]; S.horarios = r[3];
+    /* La empresa se carga para el interruptor del costo. Va en el mismo
+       Promise.all y no aparte porque `pintarMalla()` la necesita YA: si
+       llegara despues, el Mes se dibujaria una vez con la columna de Costo y
+       otra sin ella, y ese parpadeo se lee como un error. */
+    S.empresa = r[4] || null;
     // Se pregunta una sola vez y no se bloquea el arranque con esto: si la
     // respuesta llega tarde, la app ya esta pintada y solo cambia que la ficha
     // del local muestre los campos o el aviso de la migracion pendiente.
@@ -538,6 +544,7 @@ function cargarTodo(mia) {
       });
     }
     S.yoTrabajador = S.trabajadores.filter(function (p) { return p.usuario_id === S.yo.id; })[0] || null;
+    aplicarPerfil();
     $('#hEmpresa').textContent = 'Turnos';
     $('#hQuien').textContent = S.yo.email;
     if (!S.sucursal) S.sucursal = (S.sucursales[0] || {}).id || null;
@@ -1712,6 +1719,11 @@ function nombreMes(mesTxt) {
 
 function pintarMesB() {
   var r = rangoVista(), hoy = hoyTexto();
+  /* EL COSTO, SOLO PARA QUIEN PUEDE VER VALORES. Lo decidio Pedro: el
+     supervisor ve HORAS siempre —las necesita para planificar— y VALORES solo
+     si el dueño se los autoriza. Se esconde la COLUMNA entera, no el numero:
+     una columna vacia invita a preguntar por que. */
+  var verValores = puedeVerValores();
 
   // Las semanas del mes, cada una con sus siete días.
   var semanas = [], f = r.desde;
@@ -1738,7 +1750,8 @@ function pintarMesB() {
   }
 
   var html = bandaDomingos(mes, filas)
-           + '<table class="mesb"><thead><tr><th class="rot"></th>';
+           + '<table class="mesb' + (verValores ? '' : ' sin-costo')
+           + '"><thead><tr><th class="rot"></th>';
   semanas.forEach(function (sem) {
     sem.forEach(function (d) {
       /* EL DIA DE LA SEMANA Y EL DOMINGO, que faltaban los dos (17-10).
@@ -1762,7 +1775,9 @@ function pintarMesB() {
           + ' · aprieta para ir a esa semana">'
           + 'S' + semanaISO(sem[0]) + '<i>h</i></th>';
   });
-  html += '<th class="tot">Mes</th><th class="costo">Costo</th></tr></thead><tbody>';
+  html += '<th class="tot">Mes</th>'
+        + (verValores ? '<th class="costo">Costo</th>' : '')
+        + '</tr></thead><tbody>';
 
   var porSemana = semanas.map(function () { return 0; });
   /* LAS HORAS DE CADA DIA. La fila de abajo tenia una celda vacia con
@@ -1981,11 +1996,13 @@ function pintarMesB() {
     if (sinValor) faltaValor = true;
     /* Si a alguien le falta el valor hora NO se pone un cero: un cero se lee
        como «no cuesta nada». Se pone una raya y abajo se dice por que. */
-    html += '<td class="costo">'
-          + (costoFila ? '$ ' + numero(Math.round(costoFila))
-                       : '<span class="cero">—</span>')
-          + (sinValor ? '<span class="sindueno">sin valor hora</span>' : '')
-          + '</td></tr>';
+    html += (verValores
+          ? '<td class="costo">'
+            + (costoFila ? '$ ' + numero(Math.round(costoFila))
+                         : '<span class="cero">—</span>')
+            + (sinValor ? '<span class="sindueno">sin valor hora</span>' : '')
+            + '</td>'
+          : '') + '</tr>';
     totalMes += mesHoras;
   });
 
@@ -2011,18 +2028,23 @@ function pintarMesB() {
   html += '<td class="tot">'
         + (totalMes ? '<b>' + numero(totalMes) + ' h</b>' : '<span class="cero">—</span>')
         + '</td>'
-        + '<td class="costo">'
-        + (costoMes ? '<b>$ ' + numero(Math.round(costoMes)) + '</b>'
-                    : '<span class="cero">—</span>')
-        + '</td></tr></tfoot></table>'
+        + (verValores
+            ? '<td class="costo">'
+              + (costoMes ? '<b>$ ' + numero(Math.round(costoMes)) + '</b>'
+                          : '<span class="cero">—</span>')
+              + '</td>'
+            : '')
+        + '</tr></tfoot></table>'
         /* Decir QUE es y QUE no es, al lado del numero. Un costo sin esta
            linea se lee como una liquidacion, y no lo es. */
-        + '<p class="hint">El costo es <b>lo planificado</b>: horas netas por el valor hora '
-        + 'de cada persona. <b>No es una liquidación</b> — no lleva el recargo del domingo '
-        + 'ni las horas extra.'
-        + (faltaValor ? ' ⚠️ Hay gente <b>sin valor hora</b> en su ficha, así que el total '
-            + 'se queda corto.' : '')
-        + '</p>';
+        + (verValores
+            ? '<p class="hint">El costo es <b>lo planificado</b>: horas netas por el valor hora '
+              + 'de cada persona. <b>No es una liquidación</b> — no lleva el recargo del domingo '
+              + 'ni las horas extra.'
+              + (faltaValor ? ' ⚠️ Hay gente <b>sin valor hora</b> en su ficha, así que el total '
+                  + 'se queda corto.' : '')
+              + '</p>'
+            : '');
 
   var m = $('#malla');
   m.className = 'malla mesb-wrap';
@@ -2814,6 +2836,27 @@ $('#cVista').addEventListener('click', function (ev) {
    nada más. Con las tarjetas, Configuración ya no depende de este selector —
    ese acoplamiento lo había metido yo y fue justo lo que confundió a Pedro. */
 $('#cSucursal').addEventListener('change',  function () { S.sucursal = this.value; recargarSemana(); });
+
+/* Guarda al momento y REPINTA LA MALLA, que es lo que la persona esta
+   esperando ver: si solo se guardara, el dueño apretaria el interruptor y no
+   pasaria nada visible hasta recargar. Y si falla, se devuelve la casilla a
+   donde estaba en vez de dejarla mintiendo. */
+$('#cfgVerValores').addEventListener('change', function () {
+  var quiere = this.checked, antes = !!S.empresa.supervisor_ve_valores, caja = this;
+  aviso('#cfgVerValoresMsg', 'Guardando…');
+  DATOS.guardarEmpresa(S.empresa.id, { supervisor_ve_valores: quiere })
+    .then(function () {
+      S.empresa.supervisor_ve_valores = quiere;
+      aviso('#cfgVerValoresMsg', quiere
+        ? 'Listo: el supervisor ve los sueldos.'
+        : 'Listo: el supervisor no ve los sueldos.', 'ok');
+      pintarMalla();
+    })
+    .catch(function (e) {
+      caja.checked = antes;
+      aviso('#cfgVerValoresMsg', e.message, 'bad');
+    });
+});
 
 /* ---------- IMPRIMIR ----------
 
@@ -4174,6 +4217,79 @@ var SEL = { claves: [], ancla: null, foco: null, pintando: false, arrastro: fals
 var PORTA = null;   // lo copiado: { agrupar, alto, ancho, celdas: [[ [turnos] ]] }
 
 function esPlanilla() { return S.agrupar === 'persona' || S.agrupar === 'cargo'; }
+
+/* ---------- PERFILES: QUE PUEDE CADA UNO ----------
+
+   UNA SOLA TABLA Y UNA SOLA FUNCION, y es a proposito: si la regla se escribe
+   suelta en cada sitio que la necesita, el dia que cambie hay que acordarse de
+   todos — y el que se olvide no da error, simplemente deja la puerta abierta.
+   Es [[regla-colgada-de-una-puerta]], que ya costo caro en este proyecto.
+
+   ⚠️ Y QUE QUEDE CLARO QUE ESTO NO ES LA DEFENSA. La defensa esta en la base,
+   en las politicas que piden `mi_rol()`, y esta probada: un supervisor cambio
+   0 filas y el dueño 12. Esconder un boton es COMODIDAD —no ofrecer algo que
+   va a fallar—, no seguridad. El propio codigo ya lo decia de otra cosa: «un
+   `disabled` en el navegador seria toda la defensa, y eso no es una defensa».
+
+   El rol sale de `S.yo.rol`, que es la fila de `usuarios` de quien entro. Si
+   por lo que sea no hubiera rol, se trata como `trabajador`: ante la duda, lo
+   que menos puede. */
+var PUEDE = {
+  //                       dueno  admin  supervisor  trabajador
+  planificar:     ['dueno','admin','supervisor'],
+  publicar:       ['dueno','admin','supervisor'],
+  ausencias:      ['dueno','admin','supervisor'],
+  verBitacora:    ['dueno','admin'],
+  gente:          ['dueno','admin'],   // crear y editar personas
+  configurar:     ['dueno','admin'],   // locales, horarios, reglas, catalogo
+  borrarLocal:    ['dueno'],
+  repartirPerfiles: ['dueno'],
+};
+function miRol() { return (S.yo && S.yo.rol) || 'trabajador'; }
+function puede(que) {
+  var quienes = PUEDE[que];
+  if (!quienes) return false;          // un permiso inventado no se concede
+  return quienes.indexOf(miRol()) >= 0;
+}
+/* LAS PESTANAS QUE NO LE TOCAN, FUERA.
+
+   No es seguridad —eso esta en la base— sino no ofrecer algo que va a fallar.
+   Hoy un supervisor entra, ve Configuracion entera, aprieta Guardar y no pasa
+   nada: la base lo rechaza y la pantalla se queda callada. Eso es peor que no
+   mostrarle el boton, y es el mismo defecto que Pedro reporto con la casilla
+   que «se enegrecia y no dejaba asignar».
+
+   SE ESCONDE LA PESTANA, NO SOLO SU CONTENIDO, y ademas se comprueba que la
+   pestana en la que uno esta parado siga siendo visible: si alguien quedo en
+   Configuracion y su perfil ya no la alcanza, hay que MOVERLO, o se queda
+   mirando un panel vacio. Eso ya paso una vez en este proyecto
+   ([[funcion-anidada-pantalla-vacia]]). */
+function aplicarPerfil() {
+  var deQuien = { plan: 'planificar', equipo: 'gente', actividad: 'verBitacora',
+                  config: 'configurar', mio: null };   // «Mi calendario» es de todos
+  $$('#nav .tab').forEach(function (t) {
+    var permiso = deQuien[t.dataset.p];
+    t.hidden = permiso ? !puede(permiso) : false;
+  });
+  // Si la pestaña elegida quedo escondida, se salta a la primera que si se ve.
+  var elegida = $$('#nav .tab').filter(function (t) {
+    return t.getAttribute('aria-selected') === 'true'; })[0];
+  if (!elegida || elegida.hidden) {
+    var primera = $$('#nav .tab').filter(function (t) { return !t.hidden; })[0];
+    if (primera) primera.click();
+  }
+}
+
+/* EL COSTO ES EL UNICO QUE NO SALE DE LA TABLA, porque no depende solo del rol:
+   Pedro decidio (msgs 7097-7100) que el supervisor ve HORAS siempre y VALORES
+   solo si se le autoriza, con un interruptor del dueño apagado por defecto.
+   Dueño y admin lo ven siempre. */
+function puedeVerValores() {
+  var r = miRol();
+  if (r === 'dueno' || r === 'admin') return true;
+  if (r !== 'supervisor') return false;
+  return !!(S.empresa && S.empresa.supervisor_ve_valores);
+}
 
 function claveCel(td) {
   return S.agrupar + '|' + (td.dataset.fila || '') + '|' + td.dataset.fecha;
@@ -6499,6 +6615,21 @@ document.addEventListener('click', function (ev) {
 });
 
 function pintarConfig() {
+  /* EL INTERRUPTOR DE LOS SUELDOS. Solo lo ve y lo toca el DUEÑO: repartir
+     quien mira la plata no es algo que delegue en el admin, por el mismo
+     motivo por el que repartir perfiles tampoco.
+
+     Si la columna todavia no esta en la base, la caja se queda escondida en
+     vez de mostrar un interruptor que no guarda nada — misma linea que el
+     rubro y la jornada pactada. */
+  var caja = $('#cajaValores');
+  if (caja) {
+    var hayColumna = !!(S.empresa && 'supervisor_ve_valores' in S.empresa);
+    caja.hidden = !(puede('repartirPerfiles') && hayColumna);
+    if (!caja.hidden) {
+      $('#cfgVerValores').checked = !!S.empresa.supervisor_ve_valores;
+    }
+  }
   var sueltos = atajosHuerfanos();
   $('#listaSucursales').innerHTML = (S.sucursales.length
     ? S.sucursales.map(tarjetaLocal).join('')
@@ -7828,6 +7959,7 @@ window.__app = {
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
   claveCel: claveCel,
+  aplicarPerfil: aplicarPerfil, puede: puede, puedeVerValores: puedeVerValores,
   copiarSeleccion: copiarSeleccion, pegarSeleccion: pegarSeleccion,
   borrarSeleccion: borrarSeleccion, verPorta: function () { return PORTA; },
 };

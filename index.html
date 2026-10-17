@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=50">
+<link rel="stylesheet" href="estilo.css?v=51">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v128</span></p>
+      <span style="float:right;opacity:.55" id="ver">v129</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v128</span>
+    <span class="hint" id="ver2" title="Versión publicada">v129</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -202,6 +202,26 @@
          el defecto. Ahora cada local es una tarjeta con sus datos a la vista:
          no hay que elegir nada antes de escribir, y comparar dos locales es
          mirar. -->
+    <!-- QUIEN VE LOS SUELDOS. Lo decidio Pedro el 17-10: el supervisor ve las
+         HORAS siempre —las necesita para planificar— y los VALORES solo si el
+         dueño se los autoriza. Va arriba del todo y no escondido en una
+         tarjeta de local, porque es de la EMPRESA y no de un local: si
+         estuviera por local, dos locales podrian discrepar sobre el mismo
+         sueldo de la misma persona. -->
+    <div id="cajaValores" class="tarjeta angosta" hidden>
+      <h2>Quién ve los sueldos</h2>
+      <label class="marca">
+        <input type="checkbox" id="cfgVerValores">
+        <span>El <b>supervisor</b> también ve el valor hora y el costo del mes</span>
+      </label>
+      <p class="hint">Las <b>horas</b> las ve siempre: sin ellas no puede planificar.
+        Esto es solo la <b>plata</b> — el valor hora de cada persona y la columna
+        de costo del Mes. <b>Viene apagado</b>: si viniera encendido, cada
+        supervisor nuevo pasaría a ver el sueldo de todo el equipo sin que nadie
+        lo hubiera decidido.</p>
+      <p class="hint" id="cfgVerValoresMsg"></p>
+    </div>
+
     <div class="controles">
       <h2>Locales</h2><span class="espacio"></span>
       <button class="primario" id="btnSucursal">+ Nuevo local</button>
@@ -718,7 +738,7 @@
   </form>
 </dialog>
 <script src="config.js?v=5"></script>
-<script src="datos.js?v=20"></script>
-<script src="app.js?v=75"></script>
+<script src="datos.js?v=21"></script>
+<script src="app.js?v=76"></script>
 </body>
 </html>

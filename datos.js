@@ -191,6 +191,20 @@
       .then(function (f) { return (f && f[0]) || null; });
   }
 
+  /* ---------- LA EMPRESA ----------
+     Se lee para UNA cosa: el interruptor de si el supervisor ve los valores.
+     La columna puede no estar —Pedro pega los arreglos cuando puede—, asi que
+     se pide con `select=*` y la pantalla trata el campo ausente como apagado.
+     Misma idea que las sondas de rubro y jornada: la app anda igual sin el. */
+  function miEmpresa() {
+    return rest('empresas?select=*&limit=1', null, 'leer tu empresa')
+      .then(function (f) { return (f && f[0]) || null; })
+      .catch(function () { return null; });
+  }
+  function guardarEmpresa(id, d) {
+    return editar('empresas', id, d, 'guardar la configuracion de la empresa');
+  }
+
   function primeraVez(nombreEmpresa) {
     return rest('rpc/crear_empresa', { method: 'POST', body: { p_nombre: nombreEmpresa } },
                 'crear la empresa');
@@ -553,6 +567,7 @@
 
   window.DATOS = {
     auth: cuenta, yo: yo, primeraVez: primeraVez,
+    miEmpresa: miEmpresa, guardarEmpresa: guardarEmpresa,
     sucursales: sucursales, cargos: cargos, trabajadores: trabajadores, eventos: eventos,
     plantillas: plantillas, ausencias: ausencias,
     horarios: horarios, necesidades: necesidades, asignaciones: asignaciones,
