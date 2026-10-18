@@ -243,6 +243,21 @@ function activos() {
   return S.trabajadores.filter(function (p) { return p.activo !== false; });
 }
 
+/* QUIEN HACE TURNOS, y por que esto existe.
+
+   Desde la alternativa C (18-10, aprobada por Pedro) en Equipo viven TAMBIEN
+   las cuentas que no son del equipo —un socio, el contador—: el estandar dice
+   que todo usuario es una persona, y la alternativa era dejar dos listas para
+   la misma pregunta, que es justo lo que veniamos a arreglar.
+
+   Pero alguien que no trabaja no puede salir como FILA VACIA toda la semana ni
+   en los desplegables de asignar. De ahi la casilla, y de ahi estas dos
+   funciones: `activos()` responde «quien esta», `activosQueTrabajan()`
+   responde «a quien se le puede dar un turno». Son preguntas distintas, igual
+   que ya pasaba con los que se fueron. */
+function haceTurnos(p) { return !(p && p.no_hace_turnos); }
+function activosQueTrabajan() { return activos().filter(haceTurnos); }
+
 /* Quienes van como FILA: los que trabajan aqui, mas los que ya se fueron PERO
    tienen turnos en lo que se esta mirando.
 
@@ -254,7 +269,10 @@ function conHistoria(asignaciones) {
   var hay = {};
   asignaciones.forEach(function (a) { if (a.trabajador_id) hay[a.trabajador_id] = true; });
   return S.trabajadores.filter(function (p) {
-    return p.activo !== false || hay[p.id];
+    /* El que no hace turnos no ocupa fila. Pero si TIENE turnos igual aparece:
+       puede haberse marcado la casilla despues, y esconderle los turnos seria
+       el mismo error que esconder los de quien se fue. */
+    return (p.activo !== false && haceTurnos(p)) || hay[p.id];
   });
 }
 
@@ -548,6 +566,11 @@ function cargarTodo(mia) {
     if (DATOS.trabajadores.hayJornada) {
       DATOS.trabajadores.hayJornada().then(function (hay) {
         if (S.hayJornada !== hay) { S.hayJornada = hay; pintarMalla(); }
+      });
+    }
+    if (DATOS.trabajadores.hayNoTurnos) {
+      DATOS.trabajadores.hayNoTurnos().then(function (hay) {
+        if (S.hayNoTurnos !== hay) { S.hayNoTurnos = hay; pintarEquipo(); pintarMalla(); }
       });
     }
     S.yoTrabajador = S.trabajadores.filter(function (p) { return p.usuario_id === S.yo.id; })[0] || null;
@@ -3091,16 +3114,17 @@ $('#nav').addEventListener('click', function (ev) {
      contra el que avisa el comentario de aqui arriba, y lo encontro la prueba
      de humo, no yo. */
   if (b.dataset.p === 'config') {
+    // Las cuentas se cargan igual: «Qué puede cada perfil» dice cuánta gente
+    // tiene cada uno, y ese número sale de ellas.
     cargarCatalogo(); cargarBloqueos(); cargarCuentas();
-    // Las pendientes se pintan en la misma lista, debajo de las cuentas: es la
-    // respuesta completa a «quien entra», y verlas en dos sitios obliga a
-    // preguntarse cual manda.
-    cargarInvitaciones().then(function () { if (S.cuentas.length) pintarCuentas(); });
   }
-  // En Equipo hacen falta para que la ficha sepa si alguien ya fue invitado.
-  // Y las CUENTAS tambien: sin ellas la ficha no puede decir con que correo
-  // entra quien ya entra.
-  if (b.dataset.p === 'equipo') { cargarInvitaciones(); cargarCuentas(true); }
+  /* En Equipo hacen falta las dos: las INVITACIONES para la lista de invitados
+     y para que la ficha sepa si alguien ya fue invitado, y las CUENTAS para la
+     etiqueta del permiso y para que la ficha diga con que correo entra. */
+  if (b.dataset.p === 'equipo') {
+    cargarInvitaciones().then(pintarEquipo);
+    cargarCuentas();
+  }
 });
 
 // Un solo oyente para toda la malla: los botones se repintan constantemente y
@@ -3692,7 +3716,7 @@ function abrirAsignacion(a, necesidadId, fecha, preset) {
   }).join('');
   if (cargoId) $('#aCargo').value = cargoId;
   var sabe = [], resto = [];
-  activos().forEach(function (p) {
+  activosQueTrabajan().forEach(function (p) {
     var tiene = (p.trabajador_cargos || []).some(function (x) { return x.cargo_id === cargoId; });
     (tiene ? sabe : resto).push(p);
   });
@@ -5615,7 +5639,7 @@ function abrirLote() {
 
   $('#loTit').textContent = 'Cambiar los ' + LOTE.length + ' marcados';
   $('#loQuien').innerHTML = '<option value="">— sin cambios —</option>'
-    + activos().map(function (p) {
+    + activosQueTrabajan().map(function (p) {
         return '<option value="' + p.id + '">' + esc(nombreTrab(p.id)) + '</option>';
       }).join('');
   $('#loQuien').value = ''; $('#loEntra').value = ''; $('#loSale').value = '';
@@ -6325,14 +6349,40 @@ function bloqueAcceso(dato) {
          + 'que existir.</p>';
   }
   if (a.estado === 'entra') {
+    /* EL PERMISO SE CAMBIA AQUI (alternativa C). Antes esta misma linea decia
+       «el permiso se cambia en Configuracion, en la lista de cuentas», y esa
+       frase ERA el defecto que vio Pedro: la persona esta aqui y el mando
+       estaba en otra pantalla.
+
+       Las dos salvaguardas viajan con el selector, no se quedan alla:
+       tu propia cuenta no se toca, y ascender a Dueño pregunta. */
+    var c = a.cuenta;
+    var soyYo = !!(c && S.yo && c.id === S.yo.id);
+    var solo = c && c.rol === 'dueno'
+            && (S.cuentas || []).filter(function (x) { return x.rol === 'dueno'; }).length === 1;
+    var mando = !c ? ''
+      : (soyYo
+          ? '<p class="fijo">Permiso <b>' + esc(NOMBRE_PERMISO[c.rol] || c.rol) + '</b></p>'
+            + '<p class="hint">Tu propio permiso no se cambia desde aquí: si te lo quitaras, '
+            + 'nadie podría volver a dártelo.</p>'
+          : '<label for="fPermiso">Qué puede hacer</label>'
+            + '<div class="fld"><select id="fPermiso" data-cuenta="' + esc(c.id) + '"'
+            + (solo ? ' disabled' : '') + '>'
+            + PERMISOS.map(function (r) {
+                return '<option value="' + r + '"' + (r === c.rol ? ' selected' : '') + '>'
+                     + (NOMBRE_PERMISO[r] || r) + '</option>';
+              }).join('')
+            + '</select></div>'
+            + '<p class="hint que" id="fPermisoQue">' + esc(queHace(c.rol)) + '</p>'
+            + (solo ? '<p class="hint">Es el <b>único dueño</b>: bajarle el permiso dejaría la '
+                    + 'empresa sin nadie que pueda configurar nada. Haz dueño a alguien más '
+                    + 'primero.</p>' : ''));
     return '<label>Acceso a la app</label>'
          + '<p class="fijo">✅ <b>Ya entra a la app</b>'
-         + (a.cuenta ? ' con <b>' + esc(a.cuenta.email) + '</b>' : '')
-         + (a.cuenta ? ' · permiso <b>' + esc(NOMBRE_PERMISO[a.cuenta.rol] || a.cuenta.rol)
-                       + '</b>' : '')
+         + (c ? ' con <b>' + esc(c.email) + '</b>' : '')
          + '</p>'
-         + '<p class="hint">El permiso se cambia en <b>Configuración</b>, en la lista de '
-         + 'cuentas.</p>';
+         + mando
+         + '<p class="msg" id="fAccesoMsg"></p>';
   }
   if (a.estado === 'pendiente') {
     return '<label>Acceso a la app</label>'
@@ -6372,6 +6422,60 @@ function cargarInvitaciones() {
     return DATOS.invitaciones.listar().then(function (l) { S.invitaciones = l || []; });
   }).catch(function () { S.invitaciones = []; });
 }
+
+/* CAMBIAR EL PERMISO DE UNA CUENTA. Una sola funcion para los DOS sitios donde
+   se puede —la ficha de la persona y la lista de cuentas sin ficha—, porque la
+   regla es la misma y dos copias es como una se queda atras.
+
+   `repinta` solo en la lista: en la ficha, repintar Equipo no estorba, pero
+   repintar la lista mientras se usa su propio selector lo reemplaza. */
+function cambiarPermiso(sel, selMsg, repinta) {
+  var id = sel.dataset.cuenta, nuevo = sel.value;
+  var cuenta = (S.cuentas || []).filter(function (c) { return c.id === id; })[0];
+  if (!cuenta) return;
+  var antes = cuenta.rol;
+  if (nuevo === antes) return;
+
+  /* ASCENDER A DUEÑO SE PREGUNTA, igual que en la lista de la que viene: le
+     entrega a otra persona el poder de repartir permisos y de quitarte el
+     tuyo. Bajarlo no se pregunta, que se deshace volviendo a elegir. */
+  if (nuevo === 'dueno' && !confirm(
+        '¿Dejar a ' + cuenta.email + ' como Dueño?\n\n'
+      + 'Va a poder todo lo que puedes tú, incluido repartir estos permisos '
+      + 'y borrar locales.')) {
+    sel.value = antes; return;
+  }
+
+  sel.disabled = true;
+  aviso(selMsg, 'Guardando…');
+  DATOS.usuarios.guardarPermiso(id, nuevo).then(function () {
+    cuenta.rol = nuevo;
+    sel.disabled = false;
+    var q = sel.closest('.cuenta') || $('#dlgFicha');
+    var txt = q && q.querySelector('.que');
+    if (txt) txt.textContent = queHace(nuevo);
+    aviso(selMsg, 'Listo: ahora es ' + (NOMBRE_PERMISO[nuevo] || nuevo) + '.', 'ok');
+    pintarEquipo();
+  }).catch(function (e) {
+    /* Un fallo devuelve el control a donde estaba en vez de dejar la pantalla
+       mintiendo: el patron del interruptor de los sueldos. */
+    sel.value = antes; sel.disabled = false;
+    aviso(selMsg, e.message, 'bad');
+  });
+}
+
+/* EL CAMBIO DE PERMISO DESDE LA FICHA, delegado por el mismo motivo que los
+   botones de abajo: `#fCampos` se rehace entero cada vez que se abre una. */
+$('#dlgFicha').addEventListener('change', function (ev) {
+  var sel = ev.target.closest('#fPermiso'); if (!sel) return;
+  cambiarPermiso(sel, '#fAccesoMsg');
+});
+
+/* Y DESDE LA LISTA DE CUENTAS SIN FICHA, en Equipo. */
+$('#listaSinFicha').addEventListener('change', function (ev) {
+  var sel = ev.target.closest('select.permiso'); if (!sel) return;
+  cambiarPermiso(sel, '#sinFichaMsg');
+});
 
 /* Delegado en el dialogo y no en cada boton: `#fCampos` se rehace entero cada
    vez que se abre una ficha, asi que un oyente puesto sobre el boton se queda
@@ -6460,6 +6564,28 @@ function abrirFicha(tipo, dato) {
                  + 'te dice <b>si le falta o se pasó</b>, en vez de solo cuántas lleva. '
                  + '<b>Déjalo vacío si no lo sabes</b>: mejor sin diferencia que con una '
                  + 'inventada.</p>')
+           /* LA CASILLA «NO HACE TURNOS» (alternativa C, opcion A de Pedro).
+
+              Sin ella, meter al contador o a un socio en Equipo —que es lo que
+              pide el estandar— lo deja como una FILA VACIA toda la semana y en
+              los desplegables de asignar. Verificado en el codigo antes de
+              proponerlo: las filas salen de `conHistoria()`, que toma a todos
+              los activos.
+
+              Va aqui arriba, junto a los cargos, porque es de la misma
+              pregunta: que hace esta persona en el trabajo. */
+           + (S.hayNoTurnos === false
+               ? '<p class="hint">⚠️ Todavía no se puede marcar «no hace turnos»: '
+                 + 'falta pegar <code>arreglo-no-hace-turnos.sql</code>.</p>'
+               : '<label>¿Hace turnos?</label><div class="fld">'
+                 + '<label style="font-weight:400;display:flex;gap:.4rem;align-items:center">'
+                 + '<input type="checkbox" style="width:auto" id="fNoTurnos"'
+                 + (dato && dato.no_hace_turnos ? ' checked' : '') + '> '
+                 + 'No hace turnos</label></div>'
+                 + '<p class="hint">Márcalo para quien <b>entra a la app pero no trabaja por '
+                 + 'turnos</b> —un socio, el contador—. Deja de aparecer como fila en la '
+                 + 'planilla y en los desplegables de asignar, pero sigue aquí con su '
+                 + 'permiso.</p>')
            + '<label>Cargos que hace</label><div class="fld">' + marcas('fc', S.cargos,
                (dato && dato.trabajador_cargos || []).map(function (x) { return x.cargo_id; })) + '</div>'
            + '<p class="hint">Esto <b>sugiere</b> a quién ofrecerle un turno. Nunca impide nada.</p>'
@@ -6752,6 +6878,8 @@ $('#fGuardar').addEventListener('click', function () {
       w.jornada_pactada = (jp === '' || jp === undefined || jp === null)
         ? null : Number(jp);
     }
+    // Igual que las demas: sin la columna, no se manda.
+    if (S.hayNoTurnos) w.no_hace_turnos = !!(($('#fNoTurnos') || {}).checked);
     // Las tres excepciones, solo si la base ya tiene las columnas.
     if (S.hayRubro) {
       EXCEPCIONES.forEach(function (x) {
@@ -6805,14 +6933,98 @@ $('#btnTrabajador').addEventListener('click', function () { abrirFicha('trabajad
 $('#btnCargo').addEventListener('click',      function () { abrirFicha('cargo', null); });
 $('#btnSucursal').addEventListener('click',   function () { abrirFicha('sucursal', null); });
 
+/* 🔴 LAS CUENTAS QUE NO SON DE NADIE.
+
+   Al mover la lista de cuentas a Equipo apareció un agujero que no estaba en
+   el plan: una cuenta sin ficha no la tiene NADIE, así que no aparecía en
+   ningún sitio y su permiso quedaba fuera del alcance de la pantalla. En los
+   datos de prueba son dos de tres — y en la empresa de Pedro, la suya propia
+   podría ser una.
+
+   Van en Equipo y no de vuelta en Configuración: «quién entra» tiene UNA
+   respuesta, y esa respuesta es la gente. Aquí se les puede cambiar el permiso
+   igual, y se invita a darles ficha, que es como dejan de ser un caso raro. */
+function pintarSinFicha() {
+  var caja = $('#cajaSinFicha'); if (!caja) return;
+  var conFicha = {};
+  (S.trabajadores || []).forEach(function (t) {
+    if (t.usuario_id) conFicha[t.usuario_id] = true;
+  });
+  var sueltas = (S.cuentas || []).filter(function (c) { return !conFicha[c.id]; });
+  caja.hidden = !sueltas.length || !puede('repartirPerfiles');
+  if (caja.hidden) return;
+  $('#sinFichaCuantas').textContent = '(' + sueltas.length + ')';
+  var miId = S.yo && S.yo.id;
+  var dueños = (S.cuentas || []).filter(function (x) { return x.rol === 'dueno'; }).length;
+  $('#listaSinFicha').innerHTML = sueltas.map(function (c) {
+    var soyYo = c.id === miId;
+    var selector = soyYo
+      ? '<span class="permiso-fijo">' + esc(NOMBRE_PERMISO[c.rol] || c.rol) + '</span>'
+      : '<select class="permiso" data-cuenta="' + esc(c.id) + '">'
+        + PERMISOS.map(function (r) {
+            return '<option value="' + r + '"' + (r === c.rol ? ' selected' : '') + '>'
+                 + (NOMBRE_PERMISO[r] || r) + '</option>';
+          }).join('')
+        + '</select>';
+    return '<div class="cuenta" data-id="' + esc(c.id) + '">'
+         + '<div class="quien"><b>' + esc(c.email) + '</b>'
+         + (soyYo ? '<span class="tu">tú</span>' : '')
+         + (dueños === 1 && c.rol === 'dueno' ? '<span class="tu solo">único dueño</span>' : '')
+         + '</div>'
+         + '<div class="cual">' + selector + '</div>'
+         + '<p class="hint que">' + esc(queHace(c.rol)) + '</p>'
+         + (soyYo ? '<p class="hint">Tu propio permiso no se cambia desde aquí: '
+                  + 'si te lo quitaras, nadie podría volver a dártelo.</p>' : '')
+         + '</div>';
+  }).join('');
+}
+
+/* QUE PERMISO TIENE, para la lista de Equipo. Devuelve el nombre del permiso
+   o null si esa persona no entra a la app. */
+function permisoDe(p) {
+  if (!p || !p.usuario_id) return null;
+  var c = (S.cuentas || []).filter(function (x) { return x.id === p.usuario_id; })[0];
+  return c ? (NOMBRE_PERMISO[c.rol] || c.rol) : null;
+}
+
 function pintarEquipo() {
   $('#listaTrabajadores').innerHTML = activos().length
     ? activos().map(function (p) {
         var cs = (p.trabajador_cargos || []).map(function (x) { return nombreCargo(x.cargo_id); });
+        /* EL PERMISO SE VE AQUI (alternativa C): se busca a la gente por su
+           nombre, asi que es donde tiene que decir si entra a la app y como.
+           Sin esto habria que abrir ficha por ficha para saberlo. */
+        var perm = permisoDe(p);
         return '<div class="item" data-tipo="trabajador" data-id="' + p.id + '"><b>' + esc(p.nombre) + '</b>'
+             + (perm ? '<span class="perm">' + esc(perm) + '</span>' : '')
+             + (!haceTurnos(p) ? '<span class="perm sin">no hace turnos</span>' : '')
              + '<span class="sub">' + (cs.length ? esc(cs.join(' · ')) : 'sin cargos') + '</span></div>';
       }).join('')
     : '<p class="vacio">Todavía no hay nadie. Agrega a tu gente.</p>';
+
+  pintarSinFicha();
+
+  /* LAS INVITACIONES QUE TODAVIA NO SON CUENTA viven aqui desde la C. Estaban
+     en Configuracion, y ahi contestaban «quien entra a mi empresa» en una
+     pantalla donde ya no se habla de personas. Van al final y marcadas como lo
+     que son: alguien a quien se le dio acceso y todavia no se registra. */
+  var pend = (S.invitaciones || []).filter(function (i) { return !i.usada; });
+  var cajaInv = $('#listaInvitaciones');
+  if (cajaInv) {
+    cajaInv.hidden = !pend.length;
+    cajaInv.innerHTML = !pend.length ? '' :
+      '<h3 class="idos-tit">Invitados, sin registrarse <span>(' + pend.length + ')</span></h3>'
+      + pend.map(function (i) {
+          var de = (S.trabajadores || []).filter(function (t) {
+            return t.id === i.trabajador_id; })[0];
+          /* Clase propia y no la de los que se fueron: `.ido` TACHA el nombre,
+             y a alguien que todavia no entra eso lo da por muerto. */
+          return '<div class="item invitado"><b>' + esc(de ? de.nombre : i.email) + '</b>'
+               + '<span class="perm">' + esc(NOMBRE_PERMISO[i.rol] || i.rol) + '</span>'
+               + '<span class="sub">' + esc(i.email)
+               + ' · entra cuando se registre con ese correo</span></div>';
+        }).join('');
+  }
 
   /* LOS QUE YA NO TRABAJAN AQUI, aparte y al final.
 
@@ -7095,10 +7307,13 @@ function pintarConfig() {
       $('#cfgVerValores').checked = !!S.empresa.supervisor_ve_valores;
     }
   }
-  /* La caja de cuentas se esconde aqui tambien, no solo al entrar a la
+  /* La caja de perfiles se esconde aqui tambien, no solo al entrar a la
      pestaña: si no, un repintado con otro permiso la dejaria a la vista. */
-  var cc = $('#cajaCuentas');
-  if (cc && !puede('repartirPerfiles')) cc.hidden = true;
+  var cc = $('#cajaPerfiles');
+  if (cc) {
+    cc.hidden = !puede('repartirPerfiles');
+    if (!cc.hidden) pintarPerfiles();
+  }
 
   var sueltos = atajosHuerfanos();
   $('#listaSucursales').innerHTML = (S.sucursales.length
@@ -7159,116 +7374,51 @@ function queHace(rol) {
 /* `soloDatos` lo usa la pestaña Equipo: ahi las cuentas hacen falta para que la
    ficha pueda decir CON QUE CORREO entra quien ya entra, pero la tarjeta vive
    en Configuracion y no hay que tocarla desde otra pantalla. */
-function cargarCuentas(soloDatos) {
-  var caja = $('#cajaCuentas'); if (!caja && !soloDatos) return;
-  if (!puede('repartirPerfiles') || !DATOS.usuarios) {
-    if (caja && !soloDatos) caja.hidden = true;
-    return;
-  }
-  if (caja && !soloDatos) caja.hidden = false;
-  if (!soloDatos) aviso('#cuentasMsg', 'Cargando las cuentas…');
+/* LAS CUENTAS YA NO SE PINTAN EN NINGUN SITIO: desde la alternativa C la lista
+   de gente vive en Equipo. Pero los datos siguen haciendo falta —la ficha dice
+   con que correo entra cada uno y con que permiso, y la lista de Equipo lo
+   muestra— asi que esto quedo como lo que de verdad es: un cargador. */
+function cargarCuentas() {
+  if (!puede('repartirPerfiles') || !DATOS.usuarios) return;
   return DATOS.usuarios.listar().then(function (lista) {
     S.cuentas = lista || [];
-    if (soloDatos) return;
-    aviso('#cuentasMsg', '');
-    pintarCuentas();
-  }).catch(function (e) {
-    if (soloDatos) return;
-    /* El error se MUESTRA en la caja en vez de esconderla: una tarjeta que
-       desaparece sola deja a Pedro creyendo que la pantalla no existe. */
-    $('#listaCuentas').innerHTML = '';
-    aviso('#cuentasMsg', e.message, 'bad');
+    pintarEquipo();            // las etiquetas de permiso dependen de esto
+    /* 🔴 Y LOS PERFILES TAMBIEN. Sin esta linea, «Qué puede cada perfil» se
+       quedaba con el recuento que pinto al ARRANCAR —cuando todavia no habian
+       llegado las cuentas— y decia «nadie» en los cuatro con tres cuentas en
+       memoria. Las 514 pruebas pasaron verdes: lo cazo mirar la pantalla. */
+    if ($('#listaPerfiles')) pintarPerfiles();
+  }).catch(function () {
+    /* Sin cuentas la lista de Equipo se dibuja igual, solo que sin la etiqueta
+       del permiso. No se rompe la pantalla por un dato de adorno. */
+    S.cuentas = S.cuentas || [];
   });
 }
 
-function pintarCuentas() {
-  var lista = S.cuentas || [], miId = S.yo && S.yo.id;
-  var dueños = lista.filter(function (c) { return c.rol === 'dueno'; }).length;
-  $('#listaCuentas').innerHTML = lista.map(function (c) {
-    var soyYo = c.id === miId;
-    /* TU PROPIA CUENTA NO SE TOCA, y es la regla que sostiene todo lo demas:
-       es el estandar (en 7shifts nadie se asciende solo) y ademas es lo que
-       impide que el unico dueño se degrade y deje la empresa sin nadie que
-       pueda configurar nada — un agujero del que no se sale por la pantalla. */
-    var selector = soyYo
-      ? '<span class="permiso-fijo">' + esc(NOMBRE_PERMISO[c.rol] || c.rol) + '</span>'
-      : '<select class="permiso" data-cuenta="' + esc(c.id) + '">'
-        + PERMISOS.map(function (r) {
-            return '<option value="' + r + '"' + (r === c.rol ? ' selected' : '') + '>'
-                 + (NOMBRE_PERMISO[r] || r) + '</option>';
-          }).join('')
-        + '</select>';
-    return '<div class="cuenta" data-id="' + esc(c.id) + '">'
-         + '<div class="quien"><b>' + esc(c.email) + '</b>'
-         + (soyYo ? '<span class="tu">tú</span>' : '')
-         + (dueños === 1 && c.rol === 'dueno'
-             ? '<span class="tu solo">único dueño</span>' : '')
-         + '</div>'
-         + '<div class="cual">' + selector + '</div>'
-         + '<p class="hint que">' + esc(queHace(c.rol)) + '</p>'
-         + (soyYo ? '<p class="hint">Tu propio permiso no se cambia desde aquí: '
-                  + 'si te lo quitaras, nadie podría volver a dártelo.</p>' : '')
+/* LOS CUATRO PERFILES Y LO QUE PUEDE CADA UNO.
+
+   La descripcion NO esta escrita a mano: la arma `queHace()` leyendo los
+   permisos de verdad, igual que hacia la lista de cuentas. Asi esta pantalla
+   no puede mentir sobre lo que la app hace — si algun dia un perfil gana o
+   pierde una capacidad, este texto cambia solo.
+
+   No hay nada que tocar aqui: es la regla, y a quien se le aplica se marca en
+   la ficha de cada persona, en Equipo. */
+function pintarPerfiles() {
+  var cuantos = {};
+  (S.cuentas || []).forEach(function (c) { cuantos[c.rol] = (cuantos[c.rol] || 0) + 1; });
+  $('#listaPerfiles').innerHTML = PERMISOS.map(function (r) {
+    var n = cuantos[r] || 0;
+    return '<div class="cuenta">'
+         + '<div class="quien"><b>' + esc(NOMBRE_PERMISO[r] || r) + '</b>'
+         + '<span class="tu solo">' + (n === 0 ? 'nadie' : n === 1 ? '1 persona'
+                                                : n + ' personas') + '</span></div>'
+         + '<p class="hint que">' + esc(queHace(r)) + '</p>'
          + '</div>';
-  }).join('') || '<p class="vacio">Todavía solo entras tú.</p>';
-
-  /* LAS INVITACIONES QUE TODAVIA NO SON CUENTA. Van en la misma lista y al
-     final, marcadas como lo que son: alguien a quien se le dio acceso y
-     todavia no se registra. Si se vieran en otra pantalla, «quien entra a mi
-     empresa» tendria dos respuestas en dos sitios. */
-  var pend = (S.invitaciones || []).filter(function (i) { return !i.usada; });
-  if (pend.length) {
-    $('#listaCuentas').innerHTML += pend.map(function (i) {
-      var de = (S.trabajadores || []).filter(function (t) {
-        return t.id === i.trabajador_id; })[0];
-      return '<div class="cuenta pendiente" data-inv="' + esc(i.id) + '">'
-           + '<div class="quien"><b>' + esc(i.email) + '</b>'
-           + '<span class="tu solo">sin registrarse</span></div>'
-           + '<div class="cual"><span class="permiso-fijo">'
-           + esc(NOMBRE_PERMISO[i.rol] || i.rol) + '</span></div>'
-           + '<p class="hint que">Entra cuando se registre con ese correo'
-           + (de ? ' · es <b>' + esc(de.nombre) + '</b>, del equipo' : '')
-           + '. ' + esc(queHace(i.rol)) + '</p>'
-           + '</div>';
-    }).join('');
-  }
+  }).join('')
+  + '<p class="hint">¿Quién tiene cada uno? Se marca en <b>Equipo</b>, '
+  + 'en la ficha de la persona.</p>';
 }
-
-/* Un solo oyente para la lista: las filas se repintan y enganchar cada select
-   es como se queda uno muerto sin que nadie lo note. */
-$('#listaCuentas').addEventListener('change', function (ev) {
-  var sel = ev.target.closest('select.permiso'); if (!sel) return;
-  var id = sel.dataset.cuenta, nuevo = sel.value;
-  var cuenta = (S.cuentas || []).filter(function (c) { return c.id === id; })[0];
-  if (!cuenta) return;
-  var antes = cuenta.rol;
-  if (nuevo === antes) return;
-
-  /* ASCENDER A DUEÑO SE PREGUNTA. No es destructivo, pero le entrega a otra
-     persona el poder de repartir permisos y borrar locales — incluido quitarte
-     a ti el tuyo. Bajarle el permiso a alguien no se pregunta: se deshace
-     volviendo a elegir. */
-  if (nuevo === 'dueno' && !confirm(
-        '¿Dejar a ' + cuenta.email + ' como Dueño?\n\n'
-      + 'Va a poder todo lo que puedes tú, incluido repartir estos permisos '
-      + 'y borrar locales.')) {
-    sel.value = antes; return;
-  }
-
-  sel.disabled = true;
-  aviso('#cuentasMsg', 'Guardando…');
-  DATOS.usuarios.guardarPermiso(id, nuevo).then(function () {
-    cuenta.rol = nuevo;
-    aviso('#cuentasMsg', 'Listo: ' + cuenta.email + ' ahora es '
-          + (NOMBRE_PERMISO[nuevo] || nuevo) + '.', 'ok');
-    pintarCuentas();              // repinta la descripcion y «único dueño»
-  }).catch(function (e) {
-    /* Se devuelve el selector a donde estaba en vez de dejarlo mintiendo: la
-       base rechazo el cambio y la pantalla tiene que decir lo mismo que ella.
-       Mismo criterio que el interruptor de los sueldos. */
-    sel.value = antes; sel.disabled = false;
-    aviso('#cuentasMsg', e.message, 'bad');
-  });
-});
 
 ['#listaTrabajadores','#listaIdos','#listaCargos'].forEach(function (sel) {
   $(sel).addEventListener('click', function (ev) {
@@ -7713,7 +7863,7 @@ function abrirAusencia(a, fecha, trabajadorId) {
     return alert('Falta pegar la migración de ausencias en la base.');
   if (!S.tiposAusencia.length)
     return alert('No hay tipos de ausencia cargados todavía.');
-  if (!activos().length)
+  if (!activosQueTrabajan().length)
     return alert('Primero crea a alguien en Equipo.');
 
   ausActual = a || null;
@@ -7727,8 +7877,9 @@ function abrirAusencia(a, fecha, trabajadorId) {
 
   $('#usPest').hidden = !!a;
 
-  $('#usQuien').innerHTML = activos().map(opcion).join('');
-  $('#usQuien').value = a ? a.trabajador_id : (trabajadorId || activos()[0].id);
+  $('#usQuien').innerHTML = activosQueTrabajan().map(opcion).join('');
+  $('#usQuien').value = a ? a.trabajador_id
+    : (trabajadorId || activosQueTrabajan()[0].id);
 
   /* Los tipos salen AGRUPADOS POR TRATO y con el trato escrito en el titulo
      del grupo. No es decoracion: es lo unico que explica, en el momento de
@@ -8545,7 +8696,11 @@ window.__app = {
   // El reparto de permisos. `queHace` y `puedeRol` se exponen porque la prueba
   // tiene que comprobar que la descripcion de cada permiso SALE DE LA TABLA y
   // no de un texto escrito a mano que puede quedarse atras.
-  cargarCuentas: cargarCuentas, pintarCuentas: pintarCuentas,
+  cargarCuentas: cargarCuentas, pintarPerfiles: pintarPerfiles,
+  haceTurnos: haceTurnos, activosQueTrabajan: activosQueTrabajan,
+  pintarSinFicha: pintarSinFicha, pintarConfig: pintarConfig,
+  pintarEquipo: pintarEquipo,
+  permisoDe: permisoDe,
   abrirCalendario: abrirCalendario, cerrarCalendario: cerrarCalendario,
   calAbierto: calAbierto, irAFecha: irAFecha, colocarCalendario: colocarCalendario,
   queHace: queHace, puedeRol: puedeRol,

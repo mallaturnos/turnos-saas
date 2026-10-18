@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=56">
+<link rel="stylesheet" href="estilo.css?v=57">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v136</span></p>
+      <span style="float:right;opacity:.55" id="ver">v137</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v136</span>
+    <span class="hint" id="ver2" title="Versión publicada">v137</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -198,6 +198,23 @@
         <!-- Los que ya no trabajan aqui. Vacio y escondido mientras no haya
              ninguno: una seccion que dice «(0)» es ruido. -->
         <div id="listaIdos" class="lista" hidden></div>
+        <!-- Los invitados que todavia no se registran. Viven aqui desde la
+             alternativa C: la pregunta «quien entra» se contesta donde esta
+             la gente, no en Configuracion. -->
+        <div id="listaInvitaciones" class="lista" hidden></div>
+        <!-- 🔴 LAS CUENTAS QUE TODAVIA NO SON DE NADIE. Sin esto, mover la
+             lista de cuentas a Equipo las habria vuelto INVISIBLES: en los
+             datos de prueba, dos de las tres cuentas no estan enganchadas a
+             ninguna ficha, y nadie podria volver a tocarles el permiso.
+             Viven aqui, no en Configuracion, porque la pregunta «quien entra»
+             tiene UNA respuesta y esta donde esta la gente. -->
+        <div id="cajaSinFicha" hidden>
+          <h3 class="idos-tit">Cuentas sin ficha <span id="sinFichaCuantas"></span></h3>
+          <div id="listaSinFicha" class="cuentas"></div>
+          <p class="hint">Entran a la app pero no tienen ficha en el equipo.
+            <b>Créales una</b> con su nombre y quedan como el resto.</p>
+          <p class="hint" id="sinFichaMsg"></p>
+        </div>
       </div>
       <div>
         <div class="controles">
@@ -248,28 +265,32 @@
       <p class="hint" id="cfgVerValoresMsg"></p>
     </div>
 
-    <!-- QUIEN ENTRA Y QUE PUEDE HACER. Lo eligio Pedro el 17-10 (msg 7176,
-         «A») despues de pedir el flujo completo y el estandar de mercado.
+    <!-- QUE PUEDE CADA PERFIL. Aqui vivio la LISTA DE CUENTAS hasta el 18-10,
+         y se la llevo la alternativa C, que eligio Pedro (msg 7393).
 
-         VA EN CONFIGURACION Y NO EN LA FICHA DE LA PERSONA, aunque el estandar
-         —7shifts, Skello, Deputy— ponga el permiso en la ficha del empleado.
-         Motivo: aca una CUENTA todavia no es un trabajador. La de Pedro no lo
-         es, y `trabajadores.usuario_id` existe pero nadie lo escribe. Ponerlo
-         en la ficha hoy dejaria la cuenta del dueño sin ningun sitio donde
-         aparecer. Cuando exista «Dar acceso» desde la ficha, este es el lugar
-         natural para que se mude.
+         El motivo por el que la lista estaba aqui era que «una cuenta todavia
+         no es un trabajador». Dejo de ser cierto: la ficha ya da acceso y
+         `trabajadores.usuario_id` ya se escribe, asi que la gente y su permiso
+         se manejan donde esta la gente —Equipo—, que ademas es lo que hace
+         7shifts: su pestaña «User Management» NO es una lista de usuarios,
+         son las plantillas de permisos.
+
+         Lo que queda aqui es la REGLA: que puede hacer cada perfil. Se arma
+         sola leyendo los permisos de verdad (`queHace`), asi que no se puede
+         desfasar de lo que la app hace.
 
          ES DE LA EMPRESA, no de un local: el mismo criterio por el que el
          interruptor de los sueldos esta aqui arriba y no en una tarjeta de
          local. -->
-    <div id="cajaCuentas" class="tarjeta" hidden>
-      <h2>Quién entra y qué puede hacer</h2>
-      <p class="hint">Estas son las cuentas que pueden entrar a tu empresa. El
-        <b>permiso</b> es lo que cada una puede hacer en el sistema, y no tiene
-        nada que ver con el <b>cargo</b> que la persona tiene en el trabajo:
-        alguien puede ser <i>supervisor</i> aquí y de cargo <i>jefe de cocina</i>.</p>
-      <div id="listaCuentas" class="cuentas"></div>
-      <p class="hint" id="cuentasMsg"></p>
+    <div id="cajaPerfiles" class="tarjeta" hidden>
+      <h2>Qué puede cada perfil</h2>
+      <p class="hint">Estas son las reglas: lo que puede hacer cada tipo de
+        cuenta en el sistema. <b>Quién tiene cada perfil se marca en Equipo</b>,
+        en la ficha de la persona.</p>
+      <p class="hint">El <b>permiso</b> no tiene nada que ver con el
+        <b>cargo</b> que esa persona tiene en el trabajo: alguien puede ser
+        <i>supervisor</i> aquí y de cargo <i>jefe de cocina</i>.</p>
+      <div id="listaPerfiles" class="cuentas"></div>
     </div>
 
     <div class="controles">
@@ -788,7 +809,7 @@
   </form>
 </dialog>
 <script src="config.js?v=5"></script>
-<script src="datos.js?v=21"></script>
-<script src="app.js?v=82"></script>
+<script src="datos.js?v=22"></script>
+<script src="app.js?v=83"></script>
 </body>
 </html>

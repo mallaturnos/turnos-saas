@@ -349,8 +349,18 @@
   }
 
 
+  /* Misma sonda, para la casilla «no hace turnos» de la alternativa C. */
+  var hayNoHaceTurnos = null;
+  function probarNoTurnos() {
+    if (hayNoHaceTurnos !== null) return Promise.resolve(hayNoHaceTurnos);
+    return rest('trabajadores?select=no_hace_turnos&limit=1', null, 'ver quién no hace turnos')
+      .then(function () { hayNoHaceTurnos = true;  return true; })
+      .catch(function () { hayNoHaceTurnos = false; return false; });
+  }
+
   var trabajadores = {
     hayJornada: probarJornada,
+    hayNoTurnos: probarNoTurnos,
     listar: function () {
       /* SE TRAEN TODOS, también los que ya no trabajan aquí.
 

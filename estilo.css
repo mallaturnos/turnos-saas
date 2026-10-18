@@ -490,6 +490,15 @@ table.girada tbody tr:last-child th, table.girada tbody tr:last-child td { borde
 }
 .item:hover { border-color:var(--verde); }
 .item .sub { color:var(--gris); font-size:.82rem; }
+/* La etiqueta del permiso en la lista de Equipo (alternativa C). Es el mismo
+   distintivo que usaba la lista de cuentas de Configuracion, a proposito: la
+   lista se mudo de pantalla y tiene que leerse igual. */
+.item .perm {
+  font-size:.72rem; text-transform:uppercase; letter-spacing:.04em;
+  background:var(--verde-claro); border:1px solid var(--borde);
+  border-radius:999px; padding:.05rem .4rem; white-space:nowrap;
+}
+.item .perm.sin { background:transparent; color:var(--gris); }
 .vacio { color:var(--gris); font-size:.9rem; padding:.75rem; text-align:center;
          border:1px dashed var(--borde); border-radius:8px; }
 
@@ -1011,6 +1020,10 @@ table.girada td.cel { user-select:none; }
 #listaIdos { margin-top:1.1rem; }
 .idos-tit { font-size:.9rem; color:var(--gris); margin:0 0 .4rem; font-weight:600; }
 .idos-tit span { font-weight:400; }
+/* EL INVITADO QUE TODAVIA NO SE REGISTRA. Borde de puntos, que es como se
+   distinguia en la lista de cuentas de la que viene, y NO la clase de los que
+   se fueron: esa tacha el nombre. */
+.lista .item.invitado { border-style:dashed; }
 .lista .item.ido { opacity:.65; }
 .lista .item.ido b { font-weight:600; text-decoration:line-through;
                      text-decoration-color:var(--borde); }
