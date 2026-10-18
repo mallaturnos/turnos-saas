@@ -639,6 +639,9 @@ function pintarSelectores() {
      importa es si hoy está a la vista, no en qué variable cayó. */
   var r = rangoVista(), h = hoyTexto();
   $('#btnHoy').classList.toggle('lejos', h < r.desde || h > r.hasta);
+  // Si el calendario esta abierto cuando cambia la vista, lo que marca cambia
+  // —de semana entera a dia suelto— y se quedaria mintiendo.
+  if (typeof calAbierto === 'function' && calAbierto()) pintarCalendario();
 }
 
 function recargarSemana() {
@@ -2764,6 +2767,158 @@ function mover(n) {
   } else S.lunes = masDias(S.lunes, n * 7);
   pintarSelectores(); recargarSemana();
 }
+/* ---------- EL CALENDARIO DEL SELECTOR DE FECHA (v133) ----------
+
+   Lo pidio Pedro con una captura de 7shifts (msgs 7247-7251). El motivo no es
+   que quede bonito: hoy, para llegar a tres semanas mas adelante, hay que
+   apretar la flecha TRES VECES A CIEGAS, sin ver a donde se va.
+
+   LA UNIDAD QUE MARCA ES LA QUE SE ESTA MIRANDO —lo pregunto el mismo, «sera un
+   calendario por semana?»—: en la vista Semana se ilumina y se elige LA FILA
+   ENTERA, porque elegir un dia suelto prometeria una precision que esa vista no
+   tiene; en Dia se elige un dia; en Mes, el mes.
+
+   Se dibuja siempre desde `calMesVisible`, que es del calendario y NO de la
+   malla: hojear meses aqui no mueve la pantalla de atras hasta que se elige. */
+var calMesVisible = null;      // 'AAAA-MM' del mes que muestra el desplegable
+
+function calAbierto() { return !$('#calPop').hidden; }
+
+function abrirCalendario() {
+  var base = S.vista === 'dia' ? S.dia : S.lunes;
+  calMesVisible = base.slice(0, 7);
+  $('#calPop').hidden = false;
+  $('#cSemana').setAttribute('aria-expanded', 'true');
+  pintarCalendario();
+  colocarCalendario();
+  // El foco entra al dia elegido: con el teclado, abrir y quedarse fuera del
+  // desplegable obliga a tabular a ciegas por todo lo que haya antes.
+  var el = $('#calRejilla .elegida') || $('#calRejilla button:not(.fuera)');
+  if (el) el.focus();
+}
+
+/* SE COLOCA DEBAJO DEL BOTON, y se mide DESPUES de pintarlo porque hasta
+   entonces no se sabe cuanto mide. Si no cabe abajo —pantalla corta o el boton
+   muy bajo— se pone encima; y si no cabe a la derecha, se pega al borde en vez
+   de salirse. Lo que no puede pasar es lo de la primera version: quedar fuera
+   de la pantalla con su propia cabecera cortada. */
+function colocarCalendario() {
+  var pop = $('#calPop'), btn = $('#cSemana');
+  var b = btn.getBoundingClientRect(), p = pop.getBoundingClientRect();
+  var margen = 8;
+  var arriba = b.bottom + 6;
+  if (arriba + p.height > window.innerHeight - margen)
+    arriba = Math.max(margen, b.top - p.height - 6);
+  var izq = Math.min(b.left, window.innerWidth - p.width - margen);
+  pop.style.top = Math.round(Math.max(margen, arriba)) + 'px';
+  pop.style.left = Math.round(Math.max(margen, izq)) + 'px';
+}
+// Si la ventana cambia de tamaño con el calendario abierto, se recoloca: si no,
+// se queda apuntando a donde estaba el botón.
+window.addEventListener('resize', function () { if (calAbierto()) colocarCalendario(); });
+
+function cerrarCalendario(devolverFoco) {
+  if (!calAbierto()) return;
+  $('#calPop').hidden = true;
+  $('#cSemana').setAttribute('aria-expanded', 'false');
+  if (devolverFoco) $('#cSemana').focus();
+}
+
+function pintarCalendario() {
+  var p = calMesVisible.split('-').map(Number);
+  var primero = new Date(p[0], p[1] - 1, 1);
+  // Lunes de la semana del dia 1: el calendario arranca en lunes, como la malla.
+  var desde = new Date(primero);
+  desde.setDate(1 - ((primero.getDay() + 6) % 7));
+
+  var hoy = hoyTexto();
+  var porSemana = S.vista === 'semana';
+  var elegido = S.vista === 'dia' ? S.dia : S.lunes;
+  var semElegida = lunesDe(elegido);
+
+  $('#calMes').textContent = MESES[p[1] - 1] + ' ' + p[0];
+
+  var html = ['Lu','Ma','Mi','Ju','Vi','Sá','Do'].map(function (d) {
+    return '<span class="dow">' + d + '</span>';
+  }).join('');
+
+  for (var i = 0; i < 42; i++) {
+    var d = new Date(desde);
+    d.setDate(desde.getDate() + i);
+    var f = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'),
+             String(d.getDate()).padStart(2,'0')].join('-');
+    var fuera = f.slice(0, 7) !== calMesVisible;
+    var mismaSem = lunesDe(f) === semElegida;
+    var clases = [];
+    if (fuera) clases.push('fuera');
+    if (f === hoy) clases.push('hoy');
+    if (porSemana && mismaSem) clases.push('sem');
+    if (porSemana ? mismaSem : f === elegido) clases.push('elegida');
+    html += '<button type="button" data-f="' + f + '"'
+          + (clases.length ? ' class="' + clases.join(' ') + '"' : '')
+          + (f === hoy ? ' aria-current="date"' : '')
+          + '>' + d.getDate() + '</button>';
+  }
+  var rej = $('#calRejilla');
+  rej.className = 'calrej' + (porSemana ? ' porsemana' : '');
+  rej.innerHTML = html;
+  $('#calPie').textContent = porSemana
+    ? 'Eliges la semana entera.'
+    : (S.vista === 'mes' ? 'Eliges el mes.' : 'Eliges el día.');
+}
+
+function irAFecha(f) {
+  if (S.vista === 'dia') { S.dia = f; S.lunes = lunesDe(f); }
+  else if (S.vista === 'mes') { S.lunes = f.slice(0, 8) + '01'; S.dia = f; }
+  else { S.lunes = lunesDe(f); S.dia = f; }
+  pintarSelectores(); recargarSemana();
+}
+
+$('#cSemana').addEventListener('click', function () {
+  if (calAbierto()) cerrarCalendario(true); else abrirCalendario();
+});
+$('#calAntes').addEventListener('click', function () { hojearCal(-1); });
+$('#calDespues').addEventListener('click', function () { hojearCal(1); });
+function hojearCal(n) {
+  var p = calMesVisible.split('-').map(Number);
+  var d = new Date(p[0], p[1] - 1 + n, 1);
+  calMesVisible = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0')].join('-');
+  pintarCalendario();
+}
+/* Delegado: la rejilla se rehace entera en cada hojeada, y un oyente por boton
+   se quedaria con los del mes anterior. */
+/* Las flechas mueven por el calendario. En la vista Semana arriba y abajo
+   saltan una semana entera, que es la unidad que se elige aqui. */
+$('#calRejilla').addEventListener('keydown', function (ev) {
+  var paso = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[ev.key];
+  if (!paso) return;
+  var b = ev.target.closest('button[data-f]'); if (!b) return;
+  ev.preventDefault();
+  var destino = masDias(b.dataset.f, paso);
+  // Si se sale del mes que se ve, se hojea para que el dia exista en pantalla.
+  if (destino.slice(0, 7) !== calMesVisible) {
+    calMesVisible = destino.slice(0, 7);
+    pintarCalendario();
+  }
+  var el = $('#calRejilla button[data-f="' + destino + '"]');
+  if (el) el.focus();
+});
+$('#calRejilla').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-f]'); if (!b) return;
+  irAFecha(b.dataset.f);
+  cerrarCalendario(true);
+});
+/* Se cierra al apretar fuera y con Escape. Sin esto queda un panel abierto
+   tapando la malla, y la unica salida es volver a apretar el boton. */
+document.addEventListener('click', function (ev) {
+  if (!calAbierto()) return;
+  if (ev.target.closest('#calPop') || ev.target.closest('#cSemana')) return;
+  cerrarCalendario(false);
+});
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Escape' && calAbierto()) { cerrarCalendario(true); ev.stopPropagation(); }
+}, true);
+
 $('#btnAntes').addEventListener('click',    function () { mover(-1); });
 $('#btnDespues').addEventListener('click',  function () { mover(1); });
 /* El boton y el atajo Ctrl+Z entran los dos por aqui. Vive en una funcion y no
@@ -5860,6 +6015,12 @@ document.addEventListener('keydown', function (ev) {
   /* Las flechas van ANTES del guardia de «hay algo marcado»: con la pantalla
      recién abierta no hay nada marcado, y es justo cuando hace falta poder
      empezar a moverse. */
+  /* 🔴 CON EL CALENDARIO ABIERTO, LAS FLECHAS SON SUYAS. Este oyente es global
+     y no sabia que existe el desplegable: con el abierto, una flecha movia la
+     seleccion de la malla DE ATRAS, que no se esta mirando. Es
+     [[regla-colgada-de-una-puerta]] al reves — la regla nueva tiene que
+     avisarle a la puerta vieja. */
+  if (calAbierto()) return;
   if (FLECHAS[ev.key] && esPlanilla() && S.vista === 'semana') {
     cerrarMenu();
     if (moverFoco(FLECHAS[ev.key][0], FLECHAS[ev.key][1], ev.shiftKey)) {
@@ -8283,6 +8444,8 @@ window.__app = {
   // tiene que comprobar que la descripcion de cada permiso SALE DE LA TABLA y
   // no de un texto escrito a mano que puede quedarse atras.
   cargarCuentas: cargarCuentas, pintarCuentas: pintarCuentas,
+  abrirCalendario: abrirCalendario, cerrarCalendario: cerrarCalendario,
+  calAbierto: calAbierto, irAFecha: irAFecha, colocarCalendario: colocarCalendario,
   queHace: queHace, puedeRol: puedeRol,
   desgloseAusencia: desgloseAusencia,
   marcarTurnosParaRevisar: marcarTurnosParaRevisar,

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=54">
+<link rel="stylesheet" href="estilo.css?v=55">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v132</span></p>
+      <span style="float:right;opacity:.55" id="ver">v133</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v132</span>
+    <span class="hint" id="ver2" title="Versión publicada">v133</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -99,9 +99,27 @@
       </div>
       <span class="sep"></span>
       <button class="plano" id="btnAntes" title="Anterior">‹</button>
-      <strong id="cSemana" class="semana">—</strong>
+      <!-- EL RANGO ES APRETABLE Y DESPLIEGA UN CALENDARIO (v133). Lo pidio
+           Pedro el 17-10 (msgs 7247-7251) con una captura de 7shifts: hoy para
+           llegar a tres semanas mas adelante hay que apretar la flecha tres
+           veces A CIEGAS. Era un <strong>, o sea nada que se pudiera apretar;
+           ahora es un boton de verdad, que ademas lo anuncia al lector de
+           pantalla con aria-haspopup. -->
+      <button id="cSemana" class="semana" aria-haspopup="dialog"
+              aria-expanded="false" title="Elegir fecha">—</button>
       <button class="plano" id="btnDespues" title="Siguiente">›</button>
       <button class="plano" id="btnHoy">Hoy</button>
+      <!-- El calendario desplegable. Vive al lado del boton que lo abre y se
+           coloca por CSS: dentro de la barra, que es la que hace scroll. -->
+      <div id="calPop" class="calpop" hidden role="dialog" aria-label="Elegir fecha">
+        <div class="calcab">
+          <button type="button" class="plano" id="calAntes" title="Mes anterior">‹</button>
+          <strong id="calMes">—</strong>
+          <button type="button" class="plano" id="calDespues" title="Mes siguiente">›</button>
+        </div>
+        <div id="calRejilla" class="calrej"></div>
+        <p class="hint" id="calPie"></p>
+      </div>
       <button class="plano" id="btnDeshacer" disabled title="No hay nada que deshacer">↶ Deshacer</button>
       <span class="espacio"></span>
       <span class="hint" id="cEstado"></span>
@@ -771,6 +789,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=21"></script>
-<script src="app.js?v=78"></script>
+<script src="app.js?v=79"></script>
 </body>
 </html>

@@ -1388,3 +1388,47 @@ table.mesb .mini { cursor: pointer; }
 /* Una invitación todavía no es una cuenta: se ve en la misma lista, más
    apagada, para que se lea como «esto aún no pasa» sin tener que leerlo. */
 .cuenta.pendiente { border-style: dashed; background: var(--papel); }
+
+/* ---------- EL CALENDARIO DEL SELECTOR DE FECHA (v133) ----------
+   Se despliega del rango de fechas. La fila entera se ilumina porque lo que se
+   elige en la vista Semana es UNA SEMANA, no un dia: marcar un dia suelto
+   prometeria una precision que la vista no tiene. */
+.semana[aria-haspopup] {
+  font: inherit; font-weight: 700; color: var(--tinta);
+  background: transparent; border: 1px solid transparent; border-radius: 7px;
+  padding: .25rem .5rem; cursor: pointer;
+}
+.semana[aria-haspopup]:hover { background: var(--verde-claro); border-color: var(--borde); }
+.semana[aria-expanded="true"] { background: var(--verde-claro); border-color: var(--verde); }
+
+/* 🔴 `fixed` Y COLOCADO DESDE EL JS, no `absolute`. Con `absolute` y sin
+   ancestro posicionado se fue a la esquina de arriba, TAPANDO EL MENU y con su
+   propia cabecera cortada fuera de la pantalla. Se vio en la captura: las
+   pruebas decian que estaba desplegado y era cierto — estaba desplegado donde
+   no se podia usar. [[mirar-el-render]] */
+.calpop {
+  position: fixed; z-index: 60;
+  background: var(--blanco); border: 1px solid var(--borde); border-radius: var(--radio);
+  box-shadow: 0 8px 24px rgba(19,52,59,.14); padding: .7rem .8rem .5rem;
+  min-width: 17.5rem;
+}
+.calcab { display: flex; align-items: center; gap: .3rem; margin-bottom: .45rem; }
+.calcab strong { flex: 1; text-align: center; }
+.calrej { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.calrej .dow {
+  text-align: center; font-size: .72rem; color: var(--gris);
+  text-transform: uppercase; letter-spacing: .03em; padding-bottom: .2rem;
+}
+.calrej button {
+  font: inherit; font-size: .88rem; padding: .34rem 0; text-align: center;
+  background: transparent; border: 1px solid transparent; cursor: pointer;
+  color: var(--tinta); border-radius: 0;
+}
+.calrej button.fuera { color: #b9c3c5; }      /* relleno del mes vecino */
+.calrej button.hoy { font-weight: 700; color: var(--verde); }
+/* La semana entera, no el dia: se pinta la fila completa al pasar por encima. */
+.calrej.porsemana button.sem { background: var(--verde-claro); }
+.calrej button.elegida { background: var(--verde); color: var(--blanco); }
+.calrej.porsemana button.elegida { background: var(--verde); color: var(--blanco); }
+.calrej button:focus-visible { outline: 2px solid var(--verde); outline-offset: -2px; }
+.calpop .hint { margin: .45rem 0 0; }
