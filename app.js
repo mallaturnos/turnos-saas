@@ -6394,11 +6394,28 @@ function bloqueAcceso(dato) {
          + esc(a.inv.id) + '">Cancelar la invitación</button>'
          + '<p class="msg" id="fAccesoMsg"></p>';
   }
-  return '<label for="fAccesoMail">Acceso a la app</label>'
+  /* 🔴 QUE SE VEA QUE AQUI NO MANDA EL SELECTOR, SINO EL BOTON.
+
+     Lo reporto Pedro una hora despues de publicar la v137 (msg 7421): le puso
+     «Administrador» a alguien que no entra a la app y no paso nada — porque
+     aqui el selector no cambia un permiso, ARMA UNA INVITACION.
+
+     La culpa es de la pantalla: la v137 dejo en la misma ficha DOS selectores
+     que se ven iguales y no se comportan igual, uno que guarda solo y otro que
+     no hace nada hasta apretar un boton. Antes no coincidian nunca, porque el
+     permiso vivia en Configuracion.
+
+     Asi que se dice de entrada que esa persona no entra, el selector se llama
+     «Entrará como» —futuro, no presente— y nace APAGADO: se enciende cuando
+     hay un correo escrito, que es lo unico que vuelve util al selector. */
+  return '<label>Acceso a la app</label>'
+       + '<p class="fijo">⏳ <b>' + esc((dato && dato.nombre) || 'Esta persona')
+       + '</b> todavía no entra a la app</p>'
+       + '<label for="fAccesoMail">Su correo</label>'
        + '<div class="fld"><input type="email" id="fAccesoMail" placeholder="su correo" '
        + 'autocomplete="off"></div>'
-       + '<label for="fAccesoRol">Qué va a poder hacer</label>'
-       + '<div class="fld"><select id="fAccesoRol">'
+       + '<label for="fAccesoRol">Entrará como</label>'
+       + '<div class="fld"><select id="fAccesoRol" disabled>'
        + PERMISOS.map(function (r) {
            return '<option value="' + r + '"' + (r === 'trabajador' ? ' selected' : '') + '>'
                 + (NOMBRE_PERMISO[r] || r) + '</option>';
@@ -6463,6 +6480,14 @@ function cambiarPermiso(sel, selMsg, repinta) {
     aviso(selMsg, e.message, 'bad');
   });
 }
+
+/* El selector de invitar se enciende al escribir el correo, y se vuelve a
+   apagar si lo borras: sin correo no hay nada que ese selector pueda hacer. */
+$('#dlgFicha').addEventListener('input', function (ev) {
+  if (!ev.target.closest('#fAccesoMail')) return;
+  var sel = $('#fAccesoRol'); if (!sel) return;
+  sel.disabled = !ev.target.value.trim();
+});
 
 /* EL CAMBIO DE PERMISO DESDE LA FICHA, delegado por el mismo motivo que los
    botones de abajo: `#fCampos` se rehace entero cada vez que se abre una. */
