@@ -4697,7 +4697,7 @@ function avisarSeleccion(mensaje) {
       ? '<span class="teclas">Arrastra sobre las casillas para marcarlas y cópialas'
         + ' con <b>Ctrl+C</b> y <b>Ctrl+V</b>. <b>Supr</b> las quita.'
         + ' Un clic sobre un turno marca <b>ese</b> turno; <b>Ctrl+clic</b> suma;'
-        + ' <b>doble clic</b> lo abre.</span>'
+        + ' <b>Shift+clic</b> marca hasta ahí; <b>doble clic</b> lo abre.</span>'
       : '<span class="teclas">Para copiar y pegar turnos, cambia a'
         + ' <b>Personas</b> o <b>Cargos</b>.</span>';
     return;
@@ -6020,10 +6020,64 @@ function focoDePartida(g) {
   return g.filas[0] && g.filas[0][0] ? claveCel(g.filas[0][0]) : null;
 }
 
+/* ¿Lo que hay marcado son TURNOS o CASILLAS? De eso depende adónde llevan las
+   flechas, y es la distincion que este fichero ya sabia hacer en todas partes
+   menos aqui. */
+function marcadoEnTurnos() {
+  var ks = SEL.claves || [];
+  return ks.length > 0 && ks.every(esClaveTurno);
+}
+
+/* ---------- LAS FLECHAS RESPETAN LO QUE TIENES ENTRE MANOS (v136) ----------
+
+   Lo reporto Pedro el 17-10 (msgs 7363-7364): «si estoy en ese lugar y me
+   desplazo al lado, me voy a la casilla y se enegrecen los 3». Medido antes de
+   tocarlo: antes de la flecha habia 1 marcado de tipo TURNO, despues 1 de tipo
+   CASILLA.
+
+   La causa no era un error de calculo: `moverFoco` se escribio para andar
+   ENTRE CASILLAS, de cuando marcar un turno suelto todavia no existia, y nadie
+   le enseño que ahora hay dos granularidades. Es la misma familia que el
+   oyente global de flechas que no sabia del calendario: una capacidad nueva
+   que las puertas viejas ignoran EN SILENCIO.
+
+   EL MODELO LO CERRO PEDRO, y es mas simple que el que yo habia propuesto:
+   «yo quiero que siempre uno se mueva por turnos, si quiero copiar y pegar
+   mas, tengo que enegrecer varios». El teclado recorre TURNOS; el raton
+   —arrastrando o con Shift+clic— agarra ZONAS.
+
+   ⚠️ LA CASILLA VACIA. Cuando se le planteo el caso de copiar el turno del
+   lunes y pegarlo en el miercoles vacio, contesto hablando del raton, asi que
+   para el teclado quedo SIN respuesta explicita. Se eligio PARAR en la casilla
+   vacia y marcarla —en vez de saltarla— por dos motivos: la flecha nunca se
+   queda sin destino, y «nunca se encienden los tres» se sigue cumpliendo. Hay
+   que preguntarselo igual, y cambiarlo son tres lineas. */
 function moverFoco(df, dc, extender) {
   var g = rejilla(); if (!g) return false;
   var k = focoDePartida(g); if (!k) return false;
   var p = g.mapa[k]; if (!p) return false;
+
+  var enTurnos = marcadoEnTurnos();
+
+  /* ARRIBA Y ABAJO, DENTRO DE UNA CASILLA CON VARIOS, pasan de turno en turno
+     antes de saltar de fila: si no, una casilla con tres turnos solo seria
+     alcanzable por su primero. */
+  if (enTurnos && df !== 0 && dc === 0 && !extender) {
+    var dentro = turnosDeClave(claveCel(p.td));
+    if (dentro.length > 1) {
+      var actual = asigDeClave(SEL.claves[0]);
+      var i = actual ? dentro.map(function (a) { return String(a.id); })
+                             .indexOf(String(actual.id)) : -1;
+      var j = i + (df > 0 ? 1 : -1);
+      if (i >= 0 && j >= 0 && j < dentro.length) {
+        SEL.claves = [claveTurno(dentro[j].id)];
+        SEL.foco = claveCel(p.td); SEL.ancla = SEL.foco;
+        pintarSeleccion();
+        if (p.td.scrollIntoView) p.td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        return true;
+      }
+    }
+  }
 
   // Se topa en los bordes en vez de dar la vuelta: aparecer al otro lado de la
   // semana cuando querías salir por la derecha es de las cosas que hacen soltar
@@ -6035,7 +6089,16 @@ function moverFoco(df, dc, extender) {
   var nk = claveCel(td);
   SEL.foco = nk;
   if (extender && SEL.ancla && g.mapa[SEL.ancla]) {
+    /* Shift sigue extendiendo por CASILLAS a proposito: extender es agarrar una
+       zona, y una zona de turnos sueltos no se puede pegar en ningun sitio. */
     marcarRango(SEL.ancla, nk);
+  } else if (enTurnos) {
+    var hay = turnosDeClave(nk);
+    // Si venimos subiendo, se entra por el ultimo; bajando, por el primero.
+    var cual = hay.length ? (df < 0 ? hay[hay.length - 1] : hay[0]) : null;
+    SEL.ancla = nk;
+    SEL.claves = [cual ? claveTurno(cual.id) : nk];   // vacia: el hueco
+    pintarSeleccion();
   } else {
     SEL.ancla = nk; SEL.claves = [nk]; pintarSeleccion();
   }
