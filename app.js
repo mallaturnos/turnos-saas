@@ -2833,8 +2833,10 @@ function pintarCalendario() {
 
   var hoy = hoyTexto();
   var porSemana = S.vista === 'semana';
+  var porMes = S.vista === 'mes';
   var elegido = S.vista === 'dia' ? S.dia : S.lunes;
   var semElegida = lunesDe(elegido);
+  var mesElegido = S.lunes.slice(0, 7);
 
   $('#calMes').textContent = MESES[p[1] - 1] + ' ' + p[0];
 
@@ -2852,15 +2854,22 @@ function pintarCalendario() {
     var clases = [];
     if (fuera) clases.push('fuera');
     if (f === hoy) clases.push('hoy');
+    /* 🔴 EN LA VISTA MES SE MARCA EL MES ENTERO, no un dia.
+
+       Lo destapo una pregunta de Pedro —«ese mes quedo en todas las vistas?»—
+       al comprobarlas una por una: el pie decia «Eliges el mes» y debajo habia
+       UN SOLO dia marcado. El pie y el dibujo se contradecian, y el que manda
+       es el dibujo. */
     if (porSemana && mismaSem) clases.push('sem');
-    if (porSemana ? mismaSem : f === elegido) clases.push('elegida');
+    if (porMes && !fuera) clases.push('sem');
+    if (porMes ? !fuera : (porSemana ? mismaSem : f === elegido)) clases.push('elegida');
     html += '<button type="button" data-f="' + f + '"'
           + (clases.length ? ' class="' + clases.join(' ') + '"' : '')
           + (f === hoy ? ' aria-current="date"' : '')
           + '>' + d.getDate() + '</button>';
   }
   var rej = $('#calRejilla');
-  rej.className = 'calrej' + (porSemana ? ' porsemana' : '');
+  rej.className = 'calrej' + (porSemana ? ' porsemana' : (porMes ? ' pormes' : ''));
   rej.innerHTML = html;
   $('#calPie').textContent = porSemana
     ? 'Eliges la semana entera.'

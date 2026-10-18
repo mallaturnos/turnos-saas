@@ -874,9 +874,25 @@ label.chk input:disabled + span, label.chk:has(input:disabled) { color:#7d8a8e; 
    `box-shadow` hacia adentro y no `border`: un borde de verdad cambia el ancho
    de la celda y la tabla entera se mueve un pixel al marcar, que se ve como un
    temblor. */
+/* 🔴 SIN RELLENO. Lo pidio Pedro el 17-10 (msgs 7253-7255) mirando su
+   planilla: «esto tambien dificulta la operacion… ¿no queda mejor con que solo
+   se enegrezca la etiqueta? la o las». Tenia razon: el tinte competia con lo
+   que hay dentro de la casilla y, con dos turnos, no decia CUAL estaba
+   marcado — solo que la casilla lo estaba.
+
+   Ahora: borde fino SIEMPRE en la casilla —porque una casilla VACIA tambien se
+   marca, justo para pegar ahi, y sin borde no se veria— y contorno en las
+   etiquetas que haya dentro. Relleno, nunca. */
 table.girada td.cel.sel {
+  box-shadow: inset 0 0 0 1px var(--verde);
+}
+/* Las etiquetas de dentro se contornean, NO se rellenan: el relleno es la marca
+   de «este turno suelto esta cogido», que es otra cosa y esta tres reglas mas
+   abajo. Si las dos se vieran igual, la pantalla volveria a no decir si tienes
+   UNO entre manos o los TRES de la casilla. */
+table.girada td.cel.sel .blq {
   box-shadow: inset 0 0 0 2px var(--verde);
-  background-image: linear-gradient(rgba(15,107,99,.07), rgba(15,107,99,.07));
+  border-radius: 4px;
 }
 /* UN TURNO SUELTO MARCADO. Se dibuja distinto de la casilla marcada a
    propósito: si los dos se vieran igual, la pantalla volvería a no decir si
@@ -891,7 +907,9 @@ table.girada td.cel.sel {
 
 /* La casilla desde la que se empezó: se distingue de las demás porque es la
    esquina que manda al pegar. */
-table.girada td.cel.ancla { box-shadow: inset 0 0 0 2px var(--verde), inset 0 0 0 6px rgba(15,107,99,.15); }
+/* La casilla desde la que se empezo: el borde se engrosa, sin halo. El halo era
+   un relleno disfrazado y volvia a ensuciar justo la casilla que mas se mira. */
+table.girada td.cel.ancla { box-shadow: inset 0 0 0 2px var(--verde); }
 table.girada td.cel { user-select:none; }
 
 .selaviso {
@@ -1427,8 +1445,12 @@ table.mesb .mini { cursor: pointer; }
 .calrej button.fuera { color: #b9c3c5; }      /* relleno del mes vecino */
 .calrej button.hoy { font-weight: 700; color: var(--verde); }
 /* La semana entera, no el dia: se pinta la fila completa al pasar por encima. */
-.calrej.porsemana button.sem { background: var(--verde-claro); }
+.calrej.porsemana button.sem,
+.calrej.pormes button.sem { background: var(--verde-claro); }
+/* En el MES no se pinta el bloque sólido: treinta dias en verde fuerte son una
+   mancha, no una marca. Basta el fondo claro de todo el mes. */
 .calrej button.elegida { background: var(--verde); color: var(--blanco); }
+.calrej.pormes button.elegida { background: var(--verde-claro); color: var(--tinta); }
 .calrej.porsemana button.elegida { background: var(--verde); color: var(--blanco); }
 .calrej button:focus-visible { outline: 2px solid var(--verde); outline-offset: -2px; }
 .calpop .hint { margin: .45rem 0 0; }
