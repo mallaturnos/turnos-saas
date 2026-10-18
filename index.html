@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v137</span></p>
+      <span style="float:right;opacity:.55" id="ver">v138</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v137</span>
+    <span class="hint" id="ver2" title="Versión publicada">v138</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -243,7 +243,12 @@
          tarjeta de local, porque es de la EMPRESA y no de un local: si
          estuviera por local, dos locales podrian discrepar sobre el mismo
          sueldo de la misma persona. -->
-    <div id="cajaValores" class="tarjeta angosta" hidden>
+    <!-- SIN «angosta»: con una tarjeta ancha debajo, el tope de 23rem dejaba
+         esta usando un pedazo de la izquierda y se veia el escalon. Lo noto
+         Pedro el 18-10 mirando la v137, y el analisis del 17-10 ya lo tenia
+         anotado como uno de los desordenes. La clase se queda para los
+         formularios de entrar, que si deben ser angostos. -->
+    <div id="cajaValores" class="tarjeta" hidden>
       <h2>Quién ve los sueldos</h2>
       <!-- 🔴 ESTO DECIA class="marca" Y SE SALIA DE LA TARJETA.
            `.marca` ya existia en la hoja y es OTRA COSA: la marquita de hora
