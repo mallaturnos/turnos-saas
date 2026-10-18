@@ -3209,9 +3209,35 @@ $('#malla').addEventListener('click', function (ev) {
   if (cab) return abrirNecesidad(S.necesidades.filter(function (n) { return n.id === cab.dataset.nec; })[0]);
   var li = t.closest('[data-asigid]');
   if (li) {
+    /* 🔴 EN LA PLANILLA, UN CLIC NO ABRE. Lo reporto Pedro el 17-10 (msgs
+       7271-7272): «cuando uno da un clic se abre, por tanto hay que cerrar y
+       luego moverse, o copiar… no queda tan intuitivo».
+
+       El choque es de fondo: esta pantalla es una PLANILLA —se marca, se copia,
+       se pega, se anda con flechas— y en una planilla el clic SELECCIONA. La
+       propia barra de ayuda de abajo ya decia «un clic sobre un turno marca ese
+       turno», y encima abria. Abrir es otra intencion y se pide aparte: doble
+       clic, como en cualquier hoja de calculo o carpeta de archivos.
+
+       EN LAS TARJETAS NO SE TOCA. Ahi no hay seleccion ni copiar/pegar, asi que
+       el clic no le quita el sitio a nada y pedir doble clic seria exigir un
+       gesto de mas por simetria. */
+    if (esPlanilla() && S.vista === 'semana') return;
     var a = S.asignaciones.filter(function (x) { return x.id === li.dataset.asigid; })[0];
     if (a) abrirAsignacion(a, a.necesidad_id, a.fecha);
   }
+});
+
+/* Y el doble clic SI abre, que es la otra mitad del cambio. Sin esto, en la
+   planilla no habria forma de abrir un turno: se habria quitado una capacidad
+   en vez de moverla de gesto. */
+$('#malla').addEventListener('dblclick', function (ev) {
+  if (!esPlanilla() || S.vista !== 'semana') return;
+  var li = ev.target.closest && ev.target.closest('[data-asigid]');
+  if (!li) return;
+  ev.preventDefault();
+  var a = S.asignaciones.filter(function (x) { return x.id === li.dataset.asigid; })[0];
+  if (a) abrirAsignacion(a, a.necesidad_id, a.fecha);
 });
 
 // ====================================================================
@@ -4665,9 +4691,13 @@ function avisarSeleccion(mensaje) {
     if (!enTabla && !enTarjetas) { caja.hidden = true; return; }
     caja.hidden = false; caja.classList.add('pista');
     caja.innerHTML = enTabla
+      /* La pista TIENE que nombrar el doble clic. Si la pantalla cambia de
+         gesto y el texto se queda atras, el texto pasa a ser una trampa: dice
+         lo que ya no es y nadie descubre lo que si. */
       ? '<span class="teclas">Arrastra sobre las casillas para marcarlas y cópialas'
         + ' con <b>Ctrl+C</b> y <b>Ctrl+V</b>. <b>Supr</b> las quita.'
-        + ' Un clic sobre un turno marca <b>ese</b> turno; <b>Ctrl+clic</b> suma.</span>'
+        + ' Un clic sobre un turno marca <b>ese</b> turno; <b>Ctrl+clic</b> suma;'
+        + ' <b>doble clic</b> lo abre.</span>'
       : '<span class="teclas">Para copiar y pegar turnos, cambia a'
         + ' <b>Personas</b> o <b>Cargos</b>.</span>';
     return;
