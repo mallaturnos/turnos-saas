@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v140</span></p>
+      <span style="float:right;opacity:.55" id="ver">v141</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v140</span>
+    <span class="hint" id="ver2" title="Versión publicada">v141</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -612,6 +612,25 @@
   </form>
 </dialog>
 
+<!-- DUPLICAR UN TURNO SIN DUEÑO. Es como se pide «varios» desde el 19-10:
+     el dialogo de crear hace UNO y este hace los demas, que es el gesto de
+     Deputy. Solo turnos SIN DUEÑO, como ellos — lo eligio Pedro (msg 7518). -->
+<dialog id="dlgDup" class="dlg">
+  <form method="dialog">
+    <h3>Duplicar el turno</h3>
+    <p class="hint" id="dpDe"></p>
+    <label class="q" for="dpCuantas">¿Cuántas copias?</label>
+    <div class="fld"><input type="number" id="dpCuantas" min="1" max="50" value="1"></div>
+    <p class="hint">Nacen <b>sin dueño</b>, el mismo día y a la misma hora. Es la forma
+      de pedir varios: uno lo creas y el resto los duplicas.</p>
+    <p class="msg" id="dpMsg"></p>
+    <div class="acciones">
+      <button type="button" class="primario" id="dpGuardar">Duplicar</button>
+      <button type="button" class="plano" id="dpCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlgRep" class="dlg">
   <form method="dialog">
     <h3>Repetir el turno</h3>
@@ -815,6 +834,6 @@
 </dialog>
 <script src="config.js?v=5"></script>
 <script src="datos.js?v=22"></script>
-<script src="app.js?v=85"></script>
+<script src="app.js?v=86"></script>
 </body>
 </html>

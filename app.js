@@ -5561,6 +5561,77 @@ function pintarDiasRep() {
   $('#rpGuardar').disabled = !n;
 }
 
+/* ---------- DUPLICAR UN TURNO SIN DUEÑO ----------
+
+   Es la forma de pedir VARIOS desde el 19-10: el diálogo de crear hace uno y
+   este hace los demás. Pedro lo eligió después de ver qué hace el mercado
+   (msgs 7458-7461): en **Deputy** se crea un turno abierto y luego «Duplicar
+   turno» pregunta cuántas copias; **7shifts** no documenta ningún «cuántos».
+
+   Y solo sobre turnos SIN DUEÑO, como Deputy (msg 7518): clonar a Ana cuatro
+   veces el mismo día no es nada que nadie quiera.
+
+   El límite de 50 no es un número mágico: es para que un dedo torpe en el
+   campo no cree mil filas que después hay que borrar a mano. */
+var DUP = { asig: null };
+
+function abrirDuplicar(a) {
+  if (!a || a.trabajador_id) return;
+  DUP.asig = a;
+  $('#dpDe').innerHTML = '<b>' + esc(nombreCargo(a.cargo_id)) + '</b> · <b>'
+    + esc(hhmm(a.hora_inicio) + '–' + hhmm(a.hora_fin)) + '</b> · <i>sin asignar</i>';
+  $('#dpMsg').textContent = '';
+  $('#dpCuantas').value = 1;
+  $('#dlgDup').showModal();
+}
+
+$('#dpCancelar').addEventListener('click', function () { $('#dlgDup').close(); });
+
+$('#dpGuardar').addEventListener('click', function () {
+  var a = DUP.asig;
+  var n = Math.max(1, Math.min(50, Number($('#dpCuantas').value) || 0));
+  if (!a) return;
+  $('#dlgDup').close();
+  avisarSeleccion('Duplicando ' + n + ' vez/veces…');
+
+  var creadas = [], fallaron = [];
+  var cadena = [];
+  for (var i = 0; i < n; i++) cadena.push(i);
+  var p = cadena.reduce(function (pr) {
+    return pr.then(function () {
+      return DATOS.asignaciones.crear({
+        empresa_id: S.yo.empresa_id,
+        sucursal_id: a.sucursal_id, fecha: a.fecha, cargo_id: a.cargo_id,
+        necesidad_id: a.necesidad_id || null,
+        trabajador_id: null,              // las copias nacen sin dueño, siempre
+        hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
+        // La colacion viaja con la copia, por lo mismo que en «repetir».
+        colacion_min: a.colacion_min || 0,
+        origen: 'mano', tocado_a_mano: true, estado: 'confirmada',
+      }).then(function (fila) { creadas.push(fila.id); })
+        .catch(function (e) { fallaron.push(e); });
+    });
+  }, Promise.resolve());
+
+  return p.then(function () {
+    if (creadas.length) {
+      DATOS.anotar(S.yo.empresa_id, S.yo.id, 'asignacion', null, 'crear',
+                   { duplicado: creadas.length }, null);
+      // Un solo Deshacer para toda la duplicacion, no uno por copia.
+      recordar('duplicar el turno ' + creadas.length + ' vez/veces', function () {
+        return creadas.reduce(function (pr, id) {
+          return pr.then(function () { return DATOS.asignaciones.borrar(id); });
+        }, Promise.resolve());
+      });
+    }
+    return recargarSemana();
+  }).then(function () {
+    var txt = creadas.length + ' copia(s) creada(s)';
+    if (fallaron.length) txt += ' · ' + fallaron.length + ' no se pudo: ' + fallaron[0].message;
+    decirSel(txt);
+  }).catch(function (e) { decirSel('No pude: ' + e.message); });
+});
+
 function abrirRepetir(a) {
   if (!a) return;
   REP.asig = a; REP.dias = {};
@@ -5853,6 +5924,7 @@ function menuEl() {
       /* Repetir es de UN turno: con varios marcados la pregunta «¿en qué días?»
          no tiene una respuesta sola. Por eso la fila se enciende con uno. */
       case 'repetir': return abrirRepetir(marcadosDeSeleccion()[0]);
+      case 'duplicar': return abrirDuplicar(marcadosDeSeleccion()[0]);
       case 'lote':    return abrirLote();
       case 'soltar':  return dejarSinAsignar();
       case 'borrar':  return borrarSeleccion(false);
@@ -5920,6 +5992,11 @@ function abrirMenu(x, y, td, idTurno) {
     + fila('pegar',   'Pegar',   'Ctrl+V', !!PORTA)
     + '<hr>'
     + fila('repetir', 'Repetir en otros días…', '', marcados.length === 1)
+    /* DUPLICAR es de UN turno y SIN DUEÑO, como en Deputy — lo eligió Pedro
+       (msg 7518). Con persona no se ofrece: clonar a Ana cuatro veces el mismo
+       día no es nada que nadie quiera, y ellos tampoco lo permiten. */
+    + fila('duplicar', 'Duplicar…', '',
+           marcados.length === 1 && conPersona === 0)
     + fila('lote',    'Cambiar los ' + marcados.length + ' marcados…', '', marcados.length > 1)
     + fila('soltar',  'Dejar sin asignar', '', conPersona > 0)
     + fila('borrar',  'Borrar',  'Supr',  marcados.length > 0, 'mal');
@@ -8834,7 +8911,7 @@ window.__app = {
   masDias: masDias, lunesDe: lunesDe, abrirCopiarSem: abrirCopiarSem,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
-  claveCel: claveCel, asigDeClave: asigDeClave,
+  claveCel: claveCel, asigDeClave: asigDeClave, abrirDuplicar: abrirDuplicar,
   aplicarPerfil: aplicarPerfil, puede: puede, puedeVerValores: puedeVerValores,
   copiarSeleccion: copiarSeleccion, pegarSeleccion: pegarSeleccion,
   borrarSeleccion: borrarSeleccion, verPorta: function () { return PORTA; },
