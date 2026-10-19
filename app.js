@@ -6302,7 +6302,16 @@ function moverFoco(df, dc, extender) {
            esta decisión, no reponer el más cercano en hora sin preguntar.
 
            Si la casilla destino tiene MENOS turnos, se topa en el último: la
-           flecha nunca se queda sin destino. */
+           flecha nunca se queda sin destino.
+
+           ⚠️ YA SE PROPUSO CAER EN EL «+» EN ESE CASO Y PEDRO DIJO QUE NO.
+           El 19-10 (msg 7575) lo planteó él mismo viendo Cocina con 5 turnos el
+           lunes y 4 el martes: «no quedaria mejor que pasara al signo +.. ya que
+           justo está al lado?». Le dije que sí, que además dejaba armar la
+           semana sin soltar el teclado, y que el costo era convertir el «+» en
+           una parada de verdad del teclado. Lo pensó y resolvió «en realidad,
+           dejemoslo asi» (msg 7577). **No se vuelve a ofrecer**: topar en el
+           último es la conducta elegida, no una pendiente. */
         var deAntes = asigDeClave(SEL.claves[0]);
         var aqui = deAntes ? turnosDeClave(claveCel(p.td)) : [];
         var pos = deAntes
@@ -6908,11 +6917,95 @@ function abrirFicha(tipo, dato) {
   if (tipo === 'trabajador') campos += bloqueAcceso(dato);
   $('#fCampos').innerHTML = campos;
   aviso('#fMsg', '');
+  engancharAlMomento(tipo, dato);
   var esTrab = tipo === 'trabajador' && !!dato;
   $('#fSalida').hidden = !(esTrab && dato.activo !== false);
   $('#fVuelve').hidden = !(esTrab && dato.activo === false);
   $('#dlgFicha').showModal();
 }
+/* ====================================================================
+   GUARDAR AL MOMENTO — PASO 1: las casillas y las opciones
+   ====================================================================
+
+   Pedro cerro el criterio el 18-10 (msgs 7415-7416) y aprobo el plan el 19-10
+   (msg 7614). Esto es el paso 1: lo que se marca y se elige guarda solo.
+
+   LAS TRES CONDICIONES, que son del plan y sin ellas queda PEOR que el boton:
+
+   1. QUE SE VEA. Un aviso que aparece y se apaga. Sin eso nadie sabe si paso
+      algo y vuelve a apretar.
+   2. QUE SE PUEDA DESHACER. Volver a marcar la casilla lo deshace, y por eso
+      no hace falta un Deshacer aparte aqui: el gesto es su propio inverso.
+   3. QUE UN FALLO DEVUELVA EL CONTROL. La casilla vuelve a donde estaba en vez
+      de dejar la pantalla mintiendo. Es el patron de `cambiarPermiso()`.
+
+   SOLO SOBRE LO QUE YA EXISTE. En un trabajador o un local NUEVO no hay fila
+   que actualizar, asi que ahi manda el boton Guardar, como siempre. Por eso
+   todo esto cuelga de `dato`. */
+
+function alMomento(el, hacer, textoOk) {
+  el.disabled = true;
+  aviso('#fMsg', 'Guardando…');
+  return hacer()
+    .then(function () { aviso('#fMsg', textoOk || 'Guardado.', 'ok'); })
+    .catch(function (e) {
+      /* El control vuelve a donde estaba. Si la pantalla se queda mostrando lo
+         que el usuario quiso y la base tiene otra cosa, el proximo que mire la
+         ficha va a creerle a la pantalla. */
+      if (el.type === 'checkbox') el.checked = !el.checked;
+      else if (el.dataset.antes !== undefined) el.value = el.dataset.antes;
+      aviso('#fMsg', 'No se pudo guardar: ' + e.message, 'bad');
+    })
+    .then(function () { el.disabled = false; });
+}
+
+function engancharAlMomento(tipo, dato) {
+  if (!dato) return;              // lo que no existe todavia no se guarda solo
+
+  if (tipo === 'trabajador') {
+    // Cargos que hace y en que locales trabaja: de a UNA fila, nunca el conjunto.
+    $$('[data-fc]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        alMomento(c, function () {
+          return c.checked ? DATOS.trabajadores.agregarCargo(dato.id, c.dataset.fc)
+                           : DATOS.trabajadores.quitarCargo(dato.id, c.dataset.fc);
+        }, c.checked ? 'Cargo agregado.' : 'Cargo quitado.')
+          .then(cargarTodo);
+      });
+    });
+    $$('[data-fs]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        alMomento(c, function () {
+          return c.checked ? DATOS.trabajadores.agregarSucursal(dato.id, c.dataset.fs)
+                           : DATOS.trabajadores.quitarSucursal(dato.id, c.dataset.fs);
+        }, c.checked ? 'Local agregado.' : 'Local quitado.')
+          .then(cargarTodo);
+      });
+    });
+    // Las excepciones del descanso dominical son columnas de la propia fila.
+    $$('[data-fx]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        var d = {}; d[c.dataset.fx] = !!c.checked;
+        alMomento(c, function () { return DATOS.trabajadores.guardar(dato.id, d); })
+          .then(cargarTodo);
+      });
+    });
+  }
+
+  if (tipo === 'sucursal') {
+    // El rubro del local decide que reglas legales se aplican, asi que al
+    // guardarse hay que repintar: el bloque de reglas de abajo cambia con el.
+    $$('input[name="fr"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        alMomento(r, function () {
+          return DATOS.sucursales.guardar(dato.id, { rubro: r.value });
+        }, 'Rubro guardado.').then(cargarTodo);
+      });
+    });
+  }
+}
+
 /* LOS RUBROS, EN UN SOLO SITIO.
 
    Son los numerales del articulo 38 del Codigo del Trabajo, pero al usuario no

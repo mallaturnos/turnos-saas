@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnos</title>
-<link rel="stylesheet" href="estilo.css?v=57">
+<link rel="stylesheet" href="estilo.css?v=58">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <form class="tarjeta angosta" id="formEntrar">
     <h1>Turnos</h1>
     <p class="hint">Planificación de turnos para tu local.
-      <span style="float:right;opacity:.55" id="ver">v143</span></p>
+      <span style="float:right;opacity:.55" id="ver">v144</span></p>
     <label for="eMail">Correo</label>
     <input type="email" id="eMail" autocomplete="email" required>
     <label for="eClave">Contraseña</label>
@@ -74,7 +74,7 @@
     <!-- La versión también DENTRO de la app. Estaba solo en la pantalla de
          entrada, así que desaparecía justo cuando más sirve: cuando alguien
          está usando el producto y algo no se comporta como espera. -->
-    <span class="hint" id="ver2" title="Versión publicada">v143</span>
+    <span class="hint" id="ver2" title="Versión publicada">v144</span>
     <button class="plano" id="btnSalir">Salir</button>
   </header>
 
@@ -819,6 +819,12 @@
   <form method="dialog">
     <h3 id="fTit">—</h3>
     <div id="fCampos"></div>
+    <!-- EL PIE SE QUEDA PEGADO ABAJO. Con «guardar al momento» (paso 1, 19-10)
+         el aviso de «Guardado» tiene que verse desde donde esta la casilla que
+         acabas de marcar, y la ficha es mas alta que la pantalla: medido, el
+         aviso caia 288 px por debajo del borde. Un aviso que no se ve es lo
+         mismo que no avisar, y el plan lo pone como condicion. -->
+    <div class="pie-ficha">
     <p class="msg" id="fMsg"></p>
     <div class="acciones">
       <button type="button" class="primario" id="fGuardar">Guardar</button>
@@ -830,10 +836,11 @@
       <button type="button" class="plano" id="fVuelve" hidden>Volvió a trabajar</button>
       <button type="button" class="plano" id="fCancelar">Cancelar</button>
     </div>
+    </div>
   </form>
 </dialog>
 <script src="config.js?v=5"></script>
-<script src="datos.js?v=22"></script>
-<script src="app.js?v=88"></script>
+<script src="datos.js?v=23"></script>
+<script src="app.js?v=89"></script>
 </body>
 </html>

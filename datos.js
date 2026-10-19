@@ -391,6 +391,33 @@
           return { trabajador_id: id, sucursal_id: s }; }) }, 'guardar los locales');
       });
     },
+
+    /* DE A UNA FILA — el paso 1 de «guardar al momento» (19-10-2026).
+
+       `ponerCargos` y `ponerSucursales` BORRAN TODO Y REINSERTAN. Eso esta bien
+       para un boton que se aprieta una vez, y es justo lo que NO sirve cuando
+       cada casilla guarda sola: dos clics seguidos se pisan, porque el segundo
+       parte de una lista que el primero todavia no termino de escribir.
+
+       Por eso estas cuatro. No reemplazan a las de arriba —el alta de un
+       trabajador nuevo sigue mandando el conjunto de una vez, que ahi es lo
+       correcto—: conviven. */
+    agregarCargo: function (id, c) {
+      return rest('trabajador_cargos', { method: 'POST',
+        body: { trabajador_id: id, cargo_id: c } }, 'agregar el cargo');
+    },
+    quitarCargo: function (id, c) {
+      return quitar('trabajador_cargos',
+        'trabajador_id=eq.' + id + '&cargo_id=eq.' + c, 'quitar el cargo');
+    },
+    agregarSucursal: function (id, su) {
+      return rest('trabajador_sucursales', { method: 'POST',
+        body: { trabajador_id: id, sucursal_id: su } }, 'agregar el local');
+    },
+    quitarSucursal: function (id, su) {
+      return quitar('trabajador_sucursales',
+        'trabajador_id=eq.' + id + '&sucursal_id=eq.' + su, 'quitar el local');
+    },
   };
 
   /* ¿Está pegada la migración de los atajos por local? Mismo cuidado que con

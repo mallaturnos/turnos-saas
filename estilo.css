@@ -1467,3 +1467,22 @@ table.mesb .mini { cursor: pointer; }
 .calrej.porsemana button.elegida { background: var(--verde); color: var(--blanco); }
 .calrej button:focus-visible { outline: 2px solid var(--verde); outline-offset: -2px; }
 .calpop .hint { margin: .45rem 0 0; }
+
+/* ---------- EL PIE DE LA FICHA, PEGADO ABAJO (19-10, paso 1 de guardar al momento)
+
+   La ficha es mas alta que la pantalla. Con el boton Guardar eso daba igual:
+   bajabas a apretarlo y el aviso salia justo al lado. Con las casillas que
+   guardan solas, el aviso aparece MIENTRAS MIRAS la casilla — y medido estaba
+   cayendo 288 px por debajo del borde de la ventana.
+
+   Un aviso que no se ve es lo mismo que no avisar, y «que se vea» es la primera
+   de las tres condiciones del plan. Pegando el pie abajo se arregla para todos
+   los campos de la ficha, no solo para los de este paso. */
+#dlgFicha .pie-ficha {
+  position: sticky;
+  bottom: calc(-1.25rem - 1px);        /* compensa el padding del dialogo */
+  background: var(--blanco);
+  padding-bottom: .25rem;
+  /* Una sombra corta para que se note que hay contenido por debajo. */
+  box-shadow: 0 -8px 10px -8px rgba(19,52,59,.18);
+}
