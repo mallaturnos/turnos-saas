@@ -1225,26 +1225,37 @@ function pintarDia() {
   }
   filas = filas.filter(function (f) { return f.suyas.length || (f.pide && f.pide.length); });
 
-  /* EL ORDEN DE LAS BARRAS DENTRO DE UN GRUPO: POR IDENTIDAD, NO POR HORA.
+  /* EL ORDEN DE LAS BARRAS DENTRO DE UN GRUPO: POR HORA DE ENTRADA.
 
-     Esto cambió dos veces y conviene que quede el porqué.
+     Esto cambió tres veces y conviene que quede el porqué de cada una.
 
-     Primero salían en el orden en que volvían de la base, que cambia al
-     guardar: movías una barra y al repintar aparecía en otra línea
-     (Pedro: «beto pasó donde estaba ana»). Lo ordené **por hora de entrada**,
-     que es determinista… y seguía saltando: si al arrastrar cruzas la hora de
-     la vecina, las dos se cambian de línea en medio del gesto
-     (Pedro: «ana y beto cambian de posicion con algunos movimientos»).
+     1. Primero salían en el orden en que volvían de la base, que cambia al
+        guardar: movías una barra y al repintar aparecía en otra línea
+        (Pedro: «beto pasó donde estaba ana»).
+     2. Lo ordené por hora de entrada, y Pedro dijo «ana y beto cambian de
+        posicion con algunos movimientos». Lo leí como que las barras se movían
+        DURANTE el arrastre, y lo dejé fijo por `id` — que no significa nada,
+        pero no cambia nunca.
+     3. El 19-10 Pedro volvió sobre esto mirando la pantalla: «¿no deberian
+        estar ordenados por horas? de arriba abajo?». Tenía razón, y al ir a
+        comprobar el motivo del punto 2 resultó que no se sostiene: mientras se
+        arrastra, `engancharGestosDia` mueve la barra a mano con `style.left` y
+        **la vista no se repinta hasta soltar** — `recargarSemana()` cuelga de
+        `soltar()`. O sea que ordenar por hora NO mueve nada bajo el dedo: la
+        barra se acomoda DESPUÉS de soltarla, que es justo cuando ya cambió de
+        hora y tiene que acomodarse.
 
-     **Lo que el usuario tiene agarrado no se puede mover solo.** Por eso el
-     orden va por `id`: no significa nada, pero no cambia nunca — y aquí eso
-     vale más que la prolijidad, porque la hora ya se lee en el eje horizontal,
-     que es para lo que existe una línea de tiempo. La fila vertical no tiene
-     que contar la misma historia dos veces. */
-  var porId = function (x, y) { return String(x.id) < String(y.id) ? -1 : 1; };
+     → El orden por `id` era prolijo pero mudo: con tres turnos en Caja dejaba
+     15:06 arriba, 09:00 al medio y 14:00 abajo. El desempate sigue siendo el
+     `id`, para que dos turnos a la misma hora no se intercambien al repintar. */
+  var porHora = function (x, y) {
+    var hx = a2h(x.hora_inicio), hy = a2h(y.hora_inicio);
+    if (hx !== hy) return hx - hy;
+    return String(x.id) < String(y.id) ? -1 : 1;
+  };
   filas.forEach(function (f) {
-    f.suyas.sort(porId);
-    if (f.pide) f.pide.sort(porId);
+    f.suyas.sort(porHora);
+    if (f.pide) f.pide.sort(porHora);
   });
 
   // Si la franja es larga, las horas impares quedan como rayita para que los
@@ -5628,7 +5639,9 @@ $('#dpGuardar').addEventListener('click', function () {
   }).then(function () {
     var txt = creadas.length + ' copia(s) creada(s)';
     if (fallaron.length) txt += ' · ' + fallaron.length + ' no se pudo: ' + fallaron[0].message;
-    decirSel(txt);
+    // Mismo criterio que en «repetir»: si no nació ninguna, no se calla.
+    avisarFalloAlCrear(creadas.length, fallaron.length, txt,
+                       'No se pudo duplicar el turno');
   }).catch(function (e) { decirSel('No pude: ' + e.message); });
 });
 
@@ -5669,13 +5682,20 @@ $('#rpGuardar').addEventListener('click', function () {
   var cadena = fechas.reduce(function (pr, f) {
     return pr.then(function () {
       return DATOS.asignaciones.crear({
+        /* LA EMPRESA. Lo encontro Pedro el 19-10 (msg 7529, «eso no funcionó»):
+           «Repetir en 4 dias» no creaba NADA, ni en un dia vacio ni en uno con
+           turnos. `empresa_id` es `not null` y este era el UNICO de los doce
+           caminos que crean asignaciones que no la mandaba, asi que Postgres
+           rechazaba las cuatro filas. No es que pisara lo que habia: no llegaba
+           a insertar. */
+        empresa_id: a.empresa_id || S.yo.empresa_id,
         sucursal_id: a.sucursal_id, fecha: f, cargo_id: a.cargo_id,
         trabajador_id: a.trabajador_id,
-        hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
         /* LA COLACION VIAJA CON LA COPIA. Lo encontro Pedro repitiendo un turno
            (msg 6795, «esto no funcionó»): el original decia 7:30 y las copias
            8:00. Agregue la columna y NO revise los caminos que COPIAN — que
            eran cinco. Es «la mitad de los sitios» otra vez. */
+        hora_inicio: a.hora_inicio, hora_fin: a.hora_fin,
         colacion_min: a.colacion_min || 0,
       }).then(function (fila) { creadas.push(fila.id); })
         .catch(function (e) { fallaron.push({ f: f, e: e }); });
@@ -5697,9 +5717,25 @@ $('#rpGuardar').addEventListener('click', function () {
   }).then(function () {
     var txt = creadas.length + ' turno(s) creado(s)';
     if (fallaron.length) txt += ' · ' + fallaron.length + ' no se pudo: ' + fallaron[0].e.message;
-    decirSel(txt);
+    avisarFalloAlCrear(creadas.length, fallaron.length, txt,
+                       'No se pudo repetir el turno');
   }).catch(function (e) { decirSel('No pude: ' + e.message); });
 });
+
+/* UN FALLO QUE NO CREÓ NADA NO PUEDE IRSE SOLO.
+
+   El 19-10 Pedro reportó que «Repetir en 4 días» no hacía nada (msg 7529), y
+   cuando le pregunté qué decía el cartelito contestó «no vi nada» (msg 7539).
+   El aviso SÍ salía — pero `decirSel` lo borra a los 2200 ms y repinta la
+   barra, así que un fallo total se ve igual que no haber apretado el botón.
+
+   La regla: si no se creó NI UNA fila y hubo errores, se para al usuario con un
+   `alert`, igual que hacen `moverNecesidad` y `estirarTurno`. Si se creó una
+   parte, el aviso de la barra basta — algo cambió en pantalla y se nota. */
+function avisarFalloAlCrear(creadas, fallaron, texto, titulo) {
+  if (!creadas && fallaron) return alert(titulo + '.\n\n' + texto);
+  decirSel(texto);
+}
 
 /* ====================================================================
    CAMBIAR VARIOS TURNOS DE UNA VEZ  (Pedro, 14-10, msgs 6561-6571)
