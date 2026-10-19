@@ -6223,15 +6223,11 @@ function marcadoEnTurnos() {
    vacia y marcarla —en vez de saltarla— por dos motivos: la flecha nunca se
    queda sin destino, y «nunca se encienden los tres» se sigue cumpliendo. Hay
    que preguntarselo igual, y cambiarlo son tres lineas. */
-/* El turno que empieza mas cerca de una hora dada. Se compara en minutos y no
-   en texto: «09:00» y «16:00» como cadenas ordenan bien por casualidad, pero
-   en cuanto aparece un turno que cruza la medianoche deja de ser verdad. */
-function masCercanoEnHora(lista, hora) {
-  var ref = a2h(hora);
-  return lista.slice().sort(function (x, y) {
-    return Math.abs(a2h(x.hora_inicio) - ref) - Math.abs(a2h(y.hora_inicio) - ref);
-  })[0];
-}
+/* Aquí vivía `masCercanoEnHora`, que elegía el turno que empieza más cerca de
+   una hora dada. Se retiró el 19-10 al pasar la flecha a conservar la POSICION
+   (msg 7561): se quedó sin ningún uso, y una función que no llama nadie se lee
+   como si todavía mandara. El criterio y su historia están donde se decide,
+   en `moverFoco`. */
 
 function moverFoco(df, dc, extender) {
   var g = rejilla(); if (!g) return false;
@@ -6278,24 +6274,41 @@ function moverFoco(df, dc, extender) {
     var cual = null;
     if (hay.length) {
       if (dc !== 0) {
-        /* 🔴 AL CAMBIAR DE DIA SE ENTRA POR EL TURNO MAS CERCANO EN HORA.
+        /* 🔴 AL CAMBIAR DE DIA SE CONSERVA LA POSICION DENTRO DE LA CASILLA.
 
-           Lo reportó Pedro el 18-10 (msg 7473): estaba en el de las 16:00 y al
-           apretar → caía en el de las 09:00 del día siguiente — el reloj iba
-           para atrás aunque él fuera hacia adelante. La regla vieja entraba
-           SIEMPRE por el primero y no miraba de dónde venías.
+           Esta regla cambió tres veces y las tres las pidió Pedro. Conviene que
+           queden las tres, porque la de hoy contradice a la de ayer.
 
-           La primera versión de esto conservaba la POSICION dentro de la
-           casilla, como una planilla conserva la fila al cambiar de columna.
-           Suena bien y la prueba lo tumbó: con el banco de datos real caía en
-           un turno de las 12:00 **existiendo uno de las 16:00**, porque las dos
-           casillas no tienen los mismos turnos ni en el mismo orden.
+           1. La regla vieja entraba SIEMPRE por el primero de la casilla, sin
+              mirar de dónde venías.
+           2. 18-10 (msg 7473): «estaba en el de las 16:00 y al apretar → caía
+              en el de las 09:00 del día siguiente». Lo leí como «no retroceder
+              en el reloj» y puse el MAS CERCANO EN HORA. Antes probé conservar
+              la posición y una prueba lo tumbó —caía en un turno de las 12:00
+              existiendo uno de las 16:00—, así que lo descarté.
+           3. 19-10 (msg 7561): Pedro mira la pantalla y pide exactamente lo que
+              yo había descartado: *«si muevo la flecha a la derecha me pasa al
+              turno de las 16:00… debería pasar al de al lado. ana a las 9:00»*.
 
-           Lo que él pidió no era «la misma fila», era **no retroceder en el
-           reloj**. Así que la regla es una sola y es la simple: el más cercano
-           en hora. */
+           **Lo que yo había tomado por un defecto era el comportamiento que él
+           quiere.** En el caso que la prueba marcaba como malo —caer en las
+           12:00 habiendo uno a las 16:00— él prefiere las 12:00 si es la que
+           está AL LADO. «Al lado» es lo que ve en pantalla, y una planilla
+           conserva la fila al cambiar de columna.
+
+           ⚠️ Esto puede retroceder en el reloj, y está aceptado a sabiendas: es
+           el caso de su propio ejemplo (de las 14:00 del lunes a las 09:00 de
+           Ana el martes). Si vuelve a molestarle, lo que hay que revisar es
+           esta decisión, no reponer el más cercano en hora sin preguntar.
+
+           Si la casilla destino tiene MENOS turnos, se topa en el último: la
+           flecha nunca se queda sin destino. */
         var deAntes = asigDeClave(SEL.claves[0]);
-        cual = deAntes ? masCercanoEnHora(hay, deAntes.hora_inicio) : hay[0];
+        var aqui = deAntes ? turnosDeClave(claveCel(p.td)) : [];
+        var pos = deAntes
+          ? aqui.map(function (a) { return String(a.id); }).indexOf(String(deAntes.id))
+          : -1;
+        cual = pos >= 0 ? hay[Math.min(pos, hay.length - 1)] : hay[0];
       } else {
         // Si venimos subiendo, se entra por el ultimo; bajando, por el primero.
         cual = (df < 0 ? hay[hay.length - 1] : hay[0]);
@@ -6852,7 +6865,8 @@ function abrirFicha(tipo, dato) {
                  + 'festivos</b>. Si eliges <b>Ninguna de estas</b>, la ley no te deja '
                  + 'planificar domingos salvo fuerza mayor (<b>art. 37</b>).</p>'
                  + campo('number', 'fDom', 'Domingos de descanso al mes',
-                         dato && dato.domingos_min ? dato.domingos_min : '')
+                         dato && dato.domingos_min ? dato.domingos_min : '',
+                         DOMINGOS_LEGAL)
                  + '<p class="hint">Déjalo vacío para usar el <b>mínimo legal, que son 2</b>. '
                  + 'Puedes <b>subirlo</b> si quieres ser más generoso; bajarlo, no.</p>');
   } else {
@@ -6956,9 +6970,13 @@ function opciones(pre, lista, elegido) {
   }).join('');
 }
 
-function campo(tipo, id, etiqueta, valor) {
+/* `pista` es opcional y sale en gris dentro de la casilla vacia. Se agrego el
+   19-10 para los domingos: una casilla en blanco que en realidad vale 2 se lee
+   como un dato perdido, y eso fue justo lo que asusto a Pedro (msg 7560). */
+function campo(tipo, id, etiqueta, valor, pista) {
   return '<div class="fld"><label for="' + id + '">' + esc(etiqueta) + '</label>'
-       + '<input type="' + tipo + '" id="' + id + '" value="' + esc(valor) + '"></div>';
+       + '<input type="' + tipo + '" id="' + id + '" value="' + esc(valor) + '"'
+       + (pista ? ' placeholder="' + esc(pista) + '"' : '') + '></div>';
 }
 function marcas(pre, lista, marcados) {
   if (!lista.length) return '<p class="hint">Todavía no hay.</p>';
@@ -7044,21 +7062,33 @@ $('#fGuardar').addEventListener('click', function () {
     if (S.hayRubro) {
       var elegido = $$('input[name="fr"]').filter(function (x) { return x.checked; })[0];
       s.rubro = elegido ? elegido.value : null;
-      /* EL MINIMO DEL LOCAL SOLO PUEDE SER MAYOR QUE EL LEGAL.
+      /* EL MINIMO DEL LOCAL NO PUEDE SER MENOR QUE EL LEGAL.
 
          Es la regla que fijo Pedro (msg 6856): el local puede ser mas estricto
          que la ley, nunca menos. Si escribe 1 no se guarda un 1 — se avisa y
          se corta, porque guardar un minimo por debajo de la ley convertiria la
          app en el sitio donde se apaga la regla que estorba.
 
-         Vacio no es cero: vacio significa «usa el legal». */
+         Vacio no es cero: vacio significa «usa el legal».
+
+         🔴 19-10: antes pedia ESTRICTAMENTE mas que el legal, asi que escribir
+         2 —el propio minimo que la pantalla declara— se trataba como error.
+         Ahora 2 se acepta y se guarda como vacio, que significa lo mismo. El
+         caso de Pedro (msg 7560) fue en la otra puerta, la lista de ajustes;
+         aqui se corrige igual porque la regla vive en los dos sitios y arreglar
+         una sola es como quedarse a medias. [[regla-colgada-de-una-puerta]]
+
+         AQUI el `return` no pierde nada, al reves que alla: la ficha es un
+         dialogo que se queda abierto con lo que el escribio y el aviso dentro. */
       var dom = ($('#fDom') || {}).value;
       if (dom !== '' && dom !== undefined && dom !== null) {
         var nd = Number(dom);
-        if (!(nd > DOMINGOS_LEGAL)) {
+        if (nd < DOMINGOS_LEGAL) {
           return aviso('#fMsg', 'El mínimo legal son ' + DOMINGOS_LEGAL
             + ' domingos al mes. Puedes exigir más, no menos: déjalo vacío para usar el legal.', 'bad');
         }
+        // Se guarda lo que escribio, 2 incluido: vacio es «sigue la ley», pero
+        // un 2 tecleado tiene que seguir ahi cuando vuelva a abrir la ficha.
         s.domingos_min = nd;
       } else {
         s.domingos_min = null;
@@ -7420,7 +7450,7 @@ function tarjetaLocal(loc) {
           + 'fuerza mayor (<b>art. 37</b>).</p>'
           + '<div class="fldrow">'
           + campo('number', 'dm_' + loc.id, 'Domingos de descanso al mes',
-                  loc.domingos_min ? loc.domingos_min : '')
+                  loc.domingos_min ? loc.domingos_min : '', DOMINGOS_LEGAL)
           + '</div>'
           + '<p class="hint">Vacío usa el <b>mínimo legal, que son 2</b>. Puedes '
           + '<b>subirlo</b>; bajarlo, no.</p>')
@@ -7450,6 +7480,7 @@ document.addEventListener('click', function (ev) {
     var loc = S.sucursales.filter(function (x) { return x.id === id; })[0];
     if (!loc) return;
     var d = { zona_horaria: ($('#z_' + id).value || 'America/Santiago').trim() };
+    var avisoDom = null;   // lo que haya que decir DESPUES de guardar lo demas
     // Igual que antes: sin las columnas no se mandan, o PostgREST rechaza el
     // POST entero y deja de poder guardarse el local.
     if (S.hayHorarioLocal) {
@@ -7460,18 +7491,52 @@ document.addEventListener('click', function (ev) {
       var ele = $$('input[name="r_' + id + '"]').filter(function (x) { return x.checked; })[0];
       d.rubro = ele ? ele.value : null;
       // El mismo freno que en la ficha: mas estricto que la ley si, menos no.
+      /* 🔴 ESCRIBIR EL MINIMO LEGAL YA NO ES UN ERROR, y un campo malo ya no se
+         lleva por delante el resto del formulario.
+
+         Lo encontró Pedro el 19-10 (msg 7560): *«ayer dejé 2 y hoy aparecía en
+         blanco… por qué?»*. Lo que pasaba era esto, y era de la app:
+
+         - Escribió **2**. La regla pedía ESTRICTAMENTE más que el legal, así que
+           2 no pasaba.
+         - Saltaba el aviso y `return` — **se abortaba el guardado ENTERO del
+           local**, incluidos el rubro y el horario que hubiera cambiado.
+         - La casilla seguía mostrando el 2 en pantalla, porque el repintado
+           cuelga de `cargarTodo()` y nunca se llegaba ahí. Se veía guardado.
+         - Al día siguiente, en blanco.
+
+         DOS CORRECCIONES:
+
+         1. **2 y vacío significan lo mismo** —el mínimo legal—, así que escribir
+            2 se acepta y se guarda como vacío. Rechazarlo no protegía nada: solo
+            prohibía teclear el número que la propia pantalla declara mínimo.
+         2. Si el número es MENOR que el legal, se avisa **después de guardar lo
+            demás** y ese campo se deja como estaba. Perder en silencio el resto
+            del formulario por un campo es mucho peor que el campo. */
       var dm = ($('#dm_' + id) || {}).value;
-      if (dm !== '' && dm !== undefined && dm !== null) {
+      if (dm === '' || dm === undefined || dm === null) {
+        d.domingos_min = null;
+      } else {
         var ndm = Number(dm);
-        if (!(ndm > DOMINGOS_LEGAL)) {
-          return alert('El mínimo legal son ' + DOMINGOS_LEGAL + ' domingos al mes. '
-            + 'Puedes exigir más, no menos: déjalo vacío para usar el legal.');
+        if (ndm < DOMINGOS_LEGAL) {
+          avisoDom = 'El mínimo legal son ' + DOMINGOS_LEGAL + ' domingos al mes, '
+            + 'así que dejé ese campo como estaba. Lo demás sí quedó guardado. '
+            + 'Puedes exigir más, no menos.';
+        } else {
+          /* SE GUARDA EL NUMERO QUE ESCRIBIO, tambien cuando es justo el legal.
+             Mi primera version lo guardaba como vacio —«2 y vacio significan lo
+             mismo»—, y es verdad para el calculo y MENTIRA para la pantalla: al
+             volver al dia siguiente la casilla aparece en blanco otra vez, que
+             es LITERALMENTE lo que Pedro vino a reclamar. Lo que se teclea es lo
+             que se ve. [[pieza-suelta-vs-combinada]] */
+          d.domingos_min = ndm;
         }
-        d.domingos_min = ndm;
-      } else { d.domingos_min = null; }
+      }
     }
     ev.target.disabled = true;
     return DATOS.sucursales.guardar(id, d).then(cargarTodo)
+      // El aviso va DESPUES de guardar: lo que se pudo guardar ya esta a salvo.
+      .then(function () { if (avisoDom) alert(avisoDom); })
       .catch(function (e) { alert('No se pudo guardar: ' + e.message); });
   }
   var nt = ev.target.dataset.nuevotramo;
