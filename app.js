@@ -2133,11 +2133,45 @@ function pintarMes() {
    misma regla que `porHoraTurno`: si el orden —o la cuenta— se decide en dos
    sitios, algún día dicen cosas distintas, y entonces hay que elegir cuál
    miente. */
+/* LOS DESAJUSTES ENTRE LAS DOS FUENTES, mientras duren las dos.
+
+   Se anota uno por necesidad y se avisa por consola. Sin esto, el paso 1 sería
+   un cambio a ciegas: la pantalla diría un número y la columna de la base otro,
+   y nadie se enteraría hasta tres pasos más adelante. */
+function anotarDesajuste(n, viejo, nuevo) {
+  S.desajustes = S.desajustes || [];
+  if (S.desajustes.some(function (d) { return d.id === n.id; })) return;
+  S.desajustes.push({ id: n.id, fecha: n.fecha, viejo: viejo, nuevo: nuevo });
+  if (window.console && console.warn) {
+    console.warn('[una-capa] ' + n.id + ': la columna dice ' + viejo
+               + ' y contando turnos sin dueño son ' + nuevo);
+  }
+}
+
 function estadoNecesidad(n) {
-  var cubren = S.asignaciones.filter(function (a) {
-    return a.necesidad_id === n.id && a.trabajador_id;
-  }).length;
-  var falta = n.personas_requeridas - cubren;
+  var suyas = S.asignaciones.filter(function (a) { return a.necesidad_id === n.id; });
+  var cubren = suyas.filter(function (a) { return a.trabajador_id; }).length;
+
+  /* 🔴 PASO 1 DEL MODELO DE UNA CAPA — Pedro lo aprobó el 18-10 y el modelo lo
+     decidió él el 17-10 (msg 7128, «esto es lo que quiero»).
+
+     «Falta N» pasa a ser LO QUE HAY: cuántos turnos SIN DUEÑO quedan en esta
+     necesidad. Antes era una resta contra `personas_requeridas`, que es la capa
+     de arriba que este cambio viene a sacar. Desde la v116 pedir 3 ya crea 3
+     turnos sin dueño, así que el número está materializado y no hace falta
+     restarlo de nada.
+
+     LAS DOS FUENTES CONVIVEN A PROPOSITO y no se toca la base: la columna sigue
+     ahí y aquí se compara con el conteo. Si alguna vez no cuadran se anota y se
+     avisa, que es lo que hace barato este paso — el fallo se ve aquí, no tres
+     pasos más adelante.
+
+     Y «Sobra N» deja de poder darse: contando turnos, lo que hay son turnos. En
+     el modelo de Pedro tener gente de más no es un número negativo, es un turno
+     más. */
+  var falta = suyas.length - cubren;
+  var porLaColumna = (n.personas_requeridas || 0) - cubren;
+  if (falta !== porLaColumna) anotarDesajuste(n, porLaColumna, falta);
 
   /* ⚠️ «COMPLETO» NO PUEDE CONTAR SÓLO CABEZAS.
 
@@ -6076,6 +6110,16 @@ function marcadoEnTurnos() {
    vacia y marcarla —en vez de saltarla— por dos motivos: la flecha nunca se
    queda sin destino, y «nunca se encienden los tres» se sigue cumpliendo. Hay
    que preguntarselo igual, y cambiarlo son tres lineas. */
+/* El turno que empieza mas cerca de una hora dada. Se compara en minutos y no
+   en texto: «09:00» y «16:00» como cadenas ordenan bien por casualidad, pero
+   en cuanto aparece un turno que cruza la medianoche deja de ser verdad. */
+function masCercanoEnHora(lista, hora) {
+  var ref = a2h(hora);
+  return lista.slice().sort(function (x, y) {
+    return Math.abs(a2h(x.hora_inicio) - ref) - Math.abs(a2h(y.hora_inicio) - ref);
+  })[0];
+}
+
 function moverFoco(df, dc, extender) {
   var g = rejilla(); if (!g) return false;
   var k = focoDePartida(g); if (!k) return false;
@@ -6118,8 +6162,32 @@ function moverFoco(df, dc, extender) {
     marcarRango(SEL.ancla, nk);
   } else if (enTurnos) {
     var hay = turnosDeClave(nk);
-    // Si venimos subiendo, se entra por el ultimo; bajando, por el primero.
-    var cual = hay.length ? (df < 0 ? hay[hay.length - 1] : hay[0]) : null;
+    var cual = null;
+    if (hay.length) {
+      if (dc !== 0) {
+        /* 🔴 AL CAMBIAR DE DIA SE ENTRA POR EL TURNO MAS CERCANO EN HORA.
+
+           Lo reportó Pedro el 18-10 (msg 7473): estaba en el de las 16:00 y al
+           apretar → caía en el de las 09:00 del día siguiente — el reloj iba
+           para atrás aunque él fuera hacia adelante. La regla vieja entraba
+           SIEMPRE por el primero y no miraba de dónde venías.
+
+           La primera versión de esto conservaba la POSICION dentro de la
+           casilla, como una planilla conserva la fila al cambiar de columna.
+           Suena bien y la prueba lo tumbó: con el banco de datos real caía en
+           un turno de las 12:00 **existiendo uno de las 16:00**, porque las dos
+           casillas no tienen los mismos turnos ni en el mismo orden.
+
+           Lo que él pidió no era «la misma fila», era **no retroceder en el
+           reloj**. Así que la regla es una sola y es la simple: el más cercano
+           en hora. */
+        var deAntes = asigDeClave(SEL.claves[0]);
+        cual = deAntes ? masCercanoEnHora(hay, deAntes.hora_inicio) : hay[0];
+      } else {
+        // Si venimos subiendo, se entra por el ultimo; bajando, por el primero.
+        cual = (df < 0 ? hay[hay.length - 1] : hay[0]);
+      }
+    }
     SEL.ancla = nk;
     SEL.claves = [cual ? claveTurno(cual.id) : nk];   // vacia: el hueco
     pintarSeleccion();
@@ -8766,7 +8834,7 @@ window.__app = {
   masDias: masDias, lunesDe: lunesDe, abrirCopiarSem: abrirCopiarSem,
   cerrarFicha: cerrarFicha, fichaCambiada: fichaCambiada,
   turnosMarcadosEn: turnosMarcadosEn, claveCelDeAsig: claveCelDeAsig,
-  claveCel: claveCel,
+  claveCel: claveCel, asigDeClave: asigDeClave,
   aplicarPerfil: aplicarPerfil, puede: puede, puedeVerValores: puedeVerValores,
   copiarSeleccion: copiarSeleccion, pegarSeleccion: pegarSeleccion,
   borrarSeleccion: borrarSeleccion, verPorta: function () { return PORTA; },
